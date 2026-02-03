@@ -1,59 +1,170 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { EnrollmentCard } from "@/components/EnrollmentCard";
 import { TermsConsent } from "@/components/TermsConsent";
 import { EnrollmentStatus } from "@/components/EnrollmentStatus";
 import { Shield } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
-// Mock data for demonstration - will be replaced with API calls
-const mockEnrollment = {
-  id: "demo-enrollment-id",
-  patientName: "John Smith",
-  amount: 125000, // $1,250.00 in cents
-  currency: "usd",
-  status: "opened" as const,
-  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-  termsVersion: "1.0.0",
-  termsUrl: "#terms",
-  privacyUrl: "#privacy",
-};
+interface EnrollmentData {
+  id: string;
+  patient_name: string | null;
+  amount_cents: number;
+  currency: string | null;
+  status: string;
+  expires_at: string;
+  terms_version: string;
+  terms_url: string;
+  privacy_url: string;
+  terms_sha256: string;
+  opened_at: string | null;
+}
 
-type PageState = 'loading' | 'enrollment' | 'processing' | 'success' | 'ach-processing' | 'failed' | 'expired' | 'invalid';
+type PageState = 'loading' | 'enrollment' | 'processing' | 'success' | 'ach-processing' | 'failed' | 'expired' | 'invalid' | 'already-paid';
+
+async function sha256Hash(data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+  return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 export default function EnrollPage() {
   const { token } = useParams<{ token: string }>();
+  const [searchParams] = useSearchParams();
   const [pageState, setPageState] = useState<PageState>('loading');
-  const [enrollment, setEnrollment] = useState(mockEnrollment);
+  const [enrollment, setEnrollment] = useState<EnrollmentData | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Check for return status from Stripe
+  const returnStatus = searchParams.get('status');
 
   useEffect(() => {
-    // Simulate loading and validation
-    const timer = setTimeout(() => {
+    const loadEnrollment = async () => {
       if (!token) {
         setPageState('invalid');
         return;
       }
-      // In production, this would fetch the enrollment from the API
-      setPageState('enrollment');
-    }, 1000);
 
-    return () => clearTimeout(timer);
-  }, [token]);
+      try {
+        // Hash the token to look up the enrollment
+        const tokenHash = await sha256Hash(token);
+
+        // Fetch enrollment by token hash
+        const { data: enrollmentData, error: fetchError } = await supabase
+          .from("enrollments")
+          .select("*")
+          .eq("token_hash", tokenHash)
+          .single();
+
+        if (fetchError || !enrollmentData) {
+          console.error("Failed to fetch enrollment:", fetchError);
+          setPageState('invalid');
+          return;
+        }
+
+        setEnrollment(enrollmentData);
+
+        // Handle return from Stripe
+        if (returnStatus === 'success') {
+          // Payment completed - check status
+          if (enrollmentData.status === 'paid') {
+            setPageState('success');
+          } else if (enrollmentData.status === 'processing') {
+            setPageState('ach-processing');
+          } else {
+            // Refresh to get latest status
+            setPageState('success');
+          }
+          return;
+        }
+
+        if (returnStatus === 'canceled') {
+          // User canceled - show enrollment form again
+          setPageState('enrollment');
+          return;
+        }
+
+        // Check enrollment status
+        switch (enrollmentData.status) {
+          case 'paid':
+            setPageState('already-paid');
+            break;
+          case 'processing':
+            setPageState('ach-processing');
+            break;
+          case 'failed':
+            setPageState('failed');
+            break;
+          case 'expired':
+            setPageState('expired');
+            break;
+          case 'canceled':
+            setPageState('invalid');
+            break;
+          default:
+            // Check if expired by time
+            if (new Date(enrollmentData.expires_at) < new Date()) {
+              setPageState('expired');
+            } else {
+              // Mark as opened if first view
+              if (!enrollmentData.opened_at) {
+                await supabase
+                  .from("enrollments")
+                  .update({ 
+                    opened_at: new Date().toISOString(),
+                    status: 'opened'
+                  })
+                  .eq("id", enrollmentData.id);
+              }
+              setPageState('enrollment');
+            }
+        }
+      } catch (err) {
+        console.error("Error loading enrollment:", err);
+        setPageState('invalid');
+      }
+    };
+
+    loadEnrollment();
+  }, [token, returnStatus]);
 
   const handleAcceptTerms = async () => {
-    setIsSubmitting(true);
+    if (!token || !enrollment) return;
     
-    // Simulate API call to create checkout session
-    setTimeout(() => {
-      // In production, this would redirect to Stripe Checkout
-      // For demo, we'll show the success state
-      setIsSubmitting(false);
-      setPageState('success');
-    }, 2000);
-  };
+    setIsSubmitting(true);
+    setError(null);
 
-  const handleExpire = () => {
-    setPageState('expired');
+    try {
+      // Call the create-checkout-session edge function
+      const { data, error: invokeError } = await supabase.functions.invoke('create-checkout-session', {
+        body: {
+          token: token,
+          terms_accepted: true,
+          consent_user_agent: navigator.userAgent,
+        },
+      });
+
+      if (invokeError) {
+        throw new Error(invokeError.message || 'Failed to create checkout session');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      if (data?.checkout_url) {
+        // Redirect to Stripe Checkout
+        window.location.href = data.checkout_url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+    } catch (err) {
+      console.error("Error creating checkout session:", err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      setIsSubmitting(false);
+    }
   };
 
   // Loading state
@@ -109,7 +220,7 @@ export default function EnrollPage() {
     );
   }
 
-  if (pageState === 'success') {
+  if (pageState === 'success' || pageState === 'already-paid') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <EnrollmentStatus
@@ -134,6 +245,18 @@ export default function EnrollPage() {
   }
 
   // Main enrollment form
+  if (!enrollment) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <EnrollmentStatus
+          type="invalid"
+          title="Error Loading Enrollment"
+          message="Unable to load enrollment details. Please try refreshing the page."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background safe-area-inset">
       {/* Header */}
@@ -159,21 +282,28 @@ export default function EnrollPage() {
             </p>
           </div>
 
+          {/* Error message */}
+          {error && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center">
+              <p className="text-destructive text-sm">{error}</p>
+            </div>
+          )}
+
           {/* Enrollment card */}
           <EnrollmentCard
-            patientName={enrollment.patientName}
-            amount={enrollment.amount}
-            currency={enrollment.currency}
-            expiresAt={enrollment.expiresAt}
-            status={enrollment.status}
+            patientName={enrollment.patient_name || "Patient"}
+            amount={enrollment.amount_cents}
+            currency={enrollment.currency || "usd"}
+            expiresAt={new Date(enrollment.expires_at)}
+            status={enrollment.status as "created" | "sent" | "opened" | "processing" | "paid" | "failed" | "expired" | "canceled"}
           />
 
           {/* Terms and payment button */}
           <div className="card-premium p-6">
             <TermsConsent
-              termsUrl={enrollment.termsUrl}
-              privacyUrl={enrollment.privacyUrl}
-              termsVersion={enrollment.termsVersion}
+              termsUrl={enrollment.terms_url}
+              privacyUrl={enrollment.privacy_url}
+              termsVersion={enrollment.terms_version}
               onAccept={handleAcceptTerms}
               isLoading={isSubmitting}
             />
