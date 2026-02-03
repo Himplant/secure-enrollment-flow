@@ -2,3 +2,15 @@ project_id = "aygfraqvempqexlplofu"
 
 [functions.zoho-oauth-callback]
 verify_jwt = false
+
+[functions.create-enrollment]
+verify_jwt = false
+
+[functions.create-checkout-session]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.test-zoho-token]
+verify_jwt = false
