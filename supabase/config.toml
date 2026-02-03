@@ -1,1 +1,4 @@
 project_id = "aygfraqvempqexlplofu"
+
+[functions.zoho-oauth-callback]
+verify_jwt = false
