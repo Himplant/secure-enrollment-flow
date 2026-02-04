@@ -11,7 +11,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -24,11 +23,28 @@ interface CreateEnrollmentResult {
   token_last4: string;
 }
 
-export function CreateEnrollmentModal() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [patientName, setPatientName] = useState("");
-  const [patientEmail, setPatientEmail] = useState("");
-  const [patientPhone, setPatientPhone] = useState("");
+interface CreateEnrollmentModalProps {
+  prefillData?: {
+    patient_name: string;
+    patient_email: string | null;
+    patient_phone?: string | null;
+  } | null;
+  triggerButton?: React.ReactNode;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function CreateEnrollmentModal({ prefillData, triggerButton, isOpen: controlledIsOpen, onOpenChange }: CreateEnrollmentModalProps) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  
+  // Use controlled or uncontrolled state
+  const isControlled = controlledIsOpen !== undefined;
+  const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = isControlled ? (open: boolean) => onOpenChange?.(open) : setInternalIsOpen;
+  
+  const [patientName, setPatientName] = useState(prefillData?.patient_name || "");
+  const [patientEmail, setPatientEmail] = useState(prefillData?.patient_email || "");
+  const [patientPhone, setPatientPhone] = useState(prefillData?.patient_phone || "");
   const [amount, setAmount] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [expiresTime, setExpiresTime] = useState("12:00");
@@ -106,11 +122,10 @@ export function CreateEnrollmentModal() {
     }
   };
 
-  const handleClose = () => {
-    setIsOpen(false);
-    setPatientName("");
-    setPatientEmail("");
-    setPatientPhone("");
+  const resetForm = () => {
+    setPatientName(prefillData?.patient_name || "");
+    setPatientEmail(prefillData?.patient_email || "");
+    setPatientPhone(prefillData?.patient_phone || "");
     setAmount("");
     setExpiresAt("");
     setExpiresTime("12:00");
@@ -118,9 +133,20 @@ export function CreateEnrollmentModal() {
     setCopied(false);
   };
 
+  const handleClose = () => {
+    setIsOpen(false);
+    resetForm();
+  };
+
   const handleOpenChange = (open: boolean) => {
     if (open) {
       setDefaultExpiration();
+      // Apply prefill data when opening
+      if (prefillData) {
+        setPatientName(prefillData.patient_name || "");
+        setPatientEmail(prefillData.patient_email || "");
+        setPatientPhone(prefillData.patient_phone || "");
+      }
     }
     setIsOpen(open);
     if (!open) {
@@ -131,18 +157,38 @@ export function CreateEnrollmentModal() {
   const isValid = patientName.trim() && amount && parseFloat(amount) > 0 && expiresAt;
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="default" size="sm" className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Enrollment
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+    <>
+      {/* Only render trigger if not in controlled mode */}
+      {!isControlled && (
+        triggerButton || (
+          <Button variant="default" size="sm" className="gap-2" onClick={() => handleOpenChange(true)}>
+            <Plus className="h-4 w-4" />
+            New Enrollment
+          </Button>
+        )
+      )}
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {prefillData ? "Create Additional Enrollment" : "Create New Enrollment"}
+            </DialogTitle>
+            <DialogDescription>
+              {prefillData 
+                ? `Generate a new payment link for ${prefillData.patient_name}.`
+                : "Generate a payment link for a new patient enrollment."
+              }
+            </DialogDescription>
+          </DialogHeader>
         <DialogHeader>
-          <DialogTitle>Create New Enrollment</DialogTitle>
+          <DialogTitle>
+            {prefillData ? "Create Additional Enrollment" : "Create New Enrollment"}
+          </DialogTitle>
           <DialogDescription>
-            Generate a payment link for a new patient enrollment.
+            {prefillData 
+              ? `Generate a new payment link for ${prefillData.patient_name}.`
+              : "Generate a payment link for a new patient enrollment."
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -167,9 +213,6 @@ export function CreateEnrollmentModal() {
               </Button>
               <Button onClick={() => {
                 setCreatedUrl(null);
-                setPatientName("");
-                setPatientEmail("");
-                setPatientPhone("");
                 setAmount("");
                 setDefaultExpiration();
               }}>
@@ -270,5 +313,6 @@ export function CreateEnrollmentModal() {
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }

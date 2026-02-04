@@ -10,7 +10,8 @@ import {
   LogOut,
   Settings,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Plus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +36,7 @@ import { format } from "date-fns";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { UserManagement } from "@/components/admin/UserManagement";
 import { CreateEnrollmentModal } from "@/components/admin/CreateEnrollmentModal";
+import { RegenerateLinkModal } from "@/components/admin/RegenerateLinkModal";
 import { DashboardStats } from "@/components/admin/DashboardStats";
 import { EnrollmentFiltersComponent, EnrollmentFilters } from "@/components/admin/EnrollmentFilters";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,6 +49,7 @@ interface Enrollment {
   token_last4: string;
   patient_name: string | null;
   patient_email: string | null;
+  patient_phone: string | null;
   amount_cents: number;
   status: EnrollmentStatus;
   payment_method_type: string | null;
@@ -71,6 +74,8 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<EnrollmentFilters>(defaultFilters);
   const [activeTab, setActiveTab] = useState("enrollments");
+  const [regenerateEnrollment, setRegenerateEnrollment] = useState<Enrollment | null>(null);
+  const [createForPatient, setCreateForPatient] = useState<{ patient_name: string; patient_email: string | null; patient_phone: string | null } | null>(null);
 
   // Fetch enrollments with server-side filters where possible
   const { data: enrollments, isLoading: enrollmentsLoading, refetch } = useQuery({
@@ -78,7 +83,7 @@ export default function AdminDashboard() {
     queryFn: async () => {
       let query = supabase
         .from("enrollments")
-        .select("id, token_last4, patient_name, patient_email, amount_cents, status, payment_method_type, created_at, expires_at")
+        .select("id, token_last4, patient_name, patient_email, patient_phone, amount_cents, status, payment_method_type, created_at, expires_at")
         .order("created_at", { ascending: false })
         .limit(100);
 
@@ -180,9 +185,24 @@ export default function AdminDashboard() {
   };
 
   const handleRegenerateLink = (enrollment: Enrollment) => {
-    toast({
-      title: "Regenerate Link",
-      description: `Regenerate functionality for ${enrollment.id} - coming soon`,
+    // Only allow regeneration for expired, canceled, or failed enrollments
+    const regeneratableStatuses = ['expired', 'canceled', 'failed'];
+    if (!regeneratableStatuses.includes(enrollment.status)) {
+      toast({
+        title: "Cannot regenerate",
+        description: `Only expired, canceled, or failed enrollments can be regenerated. Current status: ${enrollment.status}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setRegenerateEnrollment(enrollment);
+  };
+
+  const handleCreateAnotherForPatient = (enrollment: Enrollment) => {
+    setCreateForPatient({
+      patient_name: enrollment.patient_name || "",
+      patient_email: enrollment.patient_email,
+      patient_phone: enrollment.patient_phone,
     });
   };
 
@@ -348,10 +368,18 @@ export default function AdminDashboard() {
                                   Resend Link
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => handleRegenerateLink(enrollment)}>
+                                <DropdownMenuItem onClick={() => handleCreateAnotherForPatient(enrollment)}>
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Create Another for Patient
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleRegenerateLink(enrollment)}
+                                  disabled={!['expired', 'canceled', 'failed'].includes(enrollment.status)}
+                                >
                                   <RefreshCw className="h-4 w-4 mr-2" />
                                   Regenerate Link
                                 </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem 
                                   className="text-destructive"
                                   onClick={() => handleCancelEnrollment(enrollment)}
@@ -377,6 +405,22 @@ export default function AdminDashboard() {
             </TabsContent>
           )}
         </Tabs>
+
+        {/* Regenerate Link Modal */}
+        {regenerateEnrollment && (
+          <RegenerateLinkModal
+            isOpen={!!regenerateEnrollment}
+            onClose={() => setRegenerateEnrollment(null)}
+            enrollment={regenerateEnrollment}
+          />
+        )}
+
+        {/* Create Another for Patient Modal */}
+        <CreateEnrollmentModal
+          prefillData={createForPatient}
+          isOpen={!!createForPatient}
+          onOpenChange={(open) => !open && setCreateForPatient(null)}
+        />
       </main>
     </div>
   );
