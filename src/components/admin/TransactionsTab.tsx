@@ -372,11 +372,10 @@ export function TransactionsTab() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setRegenerateEnrollment(transaction)}
+                            disabled={["paid", "processing"].includes(transaction.status)}
                           >
                             <RefreshCw className="h-4 w-4 mr-2" />
-                            {["expired", "canceled", "failed"].includes(transaction.status) 
-                              ? "Regenerate Link" 
-                              : "Get New Link"}
+                            Get New Link
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
