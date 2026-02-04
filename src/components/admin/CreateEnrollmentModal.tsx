@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Loader2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -21,6 +28,14 @@ interface CreateEnrollmentResult {
   enrollment_url: string;
   expires_at: string;
   token_last4: string;
+}
+
+interface Policy {
+  id: string;
+  name: string;
+  version: string;
+  is_default: boolean;
+  is_active: boolean;
 }
 
 interface CreateEnrollmentModalProps {
@@ -49,10 +64,29 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
   const [amount, setAmount] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [expiresTime, setExpiresTime] = useState("12:00");
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string>("");
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Fetch active policies
+  const { data: policies = [] } = useQuery({
+    queryKey: ["policies-active"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("policies")
+        .select("id, name, version, is_default, is_active")
+        .eq("is_active", true)
+        .order("is_default", { ascending: false });
+      
+      if (error) throw error;
+      return data as Policy[];
+    },
+  });
+
+  // Set default policy when policies load
+  const defaultPolicy = policies.find(p => p.is_default);
 
   // Set default expiration to 48 hours from now
   const setDefaultExpiration = () => {
@@ -84,6 +118,7 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
             patient_email: patientEmail || undefined,
             patient_phone: patientPhone || undefined,
             patient_id: patientId || undefined,
+            policy_id: selectedPolicyId || defaultPolicy?.id || undefined,
             amount_cents: Math.round(parseFloat(amount) * 100),
             expires_at: expiresDateTime.toISOString(),
           }),
@@ -102,6 +137,7 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
       setCreatedUrl(data.enrollment_url);
       queryClient.invalidateQueries({ queryKey: ["enrollments"] });
       queryClient.invalidateQueries({ queryKey: ["enrollment-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
       toast({
         title: "Enrollment created",
         description: "Payment link is ready to share",
@@ -131,6 +167,7 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
     setAmount("");
     setExpiresAt("");
     setExpiresTime("12:00");
+    setSelectedPolicyId("");
     setCreatedUrl(null);
     setCopied(false);
   };
@@ -143,6 +180,10 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
   const handleOpenChange = (open: boolean) => {
     if (open) {
       setDefaultExpiration();
+      // Set default policy
+      if (defaultPolicy && !selectedPolicyId) {
+        setSelectedPolicyId(defaultPolicy.id);
+      }
       // Apply prefill data when opening
       if (prefillData) {
         setPatientName(prefillData.patient_name || "");
@@ -156,7 +197,9 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
     }
   };
 
-  const isValid = patientName.trim() && amount && parseFloat(amount) > 0 && expiresAt;
+  const isValid = patientName.trim() && amount && parseFloat(amount) > 0 && expiresAt && (selectedPolicyId || defaultPolicy);
+
+  const noPoliciesConfigured = policies.length === 0;
 
   return (
     <>
@@ -289,6 +332,33 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
                   />
                 </div>
               </div>
+
+              {/* Policy Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="policy">Payment Policy *</Label>
+                {noPoliciesConfigured ? (
+                  <p className="text-sm text-destructive">
+                    No policies configured. Please create a policy first in the Policies tab.
+                  </p>
+                ) : (
+                  <Select 
+                    value={selectedPolicyId || defaultPolicy?.id || ""} 
+                    onValueChange={setSelectedPolicyId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a policy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {policies.map((policy) => (
+                        <SelectItem key={policy.id} value={policy.id}>
+                          {policy.name} (v{policy.version})
+                          {policy.is_default && " — Default"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
 
             <DialogFooter>
@@ -297,7 +367,7 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
               </Button>
               <Button 
                 onClick={() => createMutation.mutate()} 
-                disabled={!isValid || createMutation.isPending}
+                disabled={!isValid || createMutation.isPending || noPoliciesConfigured}
               >
                 {createMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />

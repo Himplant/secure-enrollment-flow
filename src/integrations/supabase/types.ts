@@ -100,6 +100,7 @@ export type Database = {
           payment_method_type:
             | Database["public"]["Enums"]["payment_method_type"]
             | null
+          policy_id: string | null
           privacy_url: string
           processing_at: string | null
           status: Database["public"]["Enums"]["enrollment_status"]
@@ -135,6 +136,7 @@ export type Database = {
           payment_method_type?:
             | Database["public"]["Enums"]["payment_method_type"]
             | null
+          policy_id?: string | null
           privacy_url: string
           processing_at?: string | null
           status?: Database["public"]["Enums"]["enrollment_status"]
@@ -170,6 +172,7 @@ export type Database = {
           payment_method_type?:
             | Database["public"]["Enums"]["payment_method_type"]
             | null
+          policy_id?: string | null
           privacy_url?: string
           processing_at?: string | null
           status?: Database["public"]["Enums"]["enrollment_status"]
@@ -194,6 +197,13 @@ export type Database = {
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enrollments_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "policies"
             referencedColumns: ["id"]
           },
         ]
@@ -225,6 +235,48 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      policies: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          privacy_url: string
+          terms_content_sha256: string
+          terms_url: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          privacy_url: string
+          terms_content_sha256: string
+          terms_url: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          privacy_url?: string
+          terms_content_sha256?: string
+          terms_url?: string
+          updated_at?: string
+          version?: string
         }
         Relationships: []
       }

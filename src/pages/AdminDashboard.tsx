@@ -6,7 +6,8 @@ import {
   Settings,
   RefreshCw,
   Users,
-  Receipt
+  Receipt,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,7 @@ import { UserManagement } from "@/components/admin/UserManagement";
 import { DashboardStats } from "@/components/admin/DashboardStats";
 import { PatientsTab } from "@/components/admin/PatientsTab";
 import { TransactionsTab } from "@/components/admin/TransactionsTab";
+import { PoliciesTab } from "@/components/admin/PoliciesTab";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminDashboard() {
@@ -41,6 +43,7 @@ export default function AdminDashboard() {
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     queryClient.invalidateQueries({ queryKey: ["enrollment-stats"] });
+    queryClient.invalidateQueries({ queryKey: ["policies"] });
     toast({
       title: "Refreshed",
       description: "Data has been refreshed",
@@ -107,6 +110,10 @@ export default function AdminDashboard() {
               <Receipt className="h-4 w-4" />
               Transactions
             </TabsTrigger>
+            <TabsTrigger value="policies" className="gap-2">
+              <FileText className="h-4 w-4" />
+              Policies
+            </TabsTrigger>
             {adminUser?.role === "admin" && (
               <TabsTrigger value="users" className="gap-2">
                 <Settings className="h-4 w-4" />
@@ -121,6 +128,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="transactions">
             <TransactionsTab />
+          </TabsContent>
+
+          <TabsContent value="policies">
+            <PoliciesTab />
           </TabsContent>
 
           {adminUser?.role === "admin" && (
