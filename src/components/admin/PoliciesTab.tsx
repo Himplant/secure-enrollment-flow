@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Table,
   TableBody,
@@ -424,36 +425,30 @@ export function PoliciesTab() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="terms_text">Terms of Service Text *</Label>
-              <Textarea
-                id="terms_text"
+              <Label>Terms of Service *</Label>
+              <RichTextEditor
                 value={formData.terms_text}
-                onChange={(e) =>
-                  setFormData({ ...formData, terms_text: e.target.value })
+                onChange={(value) =>
+                  setFormData({ ...formData, terms_text: value })
                 }
-                placeholder="Enter the full terms of service text..."
-                rows={8}
-                className="font-mono text-sm"
+                placeholder="Enter the full terms of service..."
               />
               <p className="text-xs text-muted-foreground">
-                This exact text will be shown to users and stored for dispute records
+                This exact content will be shown to users and stored for dispute records
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="privacy_text">Privacy Policy Text *</Label>
-              <Textarea
-                id="privacy_text"
+              <Label>Privacy Policy *</Label>
+              <RichTextEditor
                 value={formData.privacy_text}
-                onChange={(e) =>
-                  setFormData({ ...formData, privacy_text: e.target.value })
+                onChange={(value) =>
+                  setFormData({ ...formData, privacy_text: value })
                 }
-                placeholder="Enter the full privacy policy text..."
-                rows={8}
-                className="font-mono text-sm"
+                placeholder="Enter the full privacy policy..."
               />
               <p className="text-xs text-muted-foreground">
-                This exact text will be shown to users and stored for dispute records
+                This exact content will be shown to users and stored for dispute records
               </p>
             </div>
 

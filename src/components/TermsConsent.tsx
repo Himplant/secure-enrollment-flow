@@ -3,6 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RichTextDisplay } from "@/components/ui/rich-text-editor";
 import { ExternalLink, Shield, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -62,9 +63,11 @@ export function TermsConsent({
                 </TabsList>
                 <TabsContent value="terms" className="mt-3">
                   <ScrollArea className="h-64 w-full rounded-md border bg-background p-4">
-                    <div className="text-sm text-foreground whitespace-pre-wrap font-mono leading-relaxed">
-                      {termsText || "Terms of Service not available."}
-                    </div>
+                    {termsText ? (
+                      <RichTextDisplay content={termsText} />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Terms of Service not available.</p>
+                    )}
                   </ScrollArea>
                   {termsUrl && (
                     <a
@@ -80,9 +83,11 @@ export function TermsConsent({
                 </TabsContent>
                 <TabsContent value="privacy" className="mt-3">
                   <ScrollArea className="h-64 w-full rounded-md border bg-background p-4">
-                    <div className="text-sm text-foreground whitespace-pre-wrap font-mono leading-relaxed">
-                      {privacyText || "Privacy Policy not available."}
-                    </div>
+                    {privacyText ? (
+                      <RichTextDisplay content={privacyText} />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Privacy Policy not available.</p>
+                    )}
                   </ScrollArea>
                   {privacyUrl && (
                     <a
