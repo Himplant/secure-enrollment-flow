@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Search, 
   Filter, 
@@ -13,7 +14,8 @@ import {
   Users,
   DollarSign,
   TrendingUp,
-  ChevronDown
+  LogOut,
+  Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +43,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { UserManagement } from "@/components/admin/UserManagement";
 
 // Mock data
 const mockEnrollments = [
@@ -129,8 +134,11 @@ const stats = [
 ];
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const { user, adminUser, signOut } = useAdminAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState("enrollments");
 
   const filteredEnrollments = mockEnrollments.filter((enrollment) => {
     const matchesSearch = 
@@ -150,6 +158,11 @@ export default function AdminDashboard() {
     }).format(cents / 100);
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/admin/login", { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -164,10 +177,28 @@ export default function AdminDashboard() {
                 Manage patient enrollments and payments
               </p>
             </div>
-            <Button variant="hero" className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Enrollment
-            </Button>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground hidden sm:block">
+                {user?.email}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                    Role: {adminUser?.role}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
       </header>
@@ -193,129 +224,147 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Filters and search */}
-        <Card className="card-premium mb-6">
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by name, email, or token..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="created">Created</SelectItem>
-                  <SelectItem value="sent">Sent</SelectItem>
-                  <SelectItem value="opened">Opened</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="expired">Expired</SelectItem>
-                  <SelectItem value="canceled">Canceled</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="outline" className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Tabs for Enrollments and User Management */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+            {adminUser?.role === "admin" && (
+              <TabsTrigger value="users">User Management</TabsTrigger>
+            )}
+          </TabsList>
 
-        {/* Enrollments table */}
-        <Card className="card-premium overflow-hidden">
-          <CardHeader className="border-b border-border bg-muted/30">
-            <CardTitle className="text-lg">Recent Enrollments</CardTitle>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Patient</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Payment Method</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEnrollments.map((enrollment) => (
-                  <TableRow key={enrollment.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {enrollment.patientName}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {enrollment.patientEmail}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatAmount(enrollment.amount)}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={enrollment.status} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {enrollment.paymentMethod === 'card' ? 'Card' : 
-                       enrollment.paymentMethod === 'ach' ? 'ACH' : '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {format(enrollment.createdAt, 'MMM d, yyyy')}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {format(enrollment.expiresAt, 'MMM d, yyyy')}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copy Link
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Send className="h-4 w-4 mr-2" />
-                            Resend Link
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem>
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Regenerate Link
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
-                            <XCircle className="h-4 w-4 mr-2" />
-                            Cancel Enrollment
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
+          <TabsContent value="enrollments" className="space-y-6">
+            {/* Filters and search */}
+            <Card className="card-premium">
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name, email, or token..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <Filter className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="created">Created</SelectItem>
+                      <SelectItem value="sent">Sent</SelectItem>
+                      <SelectItem value="opened">Opened</SelectItem>
+                      <SelectItem value="processing">Processing</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                      <SelectItem value="canceled">Canceled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" className="gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Enrollments table */}
+            <Card className="card-premium overflow-hidden">
+              <CardHeader className="border-b border-border bg-muted/30">
+                <CardTitle className="text-lg">Recent Enrollments</CardTitle>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Patient</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Payment Method</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Expires</TableHead>
+                      <TableHead className="w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredEnrollments.map((enrollment) => (
+                      <TableRow key={enrollment.id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {enrollment.patientName}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {enrollment.patientEmail}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {formatAmount(enrollment.amount)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={enrollment.status} />
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {enrollment.paymentMethod === 'card' ? 'Card' : 
+                           enrollment.paymentMethod === 'ach' ? 'ACH' : '—'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {format(enrollment.createdAt, 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {format(enrollment.expiresAt, 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy Link
+                              </DropdownMenuItem>
+                              <DropdownMenuItem>
+                                <Send className="h-4 w-4 mr-2" />
+                                Resend Link
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem>
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Regenerate Link
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive">
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Cancel Enrollment
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {adminUser?.role === "admin" && (
+            <TabsContent value="users">
+              <UserManagement />
+            </TabsContent>
+          )}
+        </Tabs>
       </main>
     </div>
   );
