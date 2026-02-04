@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -6,6 +6,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RichTextDisplay } from "@/components/ui/rich-text-editor";
 import { ExternalLink, Shield, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { replacePlaceholders } from "@/components/admin/PolicyPlaceholders";
+
+interface PlaceholderData {
+  patient_name?: string | null;
+  patient_email?: string | null;
+  patient_phone?: string | null;
+  amount_cents?: number;
+  currency?: string;
+  surgeon_name?: string | null;
+  expires_at?: string;
+}
 
 interface TermsConsentProps {
   termsUrl: string;
@@ -13,6 +24,7 @@ interface TermsConsentProps {
   termsText?: string | null;
   privacyText?: string | null;
   termsVersion: string;
+  placeholderData?: PlaceholderData;
   onAccept: () => void;
   isLoading?: boolean;
   className?: string;
@@ -24,6 +36,7 @@ export function TermsConsent({
   termsText,
   privacyText,
   termsVersion,
+  placeholderData,
   onAccept,
   isLoading = false,
   className,
@@ -32,6 +45,17 @@ export function TermsConsent({
   const [expanded, setExpanded] = useState(true);
 
   const hasFullText = termsText || privacyText;
+  
+  // Process placeholders in the text content
+  const processedTermsText = useMemo(() => {
+    if (!termsText || !placeholderData) return termsText;
+    return replacePlaceholders(termsText, placeholderData);
+  }, [termsText, placeholderData]);
+  
+  const processedPrivacyText = useMemo(() => {
+    if (!privacyText || !placeholderData) return privacyText;
+    return replacePlaceholders(privacyText, placeholderData);
+  }, [privacyText, placeholderData]);
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -63,8 +87,8 @@ export function TermsConsent({
                 </TabsList>
                 <TabsContent value="terms" className="mt-3">
                   <ScrollArea className="h-64 w-full rounded-md border bg-background p-4">
-                    {termsText ? (
-                      <RichTextDisplay content={termsText} />
+                    {processedTermsText ? (
+                      <RichTextDisplay content={processedTermsText} />
                     ) : (
                       <p className="text-sm text-muted-foreground">Terms of Service not available.</p>
                     )}
@@ -83,8 +107,8 @@ export function TermsConsent({
                 </TabsContent>
                 <TabsContent value="privacy" className="mt-3">
                   <ScrollArea className="h-64 w-full rounded-md border bg-background p-4">
-                    {privacyText ? (
-                      <RichTextDisplay content={privacyText} />
+                    {processedPrivacyText ? (
+                      <RichTextDisplay content={processedPrivacyText} />
                     ) : (
                       <p className="text-sm text-muted-foreground">Privacy Policy not available.</p>
                     )}

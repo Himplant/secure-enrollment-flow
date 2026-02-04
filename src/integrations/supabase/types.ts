@@ -216,6 +216,7 @@ export type Database = {
           name: string
           notes: string | null
           phone: string | null
+          surgeon_id: string | null
           updated_at: string
         }
         Insert: {
@@ -225,6 +226,7 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
+          surgeon_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -234,9 +236,18 @@ export type Database = {
           name?: string
           notes?: string | null
           phone?: string | null
+          surgeon_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "patients_surgeon_id_fkey"
+            columns: ["surgeon_id"]
+            isOneToOne: false
+            referencedRelation: "surgeons"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       policies: {
         Row: {
@@ -298,6 +309,42 @@ export type Database = {
         Update: {
           processed_at?: string | null
           stripe_event_id?: string
+        }
+        Relationships: []
+      }
+      surgeons: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          phone: string | null
+          specialty: string | null
+          updated_at: string
+          zoho_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          phone?: string | null
+          specialty?: string | null
+          updated_at?: string
+          zoho_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          phone?: string | null
+          specialty?: string | null
+          updated_at?: string
+          zoho_id?: string
         }
         Relationships: []
       }
