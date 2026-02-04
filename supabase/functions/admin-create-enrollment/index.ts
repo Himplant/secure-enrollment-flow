@@ -11,6 +11,7 @@ interface AdminEnrollmentRequest {
   patient_email?: string;
   patient_phone?: string;
   patient_id?: string;
+  policy_id?: string;
   amount_cents: number;
   currency?: string;
   expires_at: string; // ISO timestamp
@@ -113,7 +114,42 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Create enrollment record (manual creation doesn't require Zoho fields)
+    // Get policy details (either specified or default)
+    let policy;
+    if (body.policy_id) {
+      const { data, error } = await supabaseAdmin
+        .from("policies")
+        .select("*")
+        .eq("id", body.policy_id)
+        .eq("is_active", true)
+        .single();
+      
+      if (error || !data) {
+        return new Response(JSON.stringify({ error: "Selected policy not found or inactive" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      policy = data;
+    } else {
+      // Get default policy
+      const { data, error } = await supabaseAdmin
+        .from("policies")
+        .select("*")
+        .eq("is_default", true)
+        .eq("is_active", true)
+        .single();
+      
+      if (error || !data) {
+        return new Response(JSON.stringify({ error: "No default policy found. Please create a policy first." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      policy = data;
+    }
+
+    // Create enrollment record with policy reference
     const { data: enrollment, error: insertError } = await supabaseAdmin
       .from("enrollments")
       .insert({
@@ -123,12 +159,13 @@ serve(async (req) => {
         patient_email: body.patient_email || null,
         patient_phone: body.patient_phone || null,
         patient_id: body.patient_id || null,
+        policy_id: policy.id,
         amount_cents: body.amount_cents,
         currency: body.currency ?? "usd",
-        terms_url: "https://secure-enrollment-flow.lovable.app/terms",
-        privacy_url: "https://secure-enrollment-flow.lovable.app/privacy",
-        terms_version: "1.0",
-        terms_sha256: await sha256Hash("manual-enrollment-terms-v1"),
+        terms_url: policy.terms_url,
+        privacy_url: policy.privacy_url,
+        terms_version: policy.version,
+        terms_sha256: policy.terms_content_sha256,
         token_hash: tokenHash,
         token_last4: tokenLast4,
         expires_at: expiresAt.toISOString(),
@@ -154,6 +191,9 @@ serve(async (req) => {
         created_by: user.id,
         amount_cents: body.amount_cents,
         expires_at: expiresAt.toISOString(),
+        policy_id: policy.id,
+        policy_name: policy.name,
+        policy_version: policy.version,
       },
     });
 

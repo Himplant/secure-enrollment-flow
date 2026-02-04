@@ -8,7 +8,8 @@ import {
   Loader2,
   Calendar,
   CreditCard,
-  Building2
+  Building2,
+  Clock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,11 +35,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { StatusBadge } from "@/components/StatusBadge";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RegenerateLinkModal } from "./RegenerateLinkModal";
+import { TransactionDetailsModal } from "./TransactionDetailsModal";
 
 type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled';
 
@@ -52,14 +60,22 @@ interface Transaction {
   status: EnrollmentStatus;
   payment_method_type: string | null;
   created_at: string | null;
+  opened_at: string | null;
+  terms_accepted_at: string | null;
+  processing_at: string | null;
   paid_at: string | null;
+  failed_at: string | null;
+  expired_at: string | null;
   expires_at: string;
+  terms_accept_ip: string | null;
+  policy_id: string | null;
 }
 
 export function TransactionsTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [regenerateEnrollment, setRegenerateEnrollment] = useState<Transaction | null>(null);
+  const [detailsEnrollmentId, setDetailsEnrollmentId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: transactions, isLoading, refetch } = useQuery({
@@ -67,7 +83,13 @@ export function TransactionsTab() {
     queryFn: async () => {
       let query = supabase
         .from("enrollments")
-        .select("id, token_last4, patient_name, patient_email, patient_id, amount_cents, status, payment_method_type, created_at, paid_at, expires_at")
+        .select(`
+          id, token_last4, patient_name, patient_email, patient_id, 
+          amount_cents, status, payment_method_type, 
+          created_at, opened_at, terms_accepted_at, processing_at, 
+          paid_at, failed_at, expired_at, expires_at, 
+          terms_accept_ip, policy_id
+        `)
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -111,10 +133,17 @@ export function TransactionsTab() {
   };
 
   const handleViewDetails = (transaction: Transaction) => {
-    toast({
-      title: "Transaction Details",
-      description: `ID: ${transaction.id.slice(0, 8)}... | Status: ${transaction.status}`,
-    });
+    setDetailsEnrollmentId(transaction.id);
+  };
+
+  // Format timestamps for tooltip
+  const getTimestampTooltip = (transaction: Transaction) => {
+    const lines: string[] = [];
+    if (transaction.created_at) lines.push(`Created: ${format(new Date(transaction.created_at), "MMM d, h:mm a")}`);
+    if (transaction.opened_at) lines.push(`Opened: ${format(new Date(transaction.opened_at), "MMM d, h:mm a")}`);
+    if (transaction.terms_accepted_at) lines.push(`Terms: ${format(new Date(transaction.terms_accepted_at), "MMM d, h:mm a")}`);
+    if (transaction.paid_at) lines.push(`Paid: ${format(new Date(transaction.paid_at), "MMM d, h:mm a")}`);
+    return lines.join("\n");
   };
 
   return (
@@ -178,8 +207,9 @@ export function TransactionsTab() {
                   <TableHead>Patient</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Payment Method</TableHead>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Key Dates</TableHead>
                   <TableHead>Token</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
@@ -223,11 +253,38 @@ export function TransactionsTab() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        {transaction.created_at
-                          ? format(new Date(transaction.created_at), "MMM d, yyyy")
-                          : "—"}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-1.5 text-muted-foreground cursor-help">
+                              <Calendar className="h-4 w-4" />
+                              {transaction.created_at
+                                ? format(new Date(transaction.created_at), "MMM d, yyyy")
+                                : "—"}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="whitespace-pre-line text-xs">
+                            {getTimestampTooltip(transaction)}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <div className="space-y-0.5">
+                          {transaction.terms_accepted_at && (
+                            <p className="text-green-600">Terms ✓</p>
+                          )}
+                          {transaction.paid_at && (
+                            <p className="text-green-600">
+                              Paid {format(new Date(transaction.paid_at), "MMM d")}
+                            </p>
+                          )}
+                          {!transaction.terms_accepted_at && !transaction.paid_at && (
+                            <p>Pending</p>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -275,6 +332,15 @@ export function TransactionsTab() {
           isOpen={!!regenerateEnrollment}
           onClose={() => setRegenerateEnrollment(null)}
           enrollment={regenerateEnrollment}
+        />
+      )}
+
+      {/* Details Modal */}
+      {detailsEnrollmentId && (
+        <TransactionDetailsModal
+          isOpen={!!detailsEnrollmentId}
+          onClose={() => setDetailsEnrollmentId(null)}
+          enrollmentId={detailsEnrollmentId}
         />
       )}
     </div>
