@@ -43,6 +43,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CreateEnrollmentModal } from "./CreateEnrollmentModal";
 import { PatientHistoryModal } from "./PatientHistoryModal";
 import { ImportPatientsModal } from "./ImportPatientsModal";
+import { SurgeonSelect } from "./SurgeonSelect";
 
 interface Patient {
   id: string;
@@ -50,6 +51,8 @@ interface Patient {
   email: string | null;
   phone: string | null;
   notes: string | null;
+  surgeon_id: string | null;
+  surgeon?: { id: string; name: string } | null;
   created_at: string;
   updated_at: string;
   total_paid: number;
@@ -62,7 +65,7 @@ export function PatientsTab() {
   const [historyPatient, setHistoryPatient] = useState<Patient | null>(null);
   const [createForPatient, setCreateForPatient] = useState<Patient | null>(null);
   const [addPatientOpen, setAddPatientOpen] = useState(false);
-  const [newPatient, setNewPatient] = useState({ name: "", email: "", phone: "" });
+  const [newPatient, setNewPatient] = useState({ name: "", email: "", phone: "", surgeon_id: null as string | null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -70,10 +73,10 @@ export function PatientsTab() {
   const { data: patients, isLoading } = useQuery({
     queryKey: ["patients"],
     queryFn: async () => {
-      // Get all patients
+      // Get all patients with surgeon info
       const { data: patientsData, error: patientsError } = await supabase
         .from("patients")
-        .select("*")
+        .select("*, surgeon:surgeons(id, name)")
         .order("created_at", { ascending: false });
 
       if (patientsError) throw patientsError;
@@ -108,13 +111,14 @@ export function PatientsTab() {
 
   // Add patient mutation
   const addPatientMutation = useMutation({
-    mutationFn: async (patient: { name: string; email: string; phone: string }) => {
+    mutationFn: async (patient: { name: string; email: string; phone: string; surgeon_id: string | null }) => {
       const { data, error } = await supabase
         .from("patients")
         .insert({
           name: patient.name,
           email: patient.email || null,
           phone: patient.phone || null,
+          surgeon_id: patient.surgeon_id,
         })
         .select()
         .single();
@@ -125,7 +129,7 @@ export function PatientsTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
       setAddPatientOpen(false);
-      setNewPatient({ name: "", email: "", phone: "" });
+      setNewPatient({ name: "", email: "", phone: "", surgeon_id: null });
       toast({ title: "Patient added", description: "New patient has been created" });
     },
     onError: (error: Error) => {
@@ -149,6 +153,7 @@ export function PatientsTab() {
           email: patient.email,
           phone: patient.phone,
           notes: patient.notes,
+          surgeon_id: patient.surgeon_id,
         })
         .eq("id", patient.id);
 
@@ -233,6 +238,7 @@ export function PatientsTab() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Patient</TableHead>
                   <TableHead>Contact</TableHead>
+                  <TableHead>Surgeon</TableHead>
                   <TableHead>Enrollments</TableHead>
                   <TableHead>Total Paid</TableHead>
                   <TableHead>Added</TableHead>
@@ -275,6 +281,13 @@ export function PatientsTab() {
                           <span className="text-sm text-muted-foreground">No contact info</span>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {patient.surgeon ? (
+                        <span className="text-sm text-foreground">{patient.surgeon.name}</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="text-foreground">{patient.enrollment_count}</span>
@@ -356,6 +369,13 @@ export function PatientsTab() {
                 placeholder="+1 (555) 000-0000"
               />
             </div>
+            <div className="space-y-2">
+              <Label>Consulting Surgeon</Label>
+              <SurgeonSelect
+                value={newPatient.surgeon_id}
+                onValueChange={(v) => setNewPatient({ ...newPatient, surgeon_id: v })}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddPatientOpen(false)}>
@@ -414,6 +434,13 @@ export function PatientsTab() {
                   value={editPatient.notes || ""}
                   onChange={(e) => setEditPatient({ ...editPatient, notes: e.target.value || null })}
                   placeholder="Optional notes..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Consulting Surgeon</Label>
+                <SurgeonSelect
+                  value={editPatient.surgeon_id}
+                  onValueChange={(v) => setEditPatient({ ...editPatient, surgeon_id: v })}
                 />
               </div>
             </div>

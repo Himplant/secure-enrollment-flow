@@ -7,7 +7,8 @@ import {
   RefreshCw,
   Users,
   Receipt,
-  FileText
+  FileText,
+  UserCog
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,9 +22,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { UserManagement } from "@/components/admin/UserManagement";
 import { DashboardStats } from "@/components/admin/DashboardStats";
+import { SurgeonDistributionCard } from "@/components/admin/SurgeonDistributionCard";
 import { PatientsTab } from "@/components/admin/PatientsTab";
 import { TransactionsTab } from "@/components/admin/TransactionsTab";
 import { PoliciesTab } from "@/components/admin/PoliciesTab";
+import { SurgeonManagement } from "@/components/admin/SurgeonManagement";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminDashboard() {
@@ -44,6 +47,8 @@ export default function AdminDashboard() {
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     queryClient.invalidateQueries({ queryKey: ["enrollment-stats"] });
     queryClient.invalidateQueries({ queryKey: ["policies"] });
+    queryClient.invalidateQueries({ queryKey: ["surgeons"] });
+    queryClient.invalidateQueries({ queryKey: ["surgeons-management"] });
     toast({
       title: "Refreshed",
       description: "Data has been refreshed",
@@ -95,8 +100,11 @@ export default function AdminDashboard() {
 
       <main className="container mx-auto px-6 py-8">
         {/* Stats cards */}
-        <div className="mb-8">
+        <div className="mb-8 space-y-6">
           <DashboardStats />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SurgeonDistributionCard />
+          </div>
         </div>
 
         {/* Main Tabs */}
@@ -113,6 +121,10 @@ export default function AdminDashboard() {
             <TabsTrigger value="policies" className="gap-2">
               <FileText className="h-4 w-4" />
               Policies
+            </TabsTrigger>
+            <TabsTrigger value="surgeons" className="gap-2">
+              <UserCog className="h-4 w-4" />
+              Surgeons
             </TabsTrigger>
             {adminUser?.role === "admin" && (
               <TabsTrigger value="users" className="gap-2">
@@ -132,6 +144,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="policies">
             <PoliciesTab />
+          </TabsContent>
+
+          <TabsContent value="surgeons">
+            <SurgeonManagement />
           </TabsContent>
 
           {adminUser?.role === "admin" && (

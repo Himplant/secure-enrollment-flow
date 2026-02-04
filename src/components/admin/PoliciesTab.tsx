@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, Star, FileText, ExternalLink } from "lucide-react";
+import { PolicyPlaceholders } from "./PolicyPlaceholders";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -96,6 +97,7 @@ export function PoliciesTab() {
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
   const [deletePolicy, setDeletePolicy] = useState<Policy | null>(null);
   const [formData, setFormData] = useState<PolicyFormData>(initialFormData);
+  const [activeEditor, setActiveEditor] = useState<"terms" | "privacy" | null>(null);
 
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ["policies"],
@@ -425,7 +427,17 @@ export function PoliciesTab() {
             </div>
 
             <div className="space-y-2">
-              <Label>Terms of Service *</Label>
+              <div className="flex items-center justify-between">
+                <Label>Terms of Service *</Label>
+                <PolicyPlaceholders
+                  onInsert={(placeholder) => {
+                    setFormData({
+                      ...formData,
+                      terms_text: formData.terms_text + placeholder,
+                    });
+                  }}
+                />
+              </div>
               <RichTextEditor
                 value={formData.terms_text}
                 onChange={(value) =>
@@ -434,12 +446,22 @@ export function PoliciesTab() {
                 placeholder="Enter the full terms of service..."
               />
               <p className="text-xs text-muted-foreground">
-                This exact content will be shown to users and stored for dispute records
+                Use dynamic fields like {"{{patient_name}}"} to personalize content. This exact content will be shown to users and stored for dispute records.
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label>Privacy Policy *</Label>
+              <div className="flex items-center justify-between">
+                <Label>Privacy Policy *</Label>
+                <PolicyPlaceholders
+                  onInsert={(placeholder) => {
+                    setFormData({
+                      ...formData,
+                      privacy_text: formData.privacy_text + placeholder,
+                    });
+                  }}
+                />
+              </div>
               <RichTextEditor
                 value={formData.privacy_text}
                 onChange={(value) =>
@@ -448,7 +470,7 @@ export function PoliciesTab() {
                 placeholder="Enter the full privacy policy..."
               />
               <p className="text-xs text-muted-foreground">
-                This exact content will be shown to users and stored for dispute records
+                Use dynamic fields like {"{{patient_name}}"} to personalize content. This exact content will be shown to users and stored for dispute records.
               </p>
             </div>
 

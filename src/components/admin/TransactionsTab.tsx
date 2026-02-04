@@ -69,18 +69,40 @@ interface Transaction {
   expires_at: string;
   terms_accept_ip: string | null;
   policy_id: string | null;
+  surgeon_name?: string | null;
+}
+
+interface Surgeon {
+  id: string;
+  name: string;
 }
 
 export function TransactionsTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [surgeonFilter, setSurgeonFilter] = useState<string>("all");
   const [regenerateEnrollment, setRegenerateEnrollment] = useState<Transaction | null>(null);
   const [detailsEnrollmentId, setDetailsEnrollmentId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const { data: transactions, isLoading, refetch } = useQuery({
-    queryKey: ["transactions", statusFilter],
+  // Fetch surgeons for filter dropdown
+  const { data: surgeons = [] } = useQuery({
+    queryKey: ["surgeons-filter"],
     queryFn: async () => {
+      const { data, error } = await supabase
+        .from("surgeons")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data as Surgeon[];
+    },
+  });
+
+  const { data: transactions, isLoading, refetch } = useQuery({
+    queryKey: ["transactions", statusFilter, surgeonFilter],
+    queryFn: async () => {
+      // Fetch enrollments with patient and surgeon info
       let query = supabase
         .from("enrollments")
         .select(`
@@ -88,7 +110,11 @@ export function TransactionsTab() {
           amount_cents, status, payment_method_type, 
           created_at, opened_at, terms_accepted_at, processing_at, 
           paid_at, failed_at, expired_at, expires_at, 
-          terms_accept_ip, policy_id
+          terms_accept_ip, policy_id,
+          patients!enrollments_patient_id_fkey (
+            surgeon_id,
+            surgeon:surgeons(id, name)
+          )
         `)
         .order("created_at", { ascending: false })
         .limit(200);
@@ -99,7 +125,22 @@ export function TransactionsTab() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as Transaction[];
+
+      // Process data to flatten surgeon info and apply surgeon filter
+      const processed = (data || []).map((enrollment: any) => ({
+        ...enrollment,
+        surgeon_name: enrollment.patients?.surgeon?.name || null,
+        surgeon_id: enrollment.patients?.surgeon_id || null,
+      }));
+
+      // Apply surgeon filter client-side (since it's nested)
+      if (surgeonFilter !== "all") {
+        return processed.filter((t: any) => 
+          surgeonFilter === "unassigned" ? !t.surgeon_id : t.surgeon_id === surgeonFilter
+        ) as Transaction[];
+      }
+
+      return processed as Transaction[];
     },
   });
 
@@ -174,6 +215,20 @@ export function TransactionsTab() {
             <SelectItem value="canceled">Canceled</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={surgeonFilter} onValueChange={setSurgeonFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All surgeons" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Surgeons</SelectItem>
+            <SelectItem value="unassigned">Unassigned</SelectItem>
+            {surgeons.map((surgeon) => (
+              <SelectItem key={surgeon.id} value={surgeon.id}>
+                {surgeon.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button variant="outline" size="icon" onClick={() => refetch()}>
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -205,6 +260,7 @@ export function TransactionsTab() {
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Patient</TableHead>
+                  <TableHead>Surgeon</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Payment</TableHead>
@@ -226,6 +282,13 @@ export function TransactionsTab() {
                           {transaction.patient_email || "No email"}
                         </p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {transaction.surgeon_name ? (
+                        <span className="text-sm text-foreground">{transaction.surgeon_name}</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="font-medium">
                       {formatAmount(transaction.amount_cents)}

@@ -10,6 +10,10 @@ import { supabase } from "@/integrations/supabase/client";
 interface EnrollmentData {
   id: string;
   patient_first_name: string | null;
+  patient_name: string | null;
+  patient_email: string | null;
+  patient_phone: string | null;
+  surgeon_name: string | null;
   amount_cents: number;
   currency: string | null;
   status: string;
@@ -291,6 +295,15 @@ export default function EnrollPage() {
               termsText={enrollment.terms_text}
               privacyText={enrollment.privacy_text}
               termsVersion={enrollment.terms_version}
+              placeholderData={{
+                patient_name: enrollment.patient_name,
+                patient_email: enrollment.patient_email,
+                patient_phone: enrollment.patient_phone,
+                amount_cents: enrollment.amount_cents,
+                currency: enrollment.currency || "usd",
+                surgeon_name: enrollment.surgeon_name,
+                expires_at: enrollment.expires_at,
+              }}
               onAccept={handleAcceptTerms}
               isLoading={isSubmitting}
             />

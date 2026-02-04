@@ -22,6 +22,10 @@ async function sha256Hash(data: string): Promise<string> {
 interface EnrollmentResponse {
   id: string;
   patient_first_name: string | null;
+  patient_name: string | null;
+  patient_email: string | null;
+  patient_phone: string | null;
+  surgeon_name: string | null;
   amount_cents: number;
   currency: string | null;
   status: string;
@@ -68,12 +72,15 @@ serve(async (req) => {
     const tokenHash = await sha256Hash(token);
 
     // Fetch enrollment using service role (bypasses RLS)
-    // Join with policies table to get the terms/privacy text
+    // Join with policies table and patients table (for surgeon)
     const { data: enrollment, error: fetchError } = await supabase
       .from("enrollments")
       .select(`
         id,
         patient_name,
+        patient_email,
+        patient_phone,
+        patient_id,
         amount_cents,
         currency,
         status,
@@ -158,9 +165,27 @@ serve(async (req) => {
     // Get policy text (from joined policies table)
     const policyData = (enrollment as any).policies;
     
+    // Fetch surgeon name if patient has one
+    let surgeonName: string | null = null;
+    if (enrollment.patient_id) {
+      const { data: patientData } = await supabase
+        .from("patients")
+        .select("surgeon_id, surgeon:surgeons(name)")
+        .eq("id", enrollment.patient_id)
+        .maybeSingle();
+      
+      if (patientData && (patientData as any).surgeon) {
+        surgeonName = (patientData as any).surgeon.name;
+      }
+    }
+    
     const response: EnrollmentResponse = {
       id: enrollment.id,
       patient_first_name: patientFirstName,
+      patient_name: enrollment.patient_name,
+      patient_email: enrollment.patient_email,
+      patient_phone: enrollment.patient_phone,
+      surgeon_name: surgeonName,
       amount_cents: enrollment.amount_cents,
       currency: enrollment.currency,
       status: enrollment.status,
