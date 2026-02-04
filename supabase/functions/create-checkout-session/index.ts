@@ -211,14 +211,13 @@ serve(async (req) => {
       },
     });
 
-    // Update enrollment with Stripe session info and set status to processing
+    // Update enrollment with Stripe session info only - status will be updated by webhook
+    // when payment is actually completed (not just when checkout session is created)
     await supabase
       .from("enrollments")
       .update({
         stripe_session_id: session.id,
         stripe_customer_id: customerId || null,
-        processing_at: new Date().toISOString(),
-        status: "processing",
       })
       .eq("id", enrollment.id);
 

@@ -92,14 +92,8 @@ export default function EnrollPage() {
             setPageState('already-paid');
             break;
           case 'processing':
-            // Only show ACH processing if user has already gone through checkout
-            // If terms_accepted_at exists but no return status, user might have abandoned
-            // Show enrollment form to allow retry
-            if (enrollmentData.terms_accepted_at) {
-              setPageState('ach-processing');
-            } else {
-              setPageState('enrollment');
-            }
+            // Status is only set to 'processing' by webhook after actual ACH payment submission
+            setPageState('ach-processing');
             break;
           case 'failed':
             setPageState('failed');
