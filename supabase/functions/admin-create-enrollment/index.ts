@@ -10,6 +10,7 @@ interface AdminEnrollmentRequest {
   patient_name: string;
   patient_email?: string;
   patient_phone?: string;
+  patient_id?: string;
   amount_cents: number;
   currency?: string;
   expires_at: string; // ISO timestamp
@@ -121,6 +122,7 @@ serve(async (req) => {
         patient_name: body.patient_name,
         patient_email: body.patient_email || null,
         patient_phone: body.patient_phone || null,
+        patient_id: body.patient_id || null,
         amount_cents: body.amount_cents,
         currency: body.currency ?? "usd",
         terms_url: "https://secure-enrollment-flow.lovable.app/terms",

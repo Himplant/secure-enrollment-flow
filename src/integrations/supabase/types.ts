@@ -94,6 +94,7 @@ export type Database = {
           opened_at: string | null
           paid_at: string | null
           patient_email: string | null
+          patient_id: string | null
           patient_name: string | null
           patient_phone: string | null
           payment_method_type:
@@ -128,6 +129,7 @@ export type Database = {
           opened_at?: string | null
           paid_at?: string | null
           patient_email?: string | null
+          patient_id?: string | null
           patient_name?: string | null
           patient_phone?: string | null
           payment_method_type?:
@@ -162,6 +164,7 @@ export type Database = {
           opened_at?: string | null
           paid_at?: string | null
           patient_email?: string | null
+          patient_id?: string | null
           patient_name?: string | null
           patient_phone?: string | null
           payment_method_type?:
@@ -184,6 +187,44 @@ export type Database = {
           updated_at?: string | null
           zoho_module?: string
           zoho_record_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrollments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patients: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
