@@ -84,21 +84,43 @@ export function UserManagement() {
 
   const inviteMutation = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: "admin" | "viewer" }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      const { error } = await supabase.from("admin_users").insert({
-        email: email.toLowerCase().trim(),
-        role,
-        invited_by: user?.id,
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
 
-      if (error) throw error;
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-admin-invite`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ email, role }),
+        }
+      );
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to invite user");
+      }
+
+      return result;
     },
-    onSuccess: () => {
-      toast({
-        title: "Invite sent",
-        description: `An invite has been created for ${inviteEmail}`,
-      });
+    onSuccess: (data) => {
+      if (data.emailSent) {
+        toast({
+          title: "Invite sent",
+          description: `An invitation email has been sent to ${inviteEmail}`,
+        });
+      } else {
+        toast({
+          title: "Invite created",
+          description: data.inviteLink 
+            ? `Email not sent (${data.emailError}). Share this link: ${data.inviteLink}`
+            : `Invite created for ${inviteEmail}. They can sign in at /admin/login`,
+        });
+      }
       setInviteEmail("");
       setInviteRole("viewer");
       setIsInviteOpen(false);
