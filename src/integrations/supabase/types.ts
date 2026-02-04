@@ -44,6 +44,13 @@ export type Database = {
             referencedRelation: "enrollments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "enrollment_events_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       enrollments: {
@@ -168,7 +175,51 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      enrollments_public: {
+        Row: {
+          amount_cents: number | null
+          created_at: string | null
+          currency: string | null
+          expires_at: string | null
+          id: string | null
+          opened_at: string | null
+          patient_first_name: string | null
+          privacy_url: string | null
+          status: Database["public"]["Enums"]["enrollment_status"] | null
+          terms_sha256: string | null
+          terms_url: string | null
+          terms_version: string | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          created_at?: string | null
+          currency?: string | null
+          expires_at?: string | null
+          id?: string | null
+          opened_at?: string | null
+          patient_first_name?: never
+          privacy_url?: string | null
+          status?: Database["public"]["Enums"]["enrollment_status"] | null
+          terms_sha256?: string | null
+          terms_url?: string | null
+          terms_version?: string | null
+        }
+        Update: {
+          amount_cents?: number | null
+          created_at?: string | null
+          currency?: string | null
+          expires_at?: string | null
+          id?: string | null
+          opened_at?: string | null
+          patient_first_name?: never
+          privacy_url?: string | null
+          status?: Database["public"]["Enums"]["enrollment_status"] | null
+          terms_sha256?: string | null
+          terms_url?: string | null
+          terms_version?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never

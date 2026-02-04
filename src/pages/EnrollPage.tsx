@@ -6,9 +6,10 @@ import { EnrollmentStatus } from "@/components/EnrollmentStatus";
 import { Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+// Secure enrollment data - only non-sensitive fields from edge function
 interface EnrollmentData {
   id: string;
-  patient_name: string | null;
+  patient_first_name: string | null;
   amount_cents: number;
   currency: string | null;
   status: string;
@@ -18,16 +19,10 @@ interface EnrollmentData {
   privacy_url: string;
   terms_sha256: string;
   opened_at: string | null;
+  terms_accepted_at: string | null;
 }
 
 type PageState = 'loading' | 'enrollment' | 'processing' | 'success' | 'ach-processing' | 'failed' | 'expired' | 'invalid' | 'already-paid';
-
-async function sha256Hash(data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
-  return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 export default function EnrollPage() {
   const { token } = useParams<{ token: string }>();
@@ -48,22 +43,25 @@ export default function EnrollPage() {
       }
 
       try {
-        // Hash the token to look up the enrollment
-        const tokenHash = await sha256Hash(token);
+        // SECURITY: Fetch enrollment via secure edge function (not direct DB access)
+        // This prevents exposing sensitive PII through client-side queries
+        const { data, error: invokeError } = await supabase.functions.invoke('get-enrollment', {
+          body: { token },
+        });
 
-        // Fetch enrollment by token hash
-        const { data: enrollmentData, error: fetchError } = await supabase
-          .from("enrollments")
-          .select("*")
-          .eq("token_hash", tokenHash)
-          .single();
-
-        if (fetchError || !enrollmentData) {
-          console.error("Failed to fetch enrollment:", fetchError);
+        if (invokeError) {
+          console.error("Failed to fetch enrollment:", invokeError);
           setPageState('invalid');
           return;
         }
 
+        if (data?.error) {
+          console.error("Enrollment error:", data.error);
+          setPageState('invalid');
+          return;
+        }
+
+        const enrollmentData = data as EnrollmentData;
         setEnrollment(enrollmentData);
 
         // Handle return from Stripe
@@ -86,13 +84,12 @@ export default function EnrollPage() {
           return;
         }
 
-        // Check enrollment status
+        // Check enrollment status - edge function handles expiry and opened_at
         switch (enrollmentData.status) {
           case 'paid':
             setPageState('already-paid');
             break;
           case 'processing':
-            // Status is only set to 'processing' by webhook after actual ACH payment submission
             setPageState('ach-processing');
             break;
           case 'failed':
@@ -105,22 +102,7 @@ export default function EnrollPage() {
             setPageState('invalid');
             break;
           default:
-            // Check if expired by time
-            if (new Date(enrollmentData.expires_at) < new Date()) {
-              setPageState('expired');
-            } else {
-              // Mark as opened if first view
-              if (!enrollmentData.opened_at) {
-                await supabase
-                  .from("enrollments")
-                  .update({ 
-                    opened_at: new Date().toISOString(),
-                    status: 'opened'
-                  })
-                  .eq("id", enrollmentData.id);
-              }
-              setPageState('enrollment');
-            }
+            setPageState('enrollment');
         }
       } catch (err) {
         console.error("Error loading enrollment:", err);
@@ -292,7 +274,7 @@ export default function EnrollPage() {
 
           {/* Enrollment card */}
           <EnrollmentCard
-            patientName={enrollment.patient_name || "Patient"}
+            patientName={enrollment.patient_first_name || "Patient"}
             amount={enrollment.amount_cents}
             currency={enrollment.currency || "usd"}
             expiresAt={new Date(enrollment.expires_at)}
