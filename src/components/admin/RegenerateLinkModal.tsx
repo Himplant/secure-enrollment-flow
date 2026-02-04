@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Loader2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -22,6 +29,7 @@ interface RegenerateLinkModalProps {
     id: string;
     patient_name: string | null;
     status: string;
+    policy_id?: string | null;
   };
 }
 
@@ -33,13 +41,39 @@ interface RegenerateResult {
   token_last4: string;
 }
 
+interface Policy {
+  id: string;
+  name: string;
+  version: string;
+  is_default: boolean;
+  is_active: boolean;
+}
+
 export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateLinkModalProps) {
   const [expiresAt, setExpiresAt] = useState("");
   const [expiresTime, setExpiresTime] = useState("12:00");
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string>("");
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Fetch active policies
+  const { data: policies = [] } = useQuery({
+    queryKey: ["policies-active"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("policies")
+        .select("id, name, version, is_default, is_active")
+        .eq("is_active", true)
+        .order("is_default", { ascending: false });
+      
+      if (error) throw error;
+      return data as Policy[];
+    },
+  });
+
+  const defaultPolicy = policies.find(p => p.is_default);
 
   // Set default expiration to 48 hours from now
   const setDefaultExpiration = () => {
@@ -57,6 +91,7 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
       if (!session) throw new Error("Not authenticated");
 
       const expiresDateTime = new Date(`${expiresAt}T${expiresTime}`);
+      const policyToUse = selectedPolicyId || enrollment.policy_id || defaultPolicy?.id;
       
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/regenerate-enrollment`,
@@ -69,6 +104,7 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
           body: JSON.stringify({
             enrollment_id: enrollment.id,
             expires_at: expiresDateTime.toISOString(),
+            policy_id: policyToUse,
           }),
         }
       );
@@ -84,6 +120,7 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
     onSuccess: (data) => {
       setCreatedUrl(data.enrollment_url);
       queryClient.invalidateQueries({ queryKey: ["enrollments"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["enrollment-stats"] });
       toast({
         title: "Link regenerated",
@@ -110,6 +147,7 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
   const handleClose = () => {
     setExpiresAt("");
     setExpiresTime("12:00");
+    setSelectedPolicyId("");
     setCreatedUrl(null);
     setCopied(false);
     onClose();
@@ -118,6 +156,12 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
   const handleOpenChange = (open: boolean) => {
     if (open) {
       setDefaultExpiration();
+      // Set initial policy from enrollment or default
+      if (enrollment.policy_id) {
+        setSelectedPolicyId(enrollment.policy_id);
+      } else if (defaultPolicy) {
+        setSelectedPolicyId(defaultPolicy.id);
+      }
     } else {
       handleClose();
     }
@@ -126,9 +170,17 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
   // Initialize expiration on open
   if (isOpen && !expiresAt) {
     setDefaultExpiration();
+    if (!selectedPolicyId) {
+      if (enrollment.policy_id) {
+        setSelectedPolicyId(enrollment.policy_id);
+      } else if (defaultPolicy) {
+        setSelectedPolicyId(defaultPolicy.id);
+      }
+    }
   }
 
-  const isValid = expiresAt;
+  const isValid = expiresAt && (selectedPolicyId || enrollment.policy_id || defaultPolicy);
+  const noPoliciesConfigured = policies.length === 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -195,6 +247,33 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
                   />
                 </div>
               </div>
+
+              {/* Policy Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="policy">Payment Policy *</Label>
+                {noPoliciesConfigured ? (
+                  <p className="text-sm text-destructive">
+                    No policies configured. Please create a policy first in the Policies tab.
+                  </p>
+                ) : (
+                  <Select 
+                    value={selectedPolicyId || enrollment.policy_id || defaultPolicy?.id || ""} 
+                    onValueChange={setSelectedPolicyId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a policy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {policies.map((policy) => (
+                        <SelectItem key={policy.id} value={policy.id}>
+                          {policy.name} (v{policy.version})
+                          {policy.is_default && " — Default"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
 
             <DialogFooter>
@@ -203,7 +282,7 @@ export function RegenerateLinkModal({ isOpen, onClose, enrollment }: RegenerateL
               </Button>
               <Button 
                 onClick={() => regenerateMutation.mutate()} 
-                disabled={!isValid || regenerateMutation.isPending}
+                disabled={!isValid || regenerateMutation.isPending || noPoliciesConfigured}
               >
                 {regenerateMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
