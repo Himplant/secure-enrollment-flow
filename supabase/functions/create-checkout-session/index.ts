@@ -192,8 +192,8 @@ serve(async (req) => {
         },
       ],
       mode: "payment",
-      success_url: `${origin}/enroll?token=${body.token}&status=success`,
-      cancel_url: `${origin}/enroll?token=${body.token}&status=canceled`,
+      success_url: `${origin}/enroll/${body.token}?status=success`,
+      cancel_url: `${origin}/enroll/${body.token}?status=canceled`,
       expires_at: stripeExpiresAt,
       metadata: {
         enrollment_id: enrollment.id,
