@@ -1,26 +1,19 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  Search, 
-  Filter, 
-  RefreshCw, 
   MoreHorizontal,
   Eye,
   Copy,
   Send,
   XCircle,
-  Clock,
-  Users,
-  DollarSign,
-  TrendingUp,
   LogOut,
   Settings,
-  Loader2
+  Loader2,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   DropdownMenu,
@@ -37,46 +30,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { UserManagement } from "@/components/admin/UserManagement";
+import { CreateEnrollmentModal } from "@/components/admin/CreateEnrollmentModal";
+import { DashboardStats } from "@/components/admin/DashboardStats";
+import { EnrollmentFiltersComponent, EnrollmentFilters } from "@/components/admin/EnrollmentFilters";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-
-const stats = [
-  {
-    title: "Total Enrollments",
-    value: "156",
-    change: "+12%",
-    icon: Users,
-  },
-  {
-    title: "Paid This Month",
-    value: "$45,230",
-    change: "+8%",
-    icon: DollarSign,
-  },
-  {
-    title: "Processing (ACH)",
-    value: "3",
-    change: "$8,500",
-    icon: Clock,
-  },
-  {
-    title: "Conversion Rate",
-    value: "78%",
-    change: "+5%",
-    icon: TrendingUp,
-  },
-];
 
 type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled';
 
@@ -92,27 +54,50 @@ interface Enrollment {
   expires_at: string;
 }
 
+const defaultFilters: EnrollmentFilters = {
+  search: "",
+  status: "all",
+  paymentMethod: "all",
+  amountMin: "",
+  amountMax: "",
+  dateFrom: undefined,
+  dateTo: undefined,
+};
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, adminUser, signOut } = useAdminAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [filters, setFilters] = useState<EnrollmentFilters>(defaultFilters);
   const [activeTab, setActiveTab] = useState("enrollments");
 
-  // Fetch real enrollments from database
+  // Fetch enrollments with server-side filters where possible
   const { data: enrollments, isLoading: enrollmentsLoading, refetch } = useQuery({
-    queryKey: ["enrollments", statusFilter],
+    queryKey: ["enrollments", filters.status, filters.paymentMethod, filters.dateFrom?.toISOString(), filters.dateTo?.toISOString()],
     queryFn: async () => {
       let query = supabase
         .from("enrollments")
         .select("id, token_last4, patient_name, patient_email, amount_cents, status, payment_method_type, created_at, expires_at")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(100);
 
-      if (statusFilter !== "all") {
-        query = query.eq("status", statusFilter as EnrollmentStatus);
+      if (filters.status !== "all") {
+        query = query.eq("status", filters.status as EnrollmentStatus);
+      }
+
+      if (filters.paymentMethod !== "all") {
+        query = query.eq("payment_method_type", filters.paymentMethod as "card" | "ach");
+      }
+
+      if (filters.dateFrom) {
+        query = query.gte("created_at", filters.dateFrom.toISOString());
+      }
+
+      if (filters.dateTo) {
+        const endOfDay = new Date(filters.dateTo);
+        endOfDay.setHours(23, 59, 59, 999);
+        query = query.lte("created_at", endOfDay.toISOString());
       }
 
       const { data, error } = await query;
@@ -121,14 +106,33 @@ export default function AdminDashboard() {
     },
   });
 
-  const filteredEnrollments = (enrollments || []).filter((enrollment) => {
-    const matchesSearch = 
-      (enrollment.patient_name?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-      (enrollment.patient_email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-      enrollment.token_last4.includes(searchQuery);
-    
-    return matchesSearch;
-  });
+  // Client-side filtering for search and amount range
+  const filteredEnrollments = useMemo(() => {
+    let result = enrollments || [];
+
+    // Search filter
+    if (filters.search) {
+      const search = filters.search.toLowerCase();
+      result = result.filter((e) =>
+        (e.patient_name?.toLowerCase() || "").includes(search) ||
+        (e.patient_email?.toLowerCase() || "").includes(search) ||
+        e.token_last4.includes(search)
+      );
+    }
+
+    // Amount range filters
+    if (filters.amountMin) {
+      const minCents = parseFloat(filters.amountMin) * 100;
+      result = result.filter((e) => e.amount_cents >= minCents);
+    }
+
+    if (filters.amountMax) {
+      const maxCents = parseFloat(filters.amountMax) * 100;
+      result = result.filter((e) => e.amount_cents <= maxCents);
+    }
+
+    return result;
+  }, [enrollments, filters.search, filters.amountMin, filters.amountMax]);
 
   const formatAmount = (cents: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -145,6 +149,7 @@ export default function AdminDashboard() {
   const handleRefresh = () => {
     refetch();
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    queryClient.invalidateQueries({ queryKey: ["enrollment-stats"] });
     toast({
       title: "Refreshed",
       description: "Data has been refreshed",
@@ -152,7 +157,6 @@ export default function AdminDashboard() {
   };
 
   const handleCopyLink = (tokenLast4: string) => {
-    // In a real implementation, you'd have the full token or a way to regenerate the link
     const baseUrl = window.location.origin;
     navigator.clipboard.writeText(`${baseUrl}/enroll/****${tokenLast4}`);
     toast({
@@ -166,7 +170,6 @@ export default function AdminDashboard() {
       title: "Enrollment Details",
       description: `Viewing ${enrollment.patient_name || "Unknown"} - ${enrollment.status}`,
     });
-    // TODO: Open detail modal or navigate to detail page
   };
 
   const handleResendLink = (enrollment: Enrollment) => {
@@ -174,7 +177,6 @@ export default function AdminDashboard() {
       title: "Resend Link",
       description: `Resend functionality for ${enrollment.patient_email || "Unknown"} - coming soon`,
     });
-    // TODO: Implement resend via edge function
   };
 
   const handleRegenerateLink = (enrollment: Enrollment) => {
@@ -182,7 +184,6 @@ export default function AdminDashboard() {
       title: "Regenerate Link",
       description: `Regenerate functionality for ${enrollment.id} - coming soon`,
     });
-    // TODO: Implement regenerate via edge function
   };
 
   const handleCancelEnrollment = async (enrollment: Enrollment) => {
@@ -191,7 +192,6 @@ export default function AdminDashboard() {
       description: `Cancel functionality for ${enrollment.id} - coming soon`,
       variant: "destructive",
     });
-    // TODO: Implement cancel via edge function
   };
 
   return (
@@ -209,6 +209,7 @@ export default function AdminDashboard() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <CreateEnrollmentModal />
               <span className="text-sm text-muted-foreground hidden sm:block">
                 {user?.email}
               </span>
@@ -236,23 +237,8 @@ export default function AdminDashboard() {
 
       <main className="container mx-auto px-6 py-8">
         {/* Stats cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {stats.map((stat) => (
-            <Card key={stat.title} className="card-premium">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
-                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p className="text-xs text-success mt-1">{stat.change}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <stat.icon className="h-5 w-5 text-primary" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="mb-8">
+          <DashboardStats dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
         </div>
 
         {/* Tabs for Enrollments and User Management */}
@@ -265,48 +251,30 @@ export default function AdminDashboard() {
           </TabsList>
 
           <TabsContent value="enrollments" className="space-y-6">
-            {/* Filters and search */}
+            {/* Filters */}
             <Card className="card-premium">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by name, email, or token..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-full sm:w-48">
-                      <Filter className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="created">Created</SelectItem>
-                      <SelectItem value="sent">Sent</SelectItem>
-                      <SelectItem value="opened">Opened</SelectItem>
-                      <SelectItem value="processing">Processing</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="failed">Failed</SelectItem>
-                      <SelectItem value="expired">Expired</SelectItem>
-                      <SelectItem value="canceled">Canceled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" className="gap-2" onClick={handleRefresh}>
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh
-                  </Button>
-                </div>
-              </CardContent>
+              <div className="p-4">
+                <EnrollmentFiltersComponent
+                  filters={filters}
+                  onChange={setFilters}
+                  onRefresh={handleRefresh}
+                />
+              </div>
             </Card>
 
             {/* Enrollments table */}
             <Card className="card-premium overflow-hidden">
               <CardHeader className="border-b border-border bg-muted/30">
-                <CardTitle className="text-lg">Recent Enrollments</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">
+                    Enrollments
+                    {filteredEnrollments.length > 0 && (
+                      <span className="text-sm font-normal text-muted-foreground ml-2">
+                        ({filteredEnrollments.length} results)
+                      </span>
+                    )}
+                  </CardTitle>
+                </div>
               </CardHeader>
               <div className="overflow-x-auto">
                 {enrollmentsLoading ? (
