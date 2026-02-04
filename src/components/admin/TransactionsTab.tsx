@@ -164,12 +164,11 @@ export function TransactionsTab() {
     }).format(cents / 100);
   };
 
-  const handleCopyLink = (tokenLast4: string) => {
-    const baseUrl = window.location.origin;
-    navigator.clipboard.writeText(`${baseUrl}/enroll/****${tokenLast4}`);
+  const handleCopyToken = (tokenLast4: string) => {
+    navigator.clipboard.writeText(`****${tokenLast4}`);
     toast({
-      title: "Link copied",
-      description: "Enrollment link copied to clipboard (partial token shown)",
+      title: "Token copied",
+      description: "Token reference copied. For a full link, use 'Regenerate Link'.",
     });
   };
 
@@ -367,16 +366,17 @@ export function TransactionsTab() {
                             <Eye className="h-4 w-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleCopyLink(transaction.token_last4)}>
+                          <DropdownMenuItem onClick={() => handleCopyToken(transaction.token_last4)}>
                             <Copy className="h-4 w-4 mr-2" />
-                            Copy Link
+                            Copy Token
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setRegenerateEnrollment(transaction)}
-                            disabled={!["expired", "canceled", "failed"].includes(transaction.status)}
                           >
                             <RefreshCw className="h-4 w-4 mr-2" />
-                            Regenerate Link
+                            {["expired", "canceled", "failed"].includes(transaction.status) 
+                              ? "Regenerate Link" 
+                              : "Get New Link"}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
