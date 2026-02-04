@@ -44,7 +44,11 @@ import {
 import { Input } from "./input";
 import { Label } from "./label";
 import { cn } from "@/lib/utils";
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useImperativeHandle, forwardRef } from "react";
+
+export interface RichTextEditorRef {
+  insertContent: (content: string) => void;
+}
 
 interface RichTextEditorProps {
   value: string;
@@ -286,75 +290,81 @@ function MenuBar({ editor }: { editor: Editor | null }) {
   );
 }
 
-export function RichTextEditor({
-  value,
-  onChange,
-  placeholder,
-  className,
-}: RichTextEditorProps) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3],
+export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
+  function RichTextEditor({ value, onChange, placeholder, className }, ref) {
+    const editor = useEditor({
+      extensions: [
+        StarterKit.configure({
+          heading: {
+            levels: [1, 2, 3],
+          },
+        }),
+        Underline,
+        Link.configure({
+          openOnClick: false,
+          HTMLAttributes: {
+            class: "text-primary underline",
+          },
+        }),
+        Table.configure({
+          resizable: true,
+          HTMLAttributes: {
+            class: "border-collapse border border-border",
+          },
+        }),
+        TableRow,
+        TableHeader.configure({
+          HTMLAttributes: {
+            class: "border border-border bg-muted p-2 font-semibold text-left",
+          },
+        }),
+        TableCell.configure({
+          HTMLAttributes: {
+            class: "border border-border p-2",
+          },
+        }),
+      ],
+      content: value,
+      editorProps: {
+        attributes: {
+          class:
+            "prose prose-sm dark:prose-invert max-w-none min-h-[200px] p-4 focus:outline-none",
         },
-      }),
-      Underline,
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: "text-primary underline",
-        },
-      }),
-      Table.configure({
-        resizable: true,
-        HTMLAttributes: {
-          class: "border-collapse border border-border",
-        },
-      }),
-      TableRow,
-      TableHeader.configure({
-        HTMLAttributes: {
-          class: "border border-border bg-muted p-2 font-semibold text-left",
-        },
-      }),
-      TableCell.configure({
-        HTMLAttributes: {
-          class: "border border-border p-2",
-        },
-      }),
-    ],
-    content: value,
-    editorProps: {
-      attributes: {
-        class:
-          "prose prose-sm dark:prose-invert max-w-none min-h-[200px] p-4 focus:outline-none",
       },
-    },
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
-    },
-  });
+      onUpdate: ({ editor }) => {
+        onChange(editor.getHTML());
+      },
+    });
 
-  // Update editor content when value prop changes externally
-  useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value);
-    }
-  }, [value, editor]);
+    // Expose insertContent method via ref
+    useImperativeHandle(ref, () => ({
+      insertContent: (content: string) => {
+        if (editor) {
+          editor.chain().focus().insertContent(content).run();
+        }
+      },
+    }), [editor]);
 
-  return (
-    <div className={cn("border rounded-md overflow-hidden bg-background", className)}>
-      <MenuBar editor={editor} />
-      <EditorContent editor={editor} />
-      {!value && placeholder && (
-        <div className="absolute top-16 left-4 text-muted-foreground pointer-events-none">
-          {placeholder}
-        </div>
-      )}
-    </div>
-  );
-}
+    // Update editor content when value prop changes externally
+    useEffect(() => {
+      if (editor && value !== editor.getHTML()) {
+        editor.commands.setContent(value);
+      }
+    }, [value, editor]);
+
+    return (
+      <div className={cn("border rounded-md overflow-hidden bg-background", className)}>
+        <MenuBar editor={editor} />
+        <EditorContent editor={editor} />
+        {!value && placeholder && (
+          <div className="absolute top-16 left-4 text-muted-foreground pointer-events-none">
+            {placeholder}
+          </div>
+        )}
+      </div>
+    );
+  }
+);
 
 // Export a simple HTML renderer for displaying rich text
 export function RichTextDisplay({ content, className }: { content: string; className?: string }) {

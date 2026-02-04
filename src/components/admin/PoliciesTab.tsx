@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { RichTextEditor, RichTextEditorRef } from "@/components/ui/rich-text-editor";
 import {
   Table,
   TableBody,
@@ -97,7 +97,8 @@ export function PoliciesTab() {
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
   const [deletePolicy, setDeletePolicy] = useState<Policy | null>(null);
   const [formData, setFormData] = useState<PolicyFormData>(initialFormData);
-  const [activeEditor, setActiveEditor] = useState<"terms" | "privacy" | null>(null);
+  const termsEditorRef = useRef<RichTextEditorRef>(null);
+  const privacyEditorRef = useRef<RichTextEditorRef>(null);
 
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ["policies"],
@@ -431,14 +432,12 @@ export function PoliciesTab() {
                 <Label>Terms of Service *</Label>
                 <PolicyPlaceholders
                   onInsert={(placeholder) => {
-                    setFormData({
-                      ...formData,
-                      terms_text: formData.terms_text + placeholder,
-                    });
+                    termsEditorRef.current?.insertContent(placeholder);
                   }}
                 />
               </div>
               <RichTextEditor
+                ref={termsEditorRef}
                 value={formData.terms_text}
                 onChange={(value) =>
                   setFormData({ ...formData, terms_text: value })
@@ -455,14 +454,12 @@ export function PoliciesTab() {
                 <Label>Privacy Policy *</Label>
                 <PolicyPlaceholders
                   onInsert={(placeholder) => {
-                    setFormData({
-                      ...formData,
-                      privacy_text: formData.privacy_text + placeholder,
-                    });
+                    privacyEditorRef.current?.insertContent(placeholder);
                   }}
                 />
               </div>
               <RichTextEditor
+                ref={privacyEditorRef}
                 value={formData.privacy_text}
                 onChange={(value) =>
                   setFormData({ ...formData, privacy_text: value })
