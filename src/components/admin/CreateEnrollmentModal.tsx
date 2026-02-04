@@ -29,12 +29,13 @@ interface CreateEnrollmentModalProps {
     patient_email: string | null;
     patient_phone?: string | null;
   } | null;
+  patientId?: string;
   triggerButton?: React.ReactNode;
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
-export function CreateEnrollmentModal({ prefillData, triggerButton, isOpen: controlledIsOpen, onOpenChange }: CreateEnrollmentModalProps) {
+export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, isOpen: controlledIsOpen, onOpenChange }: CreateEnrollmentModalProps) {
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   
   // Use controlled or uncontrolled state
@@ -82,6 +83,7 @@ export function CreateEnrollmentModal({ prefillData, triggerButton, isOpen: cont
             patient_name: patientName,
             patient_email: patientEmail || undefined,
             patient_phone: patientPhone || undefined,
+            patient_id: patientId || undefined,
             amount_cents: Math.round(parseFloat(amount) * 100),
             expires_at: expiresDateTime.toISOString(),
           }),
