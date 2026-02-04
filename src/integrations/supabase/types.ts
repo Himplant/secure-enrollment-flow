@@ -246,8 +246,10 @@ export type Database = {
           is_active: boolean
           is_default: boolean
           name: string
+          privacy_text: string | null
           privacy_url: string
           terms_content_sha256: string
+          terms_text: string | null
           terms_url: string
           updated_at: string
           version: string
@@ -259,8 +261,10 @@ export type Database = {
           is_active?: boolean
           is_default?: boolean
           name: string
+          privacy_text?: string | null
           privacy_url: string
           terms_content_sha256: string
+          terms_text?: string | null
           terms_url: string
           updated_at?: string
           version: string
@@ -272,8 +276,10 @@ export type Database = {
           is_active?: boolean
           is_default?: boolean
           name?: string
+          privacy_text?: string | null
           privacy_url?: string
           terms_content_sha256?: string
+          terms_text?: string | null
           terms_url?: string
           updated_at?: string
           version?: string

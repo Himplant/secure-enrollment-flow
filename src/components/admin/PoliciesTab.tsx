@@ -42,6 +42,8 @@ interface Policy {
   description: string | null;
   terms_url: string;
   privacy_url: string;
+  terms_text: string | null;
+  privacy_text: string | null;
   version: string;
   terms_content_sha256: string;
   is_default: boolean;
@@ -55,6 +57,8 @@ interface PolicyFormData {
   description: string;
   terms_url: string;
   privacy_url: string;
+  terms_text: string;
+  privacy_text: string;
   version: string;
   is_default: boolean;
   is_active: boolean;
@@ -65,17 +69,17 @@ const initialFormData: PolicyFormData = {
   description: "",
   terms_url: "",
   privacy_url: "",
+  terms_text: "",
+  privacy_text: "",
   version: "1.0",
   is_default: false,
   is_active: true,
 };
 
-async function computeSha256(url: string): Promise<string> {
+async function computeSha256(text: string): Promise<string> {
   try {
-    // In a real scenario, you'd fetch the content and hash it
-    // For now, we'll hash the URL as a placeholder
     const encoder = new TextEncoder();
-    const data = encoder.encode(url + Date.now().toString());
+    const data = encoder.encode(text);
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     return Array.from(new Uint8Array(hashBuffer))
       .map((b) => b.toString(16).padStart(2, "0"))
@@ -107,12 +111,14 @@ export function PoliciesTab() {
 
   const createMutation = useMutation({
     mutationFn: async (data: PolicyFormData) => {
-      const sha256 = await computeSha256(data.terms_url);
+      const sha256 = await computeSha256(data.terms_text);
       const { error } = await supabase.from("policies").insert({
         name: data.name,
         description: data.description || null,
         terms_url: data.terms_url,
         privacy_url: data.privacy_url,
+        terms_text: data.terms_text || null,
+        privacy_text: data.privacy_text || null,
         version: data.version,
         terms_content_sha256: sha256,
         is_default: data.is_default,
@@ -132,7 +138,7 @@ export function PoliciesTab() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: PolicyFormData }) => {
-      const sha256 = await computeSha256(data.terms_url);
+      const sha256 = await computeSha256(data.terms_text);
       const { error } = await supabase
         .from("policies")
         .update({
@@ -140,6 +146,8 @@ export function PoliciesTab() {
           description: data.description || null,
           terms_url: data.terms_url,
           privacy_url: data.privacy_url,
+          terms_text: data.terms_text || null,
+          privacy_text: data.privacy_text || null,
           version: data.version,
           terms_content_sha256: sha256,
           is_default: data.is_default,
@@ -203,6 +211,8 @@ export function PoliciesTab() {
       description: policy.description || "",
       terms_url: policy.terms_url,
       privacy_url: policy.privacy_url,
+      terms_text: policy.terms_text || "",
+      privacy_text: policy.privacy_text || "",
       version: policy.version,
       is_default: policy.is_default,
       is_active: policy.is_active,
@@ -217,8 +227,8 @@ export function PoliciesTab() {
   };
 
   const handleSubmit = () => {
-    if (!formData.name || !formData.terms_url || !formData.privacy_url || !formData.version) {
-      toast.error("Please fill in all required fields");
+    if (!formData.name || !formData.terms_text || !formData.privacy_text || !formData.version) {
+      toast.error("Please fill in all required fields (name, terms text, privacy text, version)");
       return;
     }
 
@@ -366,7 +376,7 @@ export function PoliciesTab() {
 
       {/* Create/Edit Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingPolicy ? "Edit Policy" : "Create Policy"}
@@ -374,16 +384,30 @@ export function PoliciesTab() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Policy Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="e.g., Standard Terms v1"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Policy Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  placeholder="e.g., Standard Terms v1"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="version">Version *</Label>
+                <Input
+                  id="version"
+                  value={formData.version}
+                  onChange={(e) =>
+                    setFormData({ ...formData, version: e.target.value })
+                  }
+                  placeholder="1.0"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -400,41 +424,65 @@ export function PoliciesTab() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="terms_url">Terms of Service URL *</Label>
-              <Input
-                id="terms_url"
-                type="url"
-                value={formData.terms_url}
+              <Label htmlFor="terms_text">Terms of Service Text *</Label>
+              <Textarea
+                id="terms_text"
+                value={formData.terms_text}
                 onChange={(e) =>
-                  setFormData({ ...formData, terms_url: e.target.value })
+                  setFormData({ ...formData, terms_text: e.target.value })
                 }
-                placeholder="https://example.com/terms"
+                placeholder="Enter the full terms of service text..."
+                rows={8}
+                className="font-mono text-sm"
               />
+              <p className="text-xs text-muted-foreground">
+                This exact text will be shown to users and stored for dispute records
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="privacy_url">Privacy Policy URL *</Label>
-              <Input
-                id="privacy_url"
-                type="url"
-                value={formData.privacy_url}
+              <Label htmlFor="privacy_text">Privacy Policy Text *</Label>
+              <Textarea
+                id="privacy_text"
+                value={formData.privacy_text}
                 onChange={(e) =>
-                  setFormData({ ...formData, privacy_url: e.target.value })
+                  setFormData({ ...formData, privacy_text: e.target.value })
                 }
-                placeholder="https://example.com/privacy"
+                placeholder="Enter the full privacy policy text..."
+                rows={8}
+                className="font-mono text-sm"
               />
+              <p className="text-xs text-muted-foreground">
+                This exact text will be shown to users and stored for dispute records
+              </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="version">Version *</Label>
-              <Input
-                id="version"
-                value={formData.version}
-                onChange={(e) =>
-                  setFormData({ ...formData, version: e.target.value })
-                }
-                placeholder="1.0"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="terms_url">Terms URL (optional)</Label>
+                <Input
+                  id="terms_url"
+                  type="url"
+                  value={formData.terms_url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, terms_url: e.target.value })
+                  }
+                  placeholder="https://example.com/terms"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="privacy_url">Privacy URL (optional)</Label>
+                <Input
+                  id="privacy_url"
+                  type="url"
+                  value={formData.privacy_url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, privacy_url: e.target.value })
+                  }
+                  placeholder="https://example.com/privacy"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between">

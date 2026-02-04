@@ -29,6 +29,8 @@ interface EnrollmentResponse {
   terms_version: string;
   terms_url: string;
   privacy_url: string;
+  terms_text: string | null;
+  privacy_text: string | null;
   terms_sha256: string;
   opened_at: string | null;
   terms_accepted_at: string | null;
@@ -66,6 +68,7 @@ serve(async (req) => {
     const tokenHash = await sha256Hash(token);
 
     // Fetch enrollment using service role (bypasses RLS)
+    // Join with policies table to get the terms/privacy text
     const { data: enrollment, error: fetchError } = await supabase
       .from("enrollments")
       .select(`
@@ -80,7 +83,12 @@ serve(async (req) => {
         privacy_url,
         terms_sha256,
         opened_at,
-        terms_accepted_at
+        terms_accepted_at,
+        policy_id,
+        policies (
+          terms_text,
+          privacy_text
+        )
       `)
       .eq("token_hash", tokenHash)
       .maybeSingle();
@@ -147,6 +155,9 @@ serve(async (req) => {
       ? enrollment.patient_name.split(' ')[0] 
       : null;
 
+    // Get policy text (from joined policies table)
+    const policyData = (enrollment as any).policies;
+    
     const response: EnrollmentResponse = {
       id: enrollment.id,
       patient_first_name: patientFirstName,
@@ -157,6 +168,8 @@ serve(async (req) => {
       terms_version: enrollment.terms_version,
       terms_url: enrollment.terms_url,
       privacy_url: enrollment.privacy_url,
+      terms_text: policyData?.terms_text || null,
+      privacy_text: policyData?.privacy_text || null,
       terms_sha256: enrollment.terms_sha256,
       opened_at: enrollment.opened_at,
       terms_accepted_at: enrollment.terms_accepted_at,

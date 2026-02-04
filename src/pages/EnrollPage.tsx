@@ -17,6 +17,8 @@ interface EnrollmentData {
   terms_version: string;
   terms_url: string;
   privacy_url: string;
+  terms_text: string | null;
+  privacy_text: string | null;
   terms_sha256: string;
   opened_at: string | null;
   terms_accepted_at: string | null;
@@ -286,6 +288,8 @@ export default function EnrollPage() {
             <TermsConsent
               termsUrl={enrollment.terms_url}
               privacyUrl={enrollment.privacy_url}
+              termsText={enrollment.terms_text}
+              privacyText={enrollment.privacy_text}
               termsVersion={enrollment.terms_version}
               onAccept={handleAcceptTerms}
               isLoading={isSubmitting}
