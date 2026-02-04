@@ -117,11 +117,11 @@ serve(async (req) => {
       });
     }
 
-    // Check if enrollment can be regenerated (must be expired, canceled, or failed)
-    const regeneratableStatuses = ['expired', 'canceled', 'failed'];
-    if (!regeneratableStatuses.includes(existingEnrollment.status)) {
+    // Check if enrollment can be regenerated (cannot regenerate paid or processing enrollments)
+    const nonRegeneratableStatuses = ['paid', 'processing'];
+    if (nonRegeneratableStatuses.includes(existingEnrollment.status)) {
       return new Response(JSON.stringify({ 
-        error: `Cannot regenerate enrollment with status '${existingEnrollment.status}'. Only expired, canceled, or failed enrollments can be regenerated.`
+        error: `Cannot regenerate enrollment with status '${existingEnrollment.status}'. Paid or processing enrollments cannot be regenerated.`
       }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
