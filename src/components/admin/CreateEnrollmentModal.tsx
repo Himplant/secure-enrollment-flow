@@ -169,11 +169,11 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
           </Button>
         )
       )}
-      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {prefillData ? "Create Additional Enrollment" : "Create New Enrollment"}
+              {prefillData ? "Create Payment Link" : "Create New Enrollment"}
             </DialogTitle>
             <DialogDescription>
               {prefillData 
@@ -182,17 +182,6 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
               }
             </DialogDescription>
           </DialogHeader>
-        <DialogHeader>
-          <DialogTitle>
-            {prefillData ? "Create Additional Enrollment" : "Create New Enrollment"}
-          </DialogTitle>
-          <DialogDescription>
-            {prefillData 
-              ? `Generate a new payment link for ${prefillData.patient_name}.`
-              : "Generate a payment link for a new patient enrollment."
-            }
-          </DialogDescription>
-        </DialogHeader>
 
         {createdUrl ? (
           <div className="space-y-4 py-4">
@@ -225,37 +214,42 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
         ) : (
           <>
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="patient-name">Patient Name *</Label>
-                <Input
-                  id="patient-name"
-                  placeholder="John Doe"
-                  value={patientName}
-                  onChange={(e) => setPatientName(e.target.value)}
-                />
-              </div>
+              {/* Only show patient fields when not using prefill (creating new patient) */}
+              {!prefillData && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="patient-name">Patient Name *</Label>
+                    <Input
+                      id="patient-name"
+                      placeholder="John Doe"
+                      value={patientName}
+                      onChange={(e) => setPatientName(e.target.value)}
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="patient-email">Email (optional)</Label>
-                <Input
-                  id="patient-email"
-                  type="email"
-                  placeholder="patient@example.com"
-                  value={patientEmail}
-                  onChange={(e) => setPatientEmail(e.target.value)}
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="patient-email">Email (optional)</Label>
+                    <Input
+                      id="patient-email"
+                      type="email"
+                      placeholder="patient@example.com"
+                      value={patientEmail}
+                      onChange={(e) => setPatientEmail(e.target.value)}
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="patient-phone">Phone (optional)</Label>
-                <Input
-                  id="patient-phone"
-                  type="tel"
-                  placeholder="+1 (555) 000-0000"
-                  value={patientPhone}
-                  onChange={(e) => setPatientPhone(e.target.value)}
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="patient-phone">Phone (optional)</Label>
+                    <Input
+                      id="patient-phone"
+                      type="tel"
+                      placeholder="+1 (555) 000-0000"
+                      value={patientPhone}
+                      onChange={(e) => setPatientPhone(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="amount">Amount (USD) *</Label>
@@ -271,7 +265,7 @@ export function CreateEnrollmentModal({ prefillData, patientId, triggerButton, i
                     onChange={(e) => setAmount(e.target.value)}
                     className="pl-7"
                   />
-                </div>
+            </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

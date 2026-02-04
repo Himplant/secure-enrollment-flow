@@ -42,6 +42,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CreateEnrollmentModal } from "./CreateEnrollmentModal";
 import { PatientHistoryModal } from "./PatientHistoryModal";
+import { ImportPatientsModal } from "./ImportPatientsModal";
 
 interface Patient {
   id: string;
@@ -128,7 +129,13 @@ export function PatientsTab() {
       toast({ title: "Patient added", description: "New patient has been created" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      let message = error.message;
+      if (message.includes("idx_patients_email_unique")) {
+        message = "A patient with this email already exists";
+      } else if (message.includes("idx_patients_phone_unique")) {
+        message = "A patient with this phone number already exists";
+      }
+      toast({ title: "Error", description: message, variant: "destructive" });
     },
   });
 
@@ -153,7 +160,13 @@ export function PatientsTab() {
       toast({ title: "Patient updated", description: "Patient details have been saved" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      let message = error.message;
+      if (message.includes("idx_patients_email_unique")) {
+        message = "A patient with this email already exists";
+      } else if (message.includes("idx_patients_phone_unique")) {
+        message = "A patient with this phone number already exists";
+      }
+      toast({ title: "Error", description: message, variant: "destructive" });
     },
   });
 
@@ -186,6 +199,7 @@ export function PatientsTab() {
             className="max-w-md"
           />
         </div>
+        <ImportPatientsModal />
         <Button onClick={() => setAddPatientOpen(true)} className="gap-2">
           <Plus className="h-4 w-4" />
           Add Patient
