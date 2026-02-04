@@ -119,13 +119,24 @@ serve(async (req) => {
       );
     }
 
-    // Success - show the refresh token to the user
-    // In production, you'd store this securely
+    // SECURITY: Log token server-side only - never expose in browser
     const refreshToken = tokenData.refresh_token;
     const accessToken = tokenData.access_token;
 
-    console.log('Zoho OAuth successful, refresh token obtained');
+    // Log the refresh token to server logs (only accessible by admins)
+    // This is a one-time setup operation - the token should be copied from logs
+    // and added as ZOHO_REFRESH_TOKEN secret
+    console.log('='.repeat(60));
+    console.log('ZOHO OAUTH SUCCESS - REFRESH TOKEN OBTAINED');
+    console.log('='.repeat(60));
+    console.log('Refresh Token (copy this to ZOHO_REFRESH_TOKEN secret):');
+    console.log(refreshToken);
+    console.log('='.repeat(60));
+    console.log('Access Token (temporary, expires in', tokenData.expires_in || 3600, 'seconds):');
+    console.log(accessToken);
+    console.log('='.repeat(60));
 
+    // Return success page WITHOUT exposing the token
     return new Response(
       `
       <!DOCTYPE html>
@@ -133,42 +144,53 @@ serve(async (req) => {
         <head>
           <title>OAuth Success</title>
           <style>
-            body { font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto; }
-            h1 { color: #03111d; }
-            .success { color: #22c55e; }
-            .token-box { 
-              background: #f5f5f5; 
-              padding: 16px; 
-              border-radius: 8px; 
-              word-break: break-all;
-              margin: 16px 0;
-              font-family: monospace;
-              font-size: 12px;
-            }
-            .warning { 
-              background: #fef3cd; 
-              border: 1px solid #ffc107; 
-              padding: 12px; 
-              border-radius: 8px;
-              margin-top: 20px;
-            }
+            body { font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto; background: #f9fafb; }
+            .container { background: white; padding: 32px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+            h1 { color: #22c55e; margin-top: 0; }
+            .step { background: #f0f9ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #0ea5e9; }
+            .step-number { font-weight: bold; color: #0ea5e9; }
+            code { background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+            .security-note { background: #f0fdf4; border: 1px solid #22c55e; padding: 16px; border-radius: 8px; margin-top: 24px; }
+            .security-icon { font-size: 20px; }
           </style>
         </head>
         <body>
-          <h1 class="success">✓ OAuth Successful!</h1>
-          <p>Your Zoho CRM connection has been authorized.</p>
-          
-          <h3>Refresh Token:</h3>
-          <div class="token-box">${refreshToken || 'No refresh token returned - you may need to revoke and re-authorize'}</div>
-          
-          <div class="warning">
-            <strong>Important:</strong> Copy this refresh token and add it as the <code>ZOHO_REFRESH_TOKEN</code> secret in your project. 
-            This token is only shown once!
+          <div class="container">
+            <h1>✓ OAuth Authorization Successful!</h1>
+            <p>Your Zoho CRM connection has been authorized. The refresh token has been securely logged to the server.</p>
+            
+            <h3>Next Steps:</h3>
+            
+            <div class="step">
+              <span class="step-number">Step 1:</span> 
+              Open your Lovable project's backend logs
+            </div>
+            
+            <div class="step">
+              <span class="step-number">Step 2:</span> 
+              Find the log entry containing <code>ZOHO OAUTH SUCCESS</code>
+            </div>
+            
+            <div class="step">
+              <span class="step-number">Step 3:</span> 
+              Copy the refresh token from the logs
+            </div>
+            
+            <div class="step">
+              <span class="step-number">Step 4:</span> 
+              Add it as the <code>ZOHO_REFRESH_TOKEN</code> secret in your project
+            </div>
+            
+            <div class="security-note">
+              <span class="security-icon">🔒</span> <strong>Security Note:</strong> 
+              The refresh token is not displayed in the browser for security reasons. 
+              It can only be retrieved from the server logs, which are only accessible to project administrators.
+            </div>
+            
+            <p style="margin-top: 24px; color: #666; font-size: 14px;">
+              You can close this window after completing the steps above.
+            </p>
           </div>
-          
-          <p style="margin-top: 20px; color: #666;">
-            Access token expires in ${tokenData.expires_in || 3600} seconds. The refresh token is used to obtain new access tokens automatically.
-          </p>
         </body>
       </html>
       `,
