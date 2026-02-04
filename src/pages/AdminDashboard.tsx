@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
   Search, 
   Filter, 
   RefreshCw, 
-  Plus,
   MoreHorizontal,
   Eye,
   Copy,
@@ -15,7 +15,8 @@ import {
   DollarSign,
   TrendingUp,
   LogOut,
-  Settings
+  Settings,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,64 +48,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { UserManagement } from "@/components/admin/UserManagement";
-
-// Mock data
-const mockEnrollments = [
-  {
-    id: "1",
-    tokenLast4: "a1b2",
-    patientName: "John Smith",
-    patientEmail: "john@example.com",
-    amount: 125000,
-    status: "paid" as const,
-    paymentMethod: "card" as const,
-    createdAt: new Date("2024-01-15"),
-    expiresAt: new Date("2024-01-17"),
-    paidAt: new Date("2024-01-16"),
-  },
-  {
-    id: "2",
-    tokenLast4: "c3d4",
-    patientName: "Sarah Johnson",
-    patientEmail: "sarah@example.com",
-    amount: 85000,
-    status: "processing" as const,
-    paymentMethod: "ach" as const,
-    createdAt: new Date("2024-01-16"),
-    expiresAt: new Date("2024-01-18"),
-    processingAt: new Date("2024-01-16"),
-  },
-  {
-    id: "3",
-    tokenLast4: "e5f6",
-    patientName: "Michael Brown",
-    patientEmail: "michael@example.com",
-    amount: 200000,
-    status: "opened" as const,
-    createdAt: new Date("2024-01-17"),
-    expiresAt: new Date("2024-01-19"),
-  },
-  {
-    id: "4",
-    tokenLast4: "g7h8",
-    patientName: "Emily Davis",
-    patientEmail: "emily@example.com",
-    amount: 150000,
-    status: "sent" as const,
-    createdAt: new Date("2024-01-17"),
-    expiresAt: new Date("2024-01-19"),
-  },
-  {
-    id: "5",
-    tokenLast4: "i9j0",
-    patientName: "Robert Wilson",
-    patientEmail: "robert@example.com",
-    amount: 95000,
-    status: "expired" as const,
-    createdAt: new Date("2024-01-10"),
-    expiresAt: new Date("2024-01-12"),
-  },
-];
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const stats = [
   {
@@ -133,22 +78,56 @@ const stats = [
   },
 ];
 
+type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled';
+
+interface Enrollment {
+  id: string;
+  token_last4: string;
+  patient_name: string | null;
+  patient_email: string | null;
+  amount_cents: number;
+  status: EnrollmentStatus;
+  payment_method_type: string | null;
+  created_at: string | null;
+  expires_at: string;
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, adminUser, signOut } = useAdminAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState("enrollments");
 
-  const filteredEnrollments = mockEnrollments.filter((enrollment) => {
+  // Fetch real enrollments from database
+  const { data: enrollments, isLoading: enrollmentsLoading, refetch } = useQuery({
+    queryKey: ["enrollments", statusFilter],
+    queryFn: async () => {
+      let query = supabase
+        .from("enrollments")
+        .select("id, token_last4, patient_name, patient_email, amount_cents, status, payment_method_type, created_at, expires_at")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter as EnrollmentStatus);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as Enrollment[];
+    },
+  });
+
+  const filteredEnrollments = (enrollments || []).filter((enrollment) => {
     const matchesSearch = 
-      enrollment.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      enrollment.patientEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      enrollment.tokenLast4.includes(searchQuery);
+      (enrollment.patient_name?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+      (enrollment.patient_email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+      enrollment.token_last4.includes(searchQuery);
     
-    const matchesStatus = statusFilter === "all" || enrollment.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
+    return matchesSearch;
   });
 
   const formatAmount = (cents: number) => {
@@ -161,6 +140,58 @@ export default function AdminDashboard() {
   const handleSignOut = async () => {
     await signOut();
     navigate("/admin/login", { replace: true });
+  };
+
+  const handleRefresh = () => {
+    refetch();
+    queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    toast({
+      title: "Refreshed",
+      description: "Data has been refreshed",
+    });
+  };
+
+  const handleCopyLink = (tokenLast4: string) => {
+    // In a real implementation, you'd have the full token or a way to regenerate the link
+    const baseUrl = window.location.origin;
+    navigator.clipboard.writeText(`${baseUrl}/enroll/****${tokenLast4}`);
+    toast({
+      title: "Link copied",
+      description: "Enrollment link copied to clipboard (partial token shown)",
+    });
+  };
+
+  const handleViewDetails = (enrollment: Enrollment) => {
+    toast({
+      title: "Enrollment Details",
+      description: `Viewing ${enrollment.patient_name || "Unknown"} - ${enrollment.status}`,
+    });
+    // TODO: Open detail modal or navigate to detail page
+  };
+
+  const handleResendLink = (enrollment: Enrollment) => {
+    toast({
+      title: "Resend Link",
+      description: `Resend functionality for ${enrollment.patient_email || "Unknown"} - coming soon`,
+    });
+    // TODO: Implement resend via edge function
+  };
+
+  const handleRegenerateLink = (enrollment: Enrollment) => {
+    toast({
+      title: "Regenerate Link",
+      description: `Regenerate functionality for ${enrollment.id} - coming soon`,
+    });
+    // TODO: Implement regenerate via edge function
+  };
+
+  const handleCancelEnrollment = async (enrollment: Enrollment) => {
+    toast({
+      title: "Cancel Enrollment",
+      description: `Cancel functionality for ${enrollment.id} - coming soon`,
+      variant: "destructive",
+    });
+    // TODO: Implement cancel via edge function
   };
 
   return (
@@ -189,7 +220,7 @@ export default function AdminDashboard() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                    Role: {adminUser?.role}
+                    Role: {adminUser?.role || "loading..."}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
@@ -264,7 +295,7 @@ export default function AdminDashboard() {
                       <SelectItem value="canceled">Canceled</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button variant="outline" className="gap-2">
+                  <Button variant="outline" className="gap-2" onClick={handleRefresh}>
                     <RefreshCw className="h-4 w-4" />
                     Refresh
                   </Button>
@@ -278,83 +309,96 @@ export default function AdminDashboard() {
                 <CardTitle className="text-lg">Recent Enrollments</CardTitle>
               </CardHeader>
               <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Patient</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Payment Method</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Expires</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredEnrollments.map((enrollment) => (
-                      <TableRow key={enrollment.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-foreground">
-                              {enrollment.patientName}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {enrollment.patientEmail}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {formatAmount(enrollment.amount)}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={enrollment.status} />
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {enrollment.paymentMethod === 'card' ? 'Card' : 
-                           enrollment.paymentMethod === 'ach' ? 'ACH' : '—'}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {format(enrollment.createdAt, 'MMM d, yyyy')}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {format(enrollment.expiresAt, 'MMM d, yyyy')}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem>
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copy Link
-                              </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Send className="h-4 w-4 mr-2" />
-                                Resend Link
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem>
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Regenerate Link
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive">
-                                <XCircle className="h-4 w-4 mr-2" />
-                                Cancel Enrollment
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                {enrollmentsLoading ? (
+                  <div className="flex justify-center items-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredEnrollments.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    No enrollments found
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Patient</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Payment Method</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Expires</TableHead>
+                        <TableHead className="w-12"></TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredEnrollments.map((enrollment) => (
+                        <TableRow key={enrollment.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {enrollment.patient_name || "Unknown"}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {enrollment.patient_email || "No email"}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {formatAmount(enrollment.amount_cents)}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={enrollment.status} />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {enrollment.payment_method_type === 'card' ? 'Card' : 
+                             enrollment.payment_method_type === 'ach' ? 'ACH' : '—'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {enrollment.created_at ? format(new Date(enrollment.created_at), 'MMM d, yyyy') : '—'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {format(new Date(enrollment.expires_at), 'MMM d, yyyy')}
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleViewDetails(enrollment)}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopyLink(enrollment.token_last4)}>
+                                  <Copy className="h-4 w-4 mr-2" />
+                                  Copy Link
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleResendLink(enrollment)}>
+                                  <Send className="h-4 w-4 mr-2" />
+                                  Resend Link
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleRegenerateLink(enrollment)}>
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                  Regenerate Link
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-destructive"
+                                  onClick={() => handleCancelEnrollment(enrollment)}
+                                >
+                                  <XCircle className="h-4 w-4 mr-2" />
+                                  Cancel Enrollment
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </div>
             </Card>
           </TabsContent>
