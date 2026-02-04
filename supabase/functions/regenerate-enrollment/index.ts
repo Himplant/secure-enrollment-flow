@@ -9,6 +9,7 @@ const corsHeaders = {
 interface RegenerateEnrollmentRequest {
   enrollment_id: string;
   expires_at: string; // ISO timestamp
+  policy_id?: string; // Optional policy to attach
 }
 
 function generateSecureToken(length = 32): string {
@@ -133,28 +134,66 @@ serve(async (req) => {
     const tokenHash = await sha256Hash(rawToken);
     const tokenLast4 = rawToken.slice(-4);
 
+    // If a policy_id is provided, fetch the policy to get terms info
+    let policyData: {
+      terms_url: string;
+      privacy_url: string;
+      terms_content_sha256: string;
+      version: string;
+    } | null = null;
+
+    const policyIdToUse = body.policy_id || existingEnrollment.policy_id;
+
+    if (policyIdToUse) {
+      const { data: policy, error: policyError } = await supabaseAdmin
+        .from("policies")
+        .select("terms_url, privacy_url, terms_content_sha256, version")
+        .eq("id", policyIdToUse)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (policyError) {
+        console.error("Error fetching policy:", policyError);
+      } else if (policy) {
+        policyData = policy;
+      }
+    }
+
     // Update enrollment with new token and reset status
+    const updateData: Record<string, unknown> = {
+      token_hash: tokenHash,
+      token_last4: tokenLast4,
+      expires_at: expiresAt.toISOString(),
+      status: "created",
+      // Reset payment-related fields
+      opened_at: null,
+      processing_at: null,
+      paid_at: null,
+      failed_at: null,
+      expired_at: null,
+      terms_accepted_at: null,
+      terms_accept_ip: null,
+      terms_accept_user_agent: null,
+      stripe_session_id: null,
+      stripe_payment_intent_id: null,
+      stripe_customer_id: null,
+      payment_method_type: null,
+    };
+
+    // Update policy-related fields if we have a policy
+    if (policyIdToUse) {
+      updateData.policy_id = policyIdToUse;
+    }
+    if (policyData) {
+      updateData.terms_url = policyData.terms_url;
+      updateData.privacy_url = policyData.privacy_url;
+      updateData.terms_sha256 = policyData.terms_content_sha256;
+      updateData.terms_version = policyData.version;
+    }
+
     const { data: updatedEnrollment, error: updateError } = await supabaseAdmin
       .from("enrollments")
-      .update({
-        token_hash: tokenHash,
-        token_last4: tokenLast4,
-        expires_at: expiresAt.toISOString(),
-        status: "created",
-        // Reset payment-related fields
-        opened_at: null,
-        processing_at: null,
-        paid_at: null,
-        failed_at: null,
-        expired_at: null,
-        terms_accepted_at: null,
-        terms_accept_ip: null,
-        terms_accept_user_agent: null,
-        stripe_session_id: null,
-        stripe_payment_intent_id: null,
-        stripe_customer_id: null,
-        payment_method_type: null,
-      })
+      .update(updateData)
       .eq("id", body.enrollment_id)
       .select()
       .single();
