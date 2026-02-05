@@ -57,7 +57,7 @@
             │                        │                        │
             ▼                        ▼                        ▼
  ┌─────────────────────────────────────────────────────────────────────────────┐
- │                           SUPABASE EDGE FUNCTIONS                           │
+  │                          LOVABLE CLOUD EDGE FUNCTIONS                        │
  ├─────────────────────────────────────────────────────────────────────────────┤
  │                                                                              │
  │   ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐    │
@@ -79,7 +79,7 @@
             │
             ▼
  ┌─────────────────────────────────────────────────────────────────────────────┐
- │                           SUPABASE DATABASE                                  │
+  │                          LOVABLE CLOUD DATABASE                              │
  ├─────────────────────────────────────────────────────────────────────────────┤
  │                                                                              │
  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
@@ -133,7 +133,7 @@
  | TipTap | Rich text editor for policies |
  | Recharts | Analytics charts |
  
- ### Backend (Lovable Cloud / Supabase)
+ ### Backend (Lovable Cloud)
 
 > **Note**: This project uses **Lovable Cloud**, which provides a fully-managed backend. You do NOT need a separate Supabase account - everything is integrated automatically through Lovable. Access your backend via the "Cloud View" button in your Lovable project.
  
@@ -358,7 +358,7 @@
     └─→ Creates admin_users record with email, accepted_at = NULL
  
  2. Invited user clicks signup link
-    └─→ Creates auth.users account via Supabase Auth
+      └─→ Creates auth.users account via Lovable Cloud Auth
  
  3. User redirected to /admin/pending
     └─→ System checks has_pending_invite(email)
@@ -778,13 +778,13 @@ The `get-enrollment` edge function controls what data is exposed to unauthentica
  | `get-enrollment` | Token in URL |
  | `create-checkout-session` | Token validation |
  | `stripe-webhook` | Stripe signature |
- | Admin functions | Supabase JWT |
+ | Admin functions | Lovable Cloud JWT |
  
  ---
  
  ## Environment Variables
  
- ### Supabase (Auto-configured)
+ ### Lovable Cloud (Auto-configured)
  
  | Variable | Source |
  |----------|--------|
