@@ -12,6 +12,7 @@ interface EnrollmentRequest {
   patient_name?: string;
   patient_email?: string;
   patient_phone?: string;
+  surgeon_id?: string;    // Optional surgeon reference
   amount?: number;        // Decimal from Zoho (e.g., 500.00)
   amount_cents?: number;  // Legacy support for cents
   currency?: string;
@@ -21,6 +22,67 @@ interface EnrollmentRequest {
   terms_sha256?: string;
   policy_id?: string;
   expires_in_hours?: number;
+}
+
+// Helper function to find or create a patient
+async function findOrCreatePatient(
+  supabase: any,
+  email: string | undefined,
+  phone: string | undefined,
+  name: string | undefined,
+  surgeonId: string | undefined
+): Promise<string | null> {
+  // Need at least email or phone to create/find patient
+  if (!email && !phone) {
+    return null;
+  }
+
+  // Try to find existing patient by email first
+  if (email) {
+    const { data: existingByEmail } = await supabase
+      .from("patients")
+      .select("id")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
+    
+    if (existingByEmail) {
+      return existingByEmail.id;
+    }
+  }
+
+  // Try to find by phone if no email match
+  if (phone) {
+    const { data: existingByPhone } = await supabase
+      .from("patients")
+      .select("id")
+      .eq("phone", phone)
+      .maybeSingle();
+    
+    if (existingByPhone) {
+      return existingByPhone.id;
+    }
+  }
+
+  // Create new patient
+  const patientName = name?.trim() || "Unknown Patient";
+  const { data: newPatient, error } = await supabase
+    .from("patients")
+    .insert({
+      name: patientName,
+      email: email?.toLowerCase() || null,
+      phone: phone || null,
+      surgeon_id: surgeonId || null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Failed to create patient:", error);
+    return null;
+  }
+
+  console.log(`Created new patient ${newPatient.id} for ${email || phone}`);
+  return newPatient.id;
 }
 
 function generateSecureToken(length = 32): string {
@@ -149,8 +211,15 @@ serve(async (req) => {
     }
 
     const body: EnrollmentRequest = JSON.parse(bodyText);
-
-    // Convert amount to cents if provided as decimal
+    
+    // Debug log the incoming request
+    console.log("Incoming enrollment request:", JSON.stringify({
+      zoho_record_id: body.zoho_record_id,
+      patient_name: body.patient_name,
+      patient_email: body.patient_email,
+      patient_phone: body.patient_phone,
+      amount: body.amount,
+    }));
     let amountCents: number;
     if (body.amount !== undefined) {
       // Zoho sends amount as decimal (e.g., 500.00)
@@ -253,12 +322,22 @@ serve(async (req) => {
       });
     }
 
+    // Find or create patient record
+    const patientId = await findOrCreatePatient(
+      supabase,
+      body.patient_email,
+      body.patient_phone,
+      body.patient_name,
+      body.surgeon_id
+    );
+
     // Create enrollment record
     const { data: enrollment, error: insertError } = await supabase
       .from("enrollments")
       .insert({
         zoho_record_id: body.zoho_record_id,
         zoho_module: body.zoho_module,
+        patient_id: patientId,
         patient_name: body.patient_name,
         patient_email: body.patient_email,
         patient_phone: body.patient_phone,
