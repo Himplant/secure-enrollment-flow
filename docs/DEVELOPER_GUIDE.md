@@ -463,6 +463,120 @@
  | `zoho-oauth-callback` | Handles OAuth token exchange |
  | `test-zoho-token` | Validates Zoho API connectivity |
  
+ #### Setting Up Zoho CRM Button (Deals Module)
+ 
+ To create a button in Zoho CRM that triggers payment link creation:
+ 
+ **Step 1: Create the Button**
+ 1. Go to **Setup → Customization → Modules and Fields → Deals**
+ 2. Click on **Links and Buttons** tab
+ 3. Click **+ New Button**
+ 4. Name it: `Create Payment Link`
+ 5. Choose **View Page** as the placement
+ 6. Select **Writing Function** as the action
+ 
+ **Step 2: Create the Deluge Function**
+ 
+ Use this Deluge script:
+ 
+ ```deluge
+ // Get Deal details
+ dealId = deal.get("id");
+ contactId = deal.get("Contact_Name").get("id");
+ 
+ // Fetch contact details
+ contactResp = zoho.crm.getRecordById("Contacts", contactId);
+ 
+ // Prepare the request
+ patientName = contactResp.get("Full_Name");
+ patientEmail = contactResp.get("Email");
+ patientPhone = contactResp.get("Phone");
+ amountCents = (deal.get("Amount").toDecimal() * 100).round();
+ 
+ // Make API call to create enrollment
+ headers = Map();
+ headers.put("Content-Type", "application/json");
+ headers.put("X-Shared-Secret", "YOUR_ENROLLMENT_SHARED_SECRET");
+ 
+ payload = Map();
+ payload.put("zoho_module", "Deals");
+ payload.put("zoho_record_id", dealId.toString());
+ payload.put("patient_name", patientName);
+ payload.put("patient_email", patientEmail);
+ payload.put("patient_phone", patientPhone);
+ payload.put("amount_cents", amountCents);
+ payload.put("currency", "usd");
+ // Note: terms data is optional - the system will use the default policy
+ // To use a specific policy, add: payload.put("policy_id", "your-policy-uuid");
+ 
+ response = invokeurl
+ [
+     url: "https://aygfraqvempqexlplofu.supabase.co/functions/v1/create-enrollment"
+     type: POST
+     parameters: payload.toString()
+     headers: headers
+ ];
+ 
+ // Parse response
+ responseData = response.toMap();
+ 
+ if(responseData.containsKey("enrollment_url"))
+ {
+     // Update the Deal with the payment link
+     updateData = Map();
+     updateData.put("Payment_Link", responseData.get("enrollment_url"));
+     updateData.put("Payment_Link_Expires", responseData.get("expires_at"));
+     updateData.put("Enrollment_Status", "Link Sent");
+     
+     zoho.crm.updateRecord("Deals", dealId, updateData);
+     
+     // Return success message with link
+     return "Payment Link Created!\n\n" + responseData.get("enrollment_url");
+ }
+ else
+ {
+     return "Error: " + responseData.get("error");
+ }
+ ```
+ 
+ **Step 3: Create Required Zoho Fields**
+ 
+ Add these custom fields to your Deals module:
+ 
+ | Field Label | API Name | Type |
+ |-------------|----------|------|
+ | Payment Link | `Payment_Link` | URL |
+ | Payment Link Expires | `Payment_Link_Expires` | DateTime |
+ | Enrollment Status | `Enrollment_Status` | Picklist |
+ | Payment Method | `Payment_Method` | Picklist |
+ | Payment Date | `Payment_Date` | DateTime |
+ | Stripe Session ID | `Stripe_Session_ID` | Text |
+ | Processing Date | `Processing_Date` | DateTime |
+ | Payment Failed Date | `Payment_Failed_Date` | DateTime |
+ | Expired Date | `Expired_Date` | DateTime |
+ 
+ **Step 4: Set Up ENROLLMENT_SHARED_SECRET**
+ 
+ In your Lovable project, add the `ENROLLMENT_SHARED_SECRET` secret and use the same value in your Deluge function.
+ 
+ **Step 5: Create a Default Policy**
+ 
+ Before the Zoho button will work, you must create at least one policy in the admin dashboard (`/admin` → Policies tab) and mark it as the default. This policy's terms and privacy text will be used for all enrollments.
+ 
+ #### 2-Way Sync: Payment Status Updates to Zoho
+ 
+ When payment events occur, the `stripe-webhook` function automatically updates Zoho CRM:
+ 
+ | Stripe Event | Zoho Update |
+ |--------------|-------------|
+ | `checkout.session.completed` (Card) | Status → "Paid", Payment_Date set |
+ | `checkout.session.completed` (ACH) | Status → "Processing", Processing_Date set |
+ | `payment_intent.succeeded` | Status → "Paid", Payment_Date set |
+ | `payment_intent.payment_failed` | Status → "Failed", Payment_Failed_Date set |
+ | `checkout.session.expired` | Status → "Expired", Expired_Date set |
+ 
+ A timeline note is also added to the Zoho record for each event.
+ 
  #### Enrollment Creation from Zoho
  
  ```
@@ -786,15 +900,17 @@ The `get-enrollment` edge function controls what data is exposed to unauthentica
  
  ### Lovable Cloud (Auto-configured)
  
+ These variables are automatically provided by Lovable Cloud and should NOT be edited manually:
+ 
  | Variable | Source |
  |----------|--------|
- | `VITE_SUPABASE_URL` | Lovable Cloud |
- | `VITE_SUPABASE_PUBLISHABLE_KEY` | Lovable Cloud |
- | `VITE_SUPABASE_PROJECT_ID` | Lovable Cloud |
- | `SUPABASE_URL` | Edge function env |
- | `SUPABASE_ANON_KEY` | Edge function env |
- | `SUPABASE_SERVICE_ROLE_KEY` | Edge function env |
- | `SUPABASE_DB_URL` | Edge function env |
+ | `VITE_SUPABASE_URL` | Frontend - Lovable Cloud backend URL |
+ | `VITE_SUPABASE_PUBLISHABLE_KEY` | Frontend - Lovable Cloud public key |
+ | `VITE_SUPABASE_PROJECT_ID` | Frontend - Project identifier |
+ | `SUPABASE_URL` | Edge Functions - Backend URL |
+ | `SUPABASE_ANON_KEY` | Edge Functions - Public key |
+ | `SUPABASE_SERVICE_ROLE_KEY` | Edge Functions - Admin key |
+ | `SUPABASE_DB_URL` | Edge Functions - Direct database URL |
  
  ### Stripe
  

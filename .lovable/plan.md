@@ -14,6 +14,8 @@
  - ✅ Link regeneration with policy sync
  - ✅ Surgeon management and distribution analytics
  - ✅ Complete audit trail via enrollment_events
+ - ✅ Automatic default policy lookup for Zoho enrollments
+ - ✅ Full Zoho CRM 2-way sync documentation
  
  ## Pending / Future
  
@@ -30,6 +32,19 @@
  - CRM: Zoho CRM API with OAuth refresh token
  - See `docs/DEVELOPER_GUIDE.md` for complete technical documentation
 
+ ## Zoho CRM Integration
+ 
+ The platform supports full 2-way sync with Zoho CRM:
+ 
+ 1. **Zoho → Platform**: Button in Deals module calls `create-enrollment` edge function
+    - Returns enrollment URL to store in Deal record
+    - Automatically uses default policy if not specified
+ 
+ 2. **Platform → Zoho**: Stripe webhook updates Zoho on payment events
+    - Updates Enrollment_Status field
+    - Sets Payment_Date, Processing_Date, etc.
+    - Adds timeline notes for each event
+ 
 # Fix: Stripe Webhook Async Signature Verification
 
 ## Problem Identified

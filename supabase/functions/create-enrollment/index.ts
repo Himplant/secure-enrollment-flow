@@ -14,10 +14,11 @@ interface EnrollmentRequest {
   patient_phone?: string;
   amount_cents: number;
   currency?: string;
-  terms_url: string;
-  privacy_url: string;
-  terms_version: string;
-  terms_sha256: string;
+   terms_url?: string;
+   privacy_url?: string;
+   terms_version?: string;
+   terms_sha256?: string;
+   policy_id?: string;  // Optional: use specific policy by ID
   expires_in_hours?: number;
 }
 
@@ -128,18 +129,54 @@ serve(async (req) => {
 
     const body: EnrollmentRequest = JSON.parse(bodyText);
 
-    // Validate required fields
-    if (!body.zoho_record_id || !body.zoho_module || !body.amount_cents || 
-        !body.terms_url || !body.privacy_url || !body.terms_version || !body.terms_sha256) {
+     // Validate required fields (terms data is now optional - will use default policy)
+     if (!body.zoho_record_id || !body.zoho_module || !body.amount_cents) {
       return new Response(JSON.stringify({ 
         error: "Missing required fields",
-        required: ["zoho_record_id", "zoho_module", "amount_cents", "terms_url", "privacy_url", "terms_version", "terms_sha256"]
+         required: ["zoho_record_id", "zoho_module", "amount_cents"]
       }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+     // Get policy data - either use specified policy, or default policy
+     let policy;
+     if (body.policy_id) {
+       const { data, error } = await supabase
+         .from("policies")
+         .select("*")
+         .eq("id", body.policy_id)
+         .eq("is_active", true)
+         .single();
+       
+       if (error || !data) {
+         return new Response(JSON.stringify({ error: "Specified policy not found or inactive" }), {
+           status: 400,
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
+       policy = data;
+     } else if (!body.terms_url || !body.terms_sha256) {
+       // If terms data not provided, use default policy
+       const { data, error } = await supabase
+         .from("policies")
+         .select("*")
+         .eq("is_default", true)
+         .eq("is_active", true)
+         .single();
+       
+       if (error || !data) {
+         return new Response(JSON.stringify({ 
+           error: "No default policy found. Please create a policy in the admin dashboard first, or pass terms_url, privacy_url, terms_version, and terms_sha256." 
+         }), {
+           status: 400,
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
+       policy = data;
+     }
+ 
     // Generate secure token
     const rawToken = generateSecureToken(32);
     const tokenHash = await sha256Hash(rawToken);
@@ -160,10 +197,11 @@ serve(async (req) => {
         patient_phone: body.patient_phone,
         amount_cents: body.amount_cents,
         currency: body.currency ?? "usd",
-        terms_url: body.terms_url,
-        privacy_url: body.privacy_url,
-        terms_version: body.terms_version,
-        terms_sha256: body.terms_sha256,
+         policy_id: policy?.id || null,
+         terms_url: policy?.terms_url || body.terms_url,
+         privacy_url: policy?.privacy_url || body.privacy_url,
+         terms_version: policy?.version || body.terms_version,
+         terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
         token_hash: tokenHash,
         token_last4: tokenLast4,
         expires_at: expiresAt.toISOString(),
@@ -182,16 +220,19 @@ serve(async (req) => {
       enrollment_id: enrollment.id,
       event_type: "created",
       event_data: {
+         source: "zoho_crm",
         zoho_record_id: body.zoho_record_id,
         zoho_module: body.zoho_module,
         amount_cents: body.amount_cents,
         expires_at: expiresAt.toISOString(),
+         policy_id: policy?.id || null,
+         policy_name: policy?.name || "custom",
       },
     });
 
     // Build enrollment URL
     const baseUrl = req.headers.get("origin") || Deno.env.get("PUBLIC_URL") || "https://secure-enrollment-flow.lovable.app";
-    const enrollmentUrl = `${baseUrl}/enroll?token=${rawToken}`;
+     const enrollmentUrl = `${baseUrl}/enroll/${rawToken}`;
 
     console.log(`Created enrollment ${enrollment.id} for Zoho record ${body.zoho_record_id}`);
 
