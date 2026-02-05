@@ -1,3 +1,34 @@
+ # Current Project Status
+ 
+ The Secure Enrollment Payments Platform is fully functional with the following completed features:
+ 
+ ## Completed
+ 
+ - ✅ Enrollment creation from Zoho CRM via edge function
+ - ✅ Secure SHA-256 token-based payment links
+ - ✅ Stripe Checkout integration (Card + ACH)
+ - ✅ Stripe webhook handling with async signature verification
+ - ✅ Zoho CRM status sync on payment events
+ - ✅ Admin dashboard with patients, transactions, policies, surgeons
+ - ✅ Policy management with dynamic placeholders
+ - ✅ Link regeneration with policy sync
+ - ✅ Surgeon management and distribution analytics
+ - ✅ Complete audit trail via enrollment_events
+ 
+ ## Pending / Future
+ 
+ - [ ] Email notifications to patients
+ - [ ] Refund processing via admin dashboard
+ - [ ] Multi-currency support
+ - [ ] Recurring payment schedules
+ - [ ] PDF receipt generation
+ 
+ ## Technical Notes
+ 
+ - Backend: Lovable Cloud (auto-provisioned PostgreSQL, Auth, Edge Functions)
+ - Payments: Stripe Checkout Sessions + Webhooks
+ - CRM: Zoho CRM API with OAuth refresh token
+ - See `docs/DEVELOPER_GUIDE.md` for complete technical documentation
 
 # Fix: Stripe Webhook Async Signature Verification
 
