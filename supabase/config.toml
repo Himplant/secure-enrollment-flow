@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.test-zoho-token]
 verify_jwt = false
+
+[functions.get-enrollment]
+verify_jwt = false
