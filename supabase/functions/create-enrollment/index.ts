@@ -111,6 +111,7 @@ async function updateZohoRecordWithEnrollment(
 }
 
 // Helper function to find or create a patient
+// Priority: match by email first, then phone
 async function findOrCreatePatient(
   supabase: any,
   email: string | undefined,
@@ -118,12 +119,11 @@ async function findOrCreatePatient(
   name: string | undefined,
   surgeonId: string | undefined
 ): Promise<string | null> {
-  // Need at least email or phone to create/find patient
   if (!email && !phone) {
     return null;
   }
 
-  // Try to find existing patient by email first
+  // Primary: match by email
   if (email) {
     const { data: existingByEmail } = await supabase
       .from("patients")
@@ -132,11 +132,18 @@ async function findOrCreatePatient(
       .maybeSingle();
     
     if (existingByEmail) {
+      // Update phone/name if provided and patient found by email
+      const updates: Record<string, string> = {};
+      if (phone) updates.phone = phone;
+      if (name?.trim()) updates.name = name.trim();
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("patients").update(updates).eq("id", existingByEmail.id);
+      }
       return existingByEmail.id;
     }
   }
 
-  // Try to find by phone if no email match
+  // Secondary: match by phone only if no email match
   if (phone) {
     const { data: existingByPhone } = await supabase
       .from("patients")
@@ -145,6 +152,13 @@ async function findOrCreatePatient(
       .maybeSingle();
     
     if (existingByPhone) {
+      // Update email/name if provided and patient found by phone
+      const updates: Record<string, string> = {};
+      if (email) updates.email = email.toLowerCase();
+      if (name?.trim()) updates.name = name.trim();
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("patients").update(updates).eq("id", existingByPhone.id);
+      }
       return existingByPhone.id;
     }
   }
