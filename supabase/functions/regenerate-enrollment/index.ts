@@ -219,7 +219,7 @@ serve(async (req) => {
     });
 
     // Build enrollment URL
-    const appUrl = Deno.env.get("APP_URL") || req.headers.get("origin") || "https://secure-enrollment-flow.lovable.app";
+    const appUrl = (Deno.env.get("APP_URL") || req.headers.get("origin") || "https://secure-enrollment-flow.lovable.app").replace(/\/+$/, "");
     const enrollmentUrl = `${appUrl}/enroll/${rawToken}`;
 
     console.log(`Admin ${user.email} regenerated enrollment ${body.enrollment_id}`);

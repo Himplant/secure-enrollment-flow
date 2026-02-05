@@ -384,7 +384,7 @@ serve(async (req) => {
     const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
 
     // Build the app URL for dynamic terms if policy has terms_text but no terms_url
-    const appUrl = Deno.env.get("APP_URL") || "https://secure-enrollment-flow.lovable.app";
+    const appUrl = (Deno.env.get("APP_URL") || "https://secure-enrollment-flow.lovable.app").replace(/\/+$/, "");
     
     // Determine terms_url: prefer explicit URL, fall back to dynamic page if policy has text
     let termsUrl = policy?.terms_url || body.terms_url;
@@ -469,14 +469,21 @@ serve(async (req) => {
 
     console.log(`Created enrollment ${enrollment.id} for Zoho record ${body.zoho_record_id}`);
 
-    // Update Zoho CRM record with enrollment data (async, don't block response)
-    updateZohoRecordWithEnrollment(
-      body.zoho_module,
-      body.zoho_record_id,
-      enrollmentUrl,
-      expiresAt,
-      tokenLast4
-    ).catch(err => console.error("Background Zoho update failed:", err));
+    // Update Zoho CRM record with enrollment data - MUST await before returning
+    // Edge functions shut down after response, so fire-and-forget won't work
+    let zohoUpdated = false;
+    try {
+      await updateZohoRecordWithEnrollment(
+        body.zoho_module,
+        body.zoho_record_id,
+        enrollmentUrl,
+        expiresAt,
+        tokenLast4
+      );
+      zohoUpdated = true;
+    } catch (err) {
+      console.error("Zoho update failed:", err);
+    }
 
     return new Response(JSON.stringify({
       success: true,
@@ -484,7 +491,7 @@ serve(async (req) => {
       enrollment_url: enrollmentUrl,
       expires_at: expiresAt.toISOString(),
       token_last4: tokenLast4,
-      zoho_fields_updated: true,
+      zoho_fields_updated: zohoUpdated,
     }), {
       status: 201,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
