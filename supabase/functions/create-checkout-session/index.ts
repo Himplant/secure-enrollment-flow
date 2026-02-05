@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import Stripe from "https://esm.sh/stripe@18.5.0";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import Stripe from "npm:stripe@18.5.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -170,8 +170,8 @@ serve(async (req) => {
       }
     }
 
-    // Get base URL for redirects
-    const origin = req.headers.get("origin") || Deno.env.get("PUBLIC_URL") || "https://secure-enrollment-flow.lovable.app";
+    // Get base URL for redirects - use APP_URL for custom domain support
+    const appUrl = (Deno.env.get("APP_URL") || req.headers.get("origin") || "https://secure-enrollment-flow.lovable.app").replace(/\/+$/, "");
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
@@ -192,8 +192,8 @@ serve(async (req) => {
         },
       ],
       mode: "payment",
-      success_url: `${origin}/enroll/${body.token}?status=success`,
-      cancel_url: `${origin}/enroll/${body.token}?status=canceled`,
+      success_url: `${appUrl}/enroll/${body.token}?status=success`,
+      cancel_url: `${appUrl}/enroll/${body.token}?status=canceled`,
       expires_at: stripeExpiresAt,
       metadata: {
         enrollment_id: enrollment.id,
