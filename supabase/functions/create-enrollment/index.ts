@@ -68,14 +68,11 @@ async function updateZohoRecordWithEnrollment(
     const accessToken = await getZohoAccessToken();
 
     // Format dates for Zoho
-    // Enrollment_Date: MM/DD/YYYY format
-    const enrollmentDate = new Date().toLocaleDateString("en-US", {
-      month: "2-digit",
-      day: "2-digit",
-      year: "numeric"
-    });
+    // Enrollment_Date: YYYY-MM-DD format (Zoho date field format)
+    const now = new Date();
+    const enrollmentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     
-    // Enrollment_Expires_At: ISO format for datetime field (Zoho accepts ISO 8601)
+    // Enrollment_Expires_At: ISO format for datetime field
     const expiresAtISO = expiresAt.toISOString();
 
     const updateData: Record<string, unknown> = {
