@@ -227,6 +227,32 @@ serve(async (req) => {
     const expiresInHours = body.expires_in_hours ?? 48;
     const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
 
+    // Build the app URL for dynamic terms if policy has terms_text but no terms_url
+    const appUrl = Deno.env.get("APP_URL") || "https://secure-enrollment-flow.lovable.app";
+    
+    // Determine terms_url: prefer explicit URL, fall back to dynamic page if policy has text
+    let termsUrl = policy?.terms_url || body.terms_url;
+    if (!termsUrl && policy?.id) {
+      // Policy exists but has no external URL - terms are displayed dynamically on enrollment page
+      termsUrl = `${appUrl}/terms/${policy.id}`;
+    }
+    
+    // Determine privacy_url similarly
+    let privacyUrl = policy?.privacy_url || body.privacy_url;
+    if (!privacyUrl && policy?.id) {
+      privacyUrl = `${appUrl}/privacy/${policy.id}`;
+    }
+    
+    // Final validation - ensure we have required fields
+    if (!termsUrl || !privacyUrl) {
+      return new Response(JSON.stringify({ 
+        error: "Cannot create enrollment: terms_url or privacy_url is missing. Please configure the policy with valid URLs or terms content." 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Create enrollment record
     const { data: enrollment, error: insertError } = await supabase
       .from("enrollments")
@@ -239,8 +265,8 @@ serve(async (req) => {
         amount_cents: amountCents,
         currency: body.currency ?? "usd",
         policy_id: policy?.id || null,
-        terms_url: policy?.terms_url || body.terms_url,
-        privacy_url: policy?.privacy_url || body.privacy_url,
+        terms_url: termsUrl,
+        privacy_url: privacyUrl,
         terms_version: policy?.version || body.terms_version,
         terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
         token_hash: tokenHash,
@@ -272,8 +298,7 @@ serve(async (req) => {
       },
     });
 
-    // Build enrollment URL using APP_URL environment variable
-    const appUrl = Deno.env.get("APP_URL") || "https://secure-enrollment-flow.lovable.app";
+    // Build enrollment URL using APP_URL environment variable (appUrl already defined above)
     const enrollmentUrl = `${appUrl}/enroll/${rawToken}`;
 
     console.log(`Created enrollment ${enrollment.id} for Zoho record ${body.zoho_record_id}`);
