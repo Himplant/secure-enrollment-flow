@@ -179,8 +179,11 @@ serve(async (req) => {
     }
 
     // Get policy data - either use specified policy, or default policy
+    // Always load default policy if terms are not provided in request
     let policy;
+    
     if (body.policy_id) {
+      // Fetch specified policy
       const { data, error } = await supabase
          .from("policies")
          .select("*")
@@ -195,8 +198,8 @@ serve(async (req) => {
         });
       }
       policy = data;
-    } else if (!body.terms_url || !body.terms_sha256) {
-      // If terms data not provided, use default policy
+    } else if (!body.terms_url || !body.terms_sha256 || !body.terms_version) {
+      // If any terms data is missing, fetch and use default policy
       const { data, error } = await supabase
          .from("policies")
          .select("*")
@@ -206,7 +209,7 @@ serve(async (req) => {
       
       if (error || !data) {
         return new Response(JSON.stringify({ 
-          error: "No default policy found. Please create a policy in the admin dashboard first, or pass terms_url, privacy_url, terms_version, and terms_sha256." 
+          error: "No default policy found. Please create a policy in the admin dashboard first, or provide complete terms_url, privacy_url, terms_version, and terms_sha256." 
         }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
