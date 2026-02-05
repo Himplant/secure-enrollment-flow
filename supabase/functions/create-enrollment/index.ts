@@ -12,13 +12,14 @@ interface EnrollmentRequest {
   patient_name?: string;
   patient_email?: string;
   patient_phone?: string;
-  amount_cents: number;
+  amount?: number;        // Decimal from Zoho (e.g., 500.00)
+  amount_cents?: number;  // Legacy support for cents
   currency?: string;
-   terms_url?: string;
-   privacy_url?: string;
-   terms_version?: string;
-   terms_sha256?: string;
-   policy_id?: string;  // Optional: use specific policy by ID
+  terms_url?: string;
+  privacy_url?: string;
+  terms_version?: string;
+  terms_sha256?: string;
+  policy_id?: string;
   expires_in_hours?: number;
 }
 
@@ -73,6 +74,26 @@ async function validateHmac(
   return result === 0;
 }
 
+// Helper to get header value case-insensitively
+function getHeaderCaseInsensitive(headers: Headers, name: string): string | null {
+  // Try exact match first
+  const exact = headers.get(name);
+  if (exact) return exact;
+  
+  // Try lowercase
+  const lower = headers.get(name.toLowerCase());
+  if (lower) return lower;
+  
+  // Iterate all headers for case-insensitive match
+  const lowerName = name.toLowerCase();
+  for (const [key, value] of headers.entries()) {
+    if (key.toLowerCase() === lowerName) {
+      return value;
+    }
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -98,10 +119,10 @@ serve(async (req) => {
 
     const bodyText = await req.text();
     
-    // Validate authentication - either shared secret or HMAC
-    const headerSecret = req.headers.get("x-shared-secret");
-    const hmacSignature = req.headers.get("x-hmac-signature");
-    const hmacTimestamp = req.headers.get("x-hmac-timestamp");
+    // Validate authentication - either shared secret or HMAC (case-insensitive headers)
+    const headerSecret = getHeaderCaseInsensitive(req.headers, "x-shared-secret");
+    const hmacSignature = getHeaderCaseInsensitive(req.headers, "x-hmac-signature");
+    const hmacTimestamp = getHeaderCaseInsensitive(req.headers, "x-hmac-timestamp");
 
     let authenticated = false;
 
@@ -129,54 +150,71 @@ serve(async (req) => {
 
     const body: EnrollmentRequest = JSON.parse(bodyText);
 
-     // Validate required fields (terms data is now optional - will use default policy)
-     if (!body.zoho_record_id || !body.zoho_module || !body.amount_cents) {
+    // Convert amount to cents if provided as decimal
+    let amountCents: number;
+    if (body.amount !== undefined) {
+      // Zoho sends amount as decimal (e.g., 500.00)
+      amountCents = Math.round(body.amount * 100);
+    } else if (body.amount_cents !== undefined) {
+      // Legacy support for amount_cents
+      amountCents = body.amount_cents;
+    } else {
       return new Response(JSON.stringify({ 
-        error: "Missing required fields",
-         required: ["zoho_record_id", "zoho_module", "amount_cents"]
+        error: "Missing required field: amount or amount_cents",
       }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-     // Get policy data - either use specified policy, or default policy
-     let policy;
-     if (body.policy_id) {
-       const { data, error } = await supabase
+    // Validate required fields
+    if (!body.zoho_record_id || !body.zoho_module) {
+      return new Response(JSON.stringify({ 
+        error: "Missing required fields",
+        required: ["zoho_record_id", "zoho_module", "amount or amount_cents"]
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get policy data - either use specified policy, or default policy
+    let policy;
+    if (body.policy_id) {
+      const { data, error } = await supabase
          .from("policies")
          .select("*")
          .eq("id", body.policy_id)
          .eq("is_active", true)
          .single();
-       
-       if (error || !data) {
-         return new Response(JSON.stringify({ error: "Specified policy not found or inactive" }), {
-           status: 400,
-           headers: { ...corsHeaders, "Content-Type": "application/json" },
-         });
-       }
-       policy = data;
-     } else if (!body.terms_url || !body.terms_sha256) {
-       // If terms data not provided, use default policy
-       const { data, error } = await supabase
+      
+      if (error || !data) {
+        return new Response(JSON.stringify({ error: "Specified policy not found or inactive" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      policy = data;
+    } else if (!body.terms_url || !body.terms_sha256) {
+      // If terms data not provided, use default policy
+      const { data, error } = await supabase
          .from("policies")
          .select("*")
          .eq("is_default", true)
          .eq("is_active", true)
          .single();
-       
-       if (error || !data) {
-         return new Response(JSON.stringify({ 
-           error: "No default policy found. Please create a policy in the admin dashboard first, or pass terms_url, privacy_url, terms_version, and terms_sha256." 
-         }), {
-           status: 400,
-           headers: { ...corsHeaders, "Content-Type": "application/json" },
-         });
-       }
-       policy = data;
-     }
- 
+      
+      if (error || !data) {
+        return new Response(JSON.stringify({ 
+          error: "No default policy found. Please create a policy in the admin dashboard first, or pass terms_url, privacy_url, terms_version, and terms_sha256." 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      policy = data;
+    }
+
     // Generate secure token
     const rawToken = generateSecureToken(32);
     const tokenHash = await sha256Hash(rawToken);
@@ -195,13 +233,13 @@ serve(async (req) => {
         patient_name: body.patient_name,
         patient_email: body.patient_email,
         patient_phone: body.patient_phone,
-        amount_cents: body.amount_cents,
+        amount_cents: amountCents,
         currency: body.currency ?? "usd",
-         policy_id: policy?.id || null,
-         terms_url: policy?.terms_url || body.terms_url,
-         privacy_url: policy?.privacy_url || body.privacy_url,
-         terms_version: policy?.version || body.terms_version,
-         terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
+        policy_id: policy?.id || null,
+        terms_url: policy?.terms_url || body.terms_url,
+        privacy_url: policy?.privacy_url || body.privacy_url,
+        terms_version: policy?.version || body.terms_version,
+        terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
         token_hash: tokenHash,
         token_last4: tokenLast4,
         expires_at: expiresAt.toISOString(),
@@ -220,19 +258,20 @@ serve(async (req) => {
       enrollment_id: enrollment.id,
       event_type: "created",
       event_data: {
-         source: "zoho_crm",
+        source: "zoho_crm",
         zoho_record_id: body.zoho_record_id,
         zoho_module: body.zoho_module,
-        amount_cents: body.amount_cents,
+        amount_cents: amountCents,
+        amount_decimal: body.amount,
         expires_at: expiresAt.toISOString(),
-         policy_id: policy?.id || null,
-         policy_name: policy?.name || "custom",
+        policy_id: policy?.id || null,
+        policy_name: policy?.name || "custom",
       },
     });
 
-    // Build enrollment URL
-    const baseUrl = req.headers.get("origin") || Deno.env.get("PUBLIC_URL") || "https://secure-enrollment-flow.lovable.app";
-     const enrollmentUrl = `${baseUrl}/enroll/${rawToken}`;
+    // Build enrollment URL using APP_URL environment variable
+    const appUrl = Deno.env.get("APP_URL") || "https://secure-enrollment-flow.lovable.app";
+    const enrollmentUrl = `${appUrl}/enroll/${rawToken}`;
 
     console.log(`Created enrollment ${enrollment.id} for Zoho record ${body.zoho_record_id}`);
 

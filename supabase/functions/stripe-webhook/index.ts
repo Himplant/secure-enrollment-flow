@@ -235,7 +235,7 @@ serve(async (req) => {
         if (enrollment) {
           await updateZohoRecord(enrollment.zoho_module, enrollment.zoho_record_id, {
             Enrollment_Status: newStatus === "paid" ? "Paid" : "Processing",
-            Payment_Method: paymentMethodType === "ach" ? "ACH" : "Card",
+            Payment_Method_Stripe: paymentMethodType === "ach" ? "ACH" : "Card",
             Stripe_Session_ID: session.id,
             ...(newStatus === "paid" && { Payment_Date: new Date().toISOString() }),
             ...(newStatus === "processing" && { Processing_Date: new Date().toISOString() }),
