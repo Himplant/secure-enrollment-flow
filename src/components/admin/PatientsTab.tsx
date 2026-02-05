@@ -8,7 +8,8 @@ import {
   Loader2,
   User,
   Mail,
-  Phone
+  Phone,
+  Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -175,6 +176,25 @@ export function PatientsTab() {
     },
   });
 
+  // Delete patient mutation
+  const deletePatientMutation = useMutation({
+    mutationFn: async (patientId: string) => {
+      const { error } = await supabase
+        .from("patients")
+        .delete()
+        .eq("id", patientId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patients"] });
+      toast({ title: "Patient deleted", description: "Patient has been removed" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const filteredPatients = patients?.filter((patient) => {
     if (!search) return true;
     const searchLower = search.toLowerCase();
@@ -319,6 +339,22 @@ export function PatientsTab() {
                             <Plus className="h-4 w-4 mr-2" />
                             Create Payment Link
                           </DropdownMenuItem>
+                          {patient.total_paid === 0 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  if (confirm(`Delete ${patient.name}? This cannot be undone.`)) {
+                                    deletePatientMutation.mutate(patient.id);
+                                  }
+                                }}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Patient
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   MoreHorizontal, 
   Eye, 
@@ -9,7 +9,9 @@ import {
   Calendar,
   CreditCard,
   Building2,
-  Clock
+  Clock,
+  Trash2,
+  ArrowUpDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,9 +83,11 @@ export function TransactionsTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [surgeonFilter, setSurgeonFilter] = useState<string>("all");
+  const [sortByExpiration, setSortByExpiration] = useState<"asc" | "desc" | null>(null);
   const [regenerateEnrollment, setRegenerateEnrollment] = useState<Transaction | null>(null);
   const [detailsEnrollmentId, setDetailsEnrollmentId] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch surgeons for filter dropdown
   const { data: surgeons = [] } = useQuery({
@@ -144,18 +148,53 @@ export function TransactionsTab() {
     },
   });
 
+  // Delete transaction mutation
+  const deleteTransactionMutation = useMutation({
+    mutationFn: async (transactionId: string) => {
+      const { error } = await supabase
+        .from("enrollments")
+        .delete()
+        .eq("id", transactionId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["enrollment-stats"] });
+      toast({ title: "Transaction deleted", description: "Enrollment has been removed" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const filteredTransactions = useMemo(() => {
     if (!transactions) return [];
-    if (!search) return transactions;
-
-    const searchLower = search.toLowerCase();
-    return transactions.filter(
-      (t) =>
-        t.patient_name?.toLowerCase().includes(searchLower) ||
-        t.patient_email?.toLowerCase().includes(searchLower) ||
-        t.token_last4.includes(search)
-    );
-  }, [transactions, search]);
+    
+    let result = transactions;
+    
+    // Apply search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.patient_name?.toLowerCase().includes(searchLower) ||
+          t.patient_email?.toLowerCase().includes(searchLower) ||
+          t.token_last4.includes(search)
+      );
+    }
+    
+    // Apply expiration sorting
+    if (sortByExpiration) {
+      result = [...result].sort((a, b) => {
+        const aTime = new Date(a.expires_at).getTime();
+        const bTime = new Date(b.expires_at).getTime();
+        return sortByExpiration === "asc" ? aTime - bTime : bTime - aTime;
+      });
+    }
+    
+    return result;
+  }, [transactions, search, sortByExpiration]);
 
   const formatAmount = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -264,6 +303,19 @@ export function TransactionsTab() {
                   <TableHead>Status</TableHead>
                   <TableHead>Payment</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto p-0 font-medium hover:bg-transparent"
+                      onClick={() => setSortByExpiration(prev => 
+                        prev === null ? "asc" : prev === "asc" ? "desc" : null
+                      )}
+                    >
+                      Expires
+                      <ArrowUpDown className={`ml-1 h-3 w-3 ${sortByExpiration ? "text-primary" : "text-muted-foreground"}`} />
+                    </Button>
+                  </TableHead>
                   <TableHead>Key Dates</TableHead>
                   <TableHead>Token</TableHead>
                   <TableHead className="w-12"></TableHead>
@@ -332,14 +384,19 @@ export function TransactionsTab() {
                       </TooltipProvider>
                     </TableCell>
                     <TableCell>
+                      <div className="text-xs text-muted-foreground">
+                        {format(new Date(transaction.expires_at), "MMM d, h:mm a")}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         <div className="space-y-0.5">
                           {transaction.terms_accepted_at && (
-                            <p className="text-green-600">Terms ✓</p>
+                            <p className="text-success">Terms ✓</p>
                           )}
                           {transaction.paid_at && (
-                            <p className="text-green-600">
+                            <p className="text-success">
                               Paid {format(new Date(transaction.paid_at), "MMM d")}
                             </p>
                           )}
@@ -377,6 +434,19 @@ export function TransactionsTab() {
                             <RefreshCw className="h-4 w-4 mr-2" />
                             Get New Link
                           </DropdownMenuItem>
+                          {!["paid", "processing"].includes(transaction.status) && (
+                            <DropdownMenuItem 
+                              onClick={() => {
+                                if (confirm(`Delete this enrollment for ${transaction.patient_name || 'Unknown'}? This cannot be undone.`)) {
+                                  deleteTransactionMutation.mutate(transaction.id);
+                                }
+                              }}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

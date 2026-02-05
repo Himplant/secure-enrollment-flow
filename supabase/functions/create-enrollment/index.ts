@@ -24,6 +24,93 @@ interface EnrollmentRequest {
   expires_in_hours?: number;
 }
 
+// Helper to refresh Zoho access token
+async function getZohoAccessToken(): Promise<string> {
+  const refreshToken = Deno.env.get("ZOHO_REFRESH_TOKEN");
+  const clientId = Deno.env.get("ZOHO_CLIENT_ID");
+  const clientSecret = Deno.env.get("ZOHO_CLIENT_SECRET");
+
+  if (!refreshToken || !clientId || !clientSecret) {
+    throw new Error("Zoho credentials not configured");
+  }
+
+  const response = await fetch("https://accounts.zoho.com/oauth/v2/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to refresh Zoho token: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+// Update Zoho CRM record with enrollment data
+async function updateZohoRecordWithEnrollment(
+  module: string,
+  recordId: string,
+  enrollmentUrl: string,
+  expiresAt: Date,
+  tokenLast4: string
+): Promise<void> {
+  try {
+    const accessToken = await getZohoAccessToken();
+
+    // Format dates for Zoho
+    // Enrollment_Date: MM/DD/YYYY format
+    const enrollmentDate = new Date().toLocaleDateString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric"
+    });
+    
+    // Enrollment_Expires_At: ISO format for datetime field (Zoho accepts ISO 8601)
+    const expiresAtISO = expiresAt.toISOString();
+
+    const updateData: Record<string, unknown> = {
+      Enrollment_Status: "created",
+      Enrollment_Link: enrollmentUrl,
+      Enrollment_Date: enrollmentDate,
+      Enrollment_Expires_At: expiresAtISO,
+      Enrollment_Token_Last4: tokenLast4,
+    };
+
+    const response = await fetch(
+      `https://www.zohoapis.com/crm/v6/${module}/${recordId}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Zoho-oauthtoken ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ data: [updateData] }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Failed to update Zoho record: ${errorText}`);
+      // Don't throw - enrollment was still created successfully
+    } else {
+      console.log(`Updated Zoho ${module}/${recordId} with enrollment data`);
+    }
+  } catch (error) {
+    console.error("Error updating Zoho record:", error);
+    // Don't throw - enrollment was still created successfully
+  }
+}
+
 // Helper function to find or create a patient
 async function findOrCreatePatient(
   supabase: any,
@@ -382,12 +469,22 @@ serve(async (req) => {
 
     console.log(`Created enrollment ${enrollment.id} for Zoho record ${body.zoho_record_id}`);
 
+    // Update Zoho CRM record with enrollment data (async, don't block response)
+    updateZohoRecordWithEnrollment(
+      body.zoho_module,
+      body.zoho_record_id,
+      enrollmentUrl,
+      expiresAt,
+      tokenLast4
+    ).catch(err => console.error("Background Zoho update failed:", err));
+
     return new Response(JSON.stringify({
       success: true,
       enrollment_id: enrollment.id,
       enrollment_url: enrollmentUrl,
       expires_at: expiresAt.toISOString(),
       token_last4: tokenLast4,
+      zoho_fields_updated: true,
     }), {
       status: 201,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
