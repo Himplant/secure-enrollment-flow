@@ -72,14 +72,16 @@ async function updateZohoRecordWithEnrollment(
     const now = new Date();
     const enrollmentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     
-    // Enrollment_Expires_At: ISO format for datetime field
-    const expiresAtISO = expiresAt.toISOString();
+    // Enrollment_Expires_At: Zoho datetime format (yyyy-MM-ddTHH:mm:ss+HH:mm)
+    // Zoho requires timezone offset, not "Z" suffix
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const expiresAtFormatted = `${expiresAt.getFullYear()}-${pad(expiresAt.getMonth() + 1)}-${pad(expiresAt.getDate())}T${pad(expiresAt.getHours())}:${pad(expiresAt.getMinutes())}:${pad(expiresAt.getSeconds())}+00:00`;
 
     const updateData: Record<string, unknown> = {
       Enrollment_Status: "created",
       Enrollment_Link: enrollmentUrl,
       Enrollment_Date: enrollmentDate,
-      Enrollment_Expires_At: expiresAtISO,
+      Enrollment_Expires_At: expiresAtFormatted,
       Enrollment_Token_Last4: tokenLast4,
     };
 
