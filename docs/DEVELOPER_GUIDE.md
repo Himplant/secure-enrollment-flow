@@ -622,7 +622,7 @@
                               │ Verify signature   │
                               │ Update enrollment  │
                               │ Log event          │
-                              │ (TODO: Sync Zoho)  │
+                              │ Sync to Zoho CRM   │
                               └────────────────────┘
  ```
  
@@ -722,12 +722,16 @@
  
  ### 2. PII Protection
  
- The `get-enrollment` edge function scrubs sensitive data:
+The `get-enrollment` edge function controls what data is exposed to unauthenticated patients:
  
  ```typescript
  // Data returned to unauthenticated patient
  return {
-   first_name: enrollment.patient_name?.split(' ')[0] || 'Patient',
+  patient_first_name: enrollment.patient_name?.split(' ')[0],
+  patient_name: enrollment.patient_name,     // For terms placeholder display
+  patient_email: enrollment.patient_email,   // For terms placeholder display
+  patient_phone: enrollment.patient_phone,   // For terms placeholder display
+  surgeon_name: surgeonName,                 // For terms placeholder display
    amount_cents: enrollment.amount_cents,
    currency: enrollment.currency,
    status: enrollment.status,
@@ -736,9 +740,11 @@
    privacy_text: policy.privacy_text,
  };
  
- // NOT returned: full name, email, phone, IP, user agent, Zoho IDs
+// NOT returned: IP address, user agent, Zoho IDs, Stripe IDs, token hash
  ```
  
+> **Note**: Patient PII (name, email, phone) is intentionally returned to enable dynamic placeholder replacement in terms/privacy text. Access is gated by the secure SHA-256 token.
+
  ### 3. Row Level Security
  
  All tables deny public access:
@@ -865,13 +871,14 @@
  
  ## Future Improvements
  
- - [ ] Zoho CRM status sync on payment events
+- [x] ~~Zoho CRM status sync on payment events~~ (Implemented)
  - [ ] Email notifications to patients
  - [ ] Refund processing via admin dashboard
  - [ ] Multi-currency support
  - [ ] Recurring payment schedules
  - [ ] PDF receipt generation
  - [ ] Webhook retry dashboard
+- [ ] Patient portal for viewing payment history
  
  ---
  

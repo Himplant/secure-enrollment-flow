@@ -1,73 +1,67 @@
-# Welcome to your Lovable project
+# Secure Enrollment Payments Platform
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+**URL**: https://lovable.dev/projects/6dca5097-6c96-4e95-b60d-ff792b7e78f4
 
-## How can I edit this code?
+**Production**: https://secure-enrollment-flow.lovable.app
 
-There are several ways of editing your application.
+## Overview
 
-**Use Lovable**
+A medical-grade enrollment and payment collection platform designed to:
+- Generate secure, single-use payment links from Zoho CRM
+- Collect Credit Card and ACH payments via Stripe Checkout
+- Maintain complete audit trails with enforceable consent
+- Automatically sync payment status back to Zoho CRM
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Documentation
 
-Changes made via Lovable will be committed automatically to this repo.
+For detailed technical documentation, see **[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)**.
 
-**Use your preferred IDE**
+## Technology Stack
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Backend**: Lovable Cloud (PostgreSQL, Edge Functions, Auth)
+- **Payments**: Stripe Checkout Sessions + Webhooks
+- **CRM**: Zoho CRM API integration
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Key Features
 
-Follow these steps:
+- **Secure Token Links**: SHA-256 hashed tokens, never stored in plain text
+- **Terms Consent Tracking**: Version control with content hashing
+- **Row Level Security**: All tables protected with restrictive RLS policies
+- **Admin Dashboard**: Patient, transaction, policy, and surgeon management
+- **Dynamic Policies**: Rich text editor with placeholder support
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+## Local Development
+
+```bash
+# Clone and install
 git clone <YOUR_GIT_URL>
+cd <PROJECT_NAME>
+npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Environment Variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Environment variables are managed through Lovable Cloud. See the [Developer Guide](docs/DEVELOPER_GUIDE.md#environment-variables) for details.
 
-**Use GitHub Codespaces**
+## Edge Functions
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+| Function | Purpose |
+|----------|---------|
+| `create-enrollment` | Create enrollment from Zoho CRM |
+| `get-enrollment` | Fetch enrollment for patient view |
+| `create-checkout-session` | Create Stripe Checkout Session |
+| `stripe-webhook` | Handle Stripe payment events |
+| `regenerate-enrollment` | Generate new link for existing enrollment |
+| `admin-create-enrollment` | Create enrollment from admin dashboard |
+| `sync-surgeons` | Sync surgeons from Zoho CRM |
+| `send-admin-invite` | Send admin user invites |
 
-## What technologies are used for this project?
+## Deployment
 
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Deployed automatically via Lovable. Click **Share → Publish** to deploy frontend changes. Edge functions deploy automatically on save.
