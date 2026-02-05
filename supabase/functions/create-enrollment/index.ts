@@ -431,56 +431,131 @@ serve(async (req) => {
       body.surgeon_id
     );
 
-    // Create enrollment record
-    const { data: enrollment, error: insertError } = await supabase
+    // Check for existing open enrollment for the same Zoho record
+    // Only create new if existing is in a final state (paid, expired, canceled)
+    const finalStatuses = ['paid', 'expired', 'canceled'];
+    const { data: existingEnrollment } = await supabase
       .from("enrollments")
-      .insert({
-        zoho_record_id: body.zoho_record_id,
-        zoho_module: body.zoho_module,
-        patient_id: patientId,
-        patient_name: body.patient_name,
-        patient_email: body.patient_email,
-        patient_phone: body.patient_phone,
-        amount_cents: amountCents,
-        currency: body.currency ?? "usd",
-        policy_id: policy?.id || null,
-        terms_url: termsUrl,
-        privacy_url: privacyUrl,
-        terms_version: policy?.version || body.terms_version,
-        terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
-        token_hash: tokenHash,
-        token_last4: tokenLast4,
-        expires_at: expiresAt.toISOString(),
-        status: "created",
-      })
-      .select()
-      .single();
+      .select("id, status")
+      .eq("zoho_record_id", body.zoho_record_id)
+      .not("status", "in", `(${finalStatuses.join(",")})`)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (insertError) {
-      console.error("Failed to create enrollment:", insertError);
-      throw new Error(`Failed to create enrollment: ${insertError.message}`);
+    let enrollment;
+
+    if (existingEnrollment) {
+      // Update existing open enrollment with new token, expiry, and amount
+      console.log(`Updating existing enrollment ${existingEnrollment.id} (status: ${existingEnrollment.status}) for Zoho record ${body.zoho_record_id}`);
+      
+      const { data: updated, error: updateError } = await supabase
+        .from("enrollments")
+        .update({
+          patient_id: patientId,
+          patient_name: body.patient_name,
+          patient_email: body.patient_email,
+          patient_phone: body.patient_phone,
+          amount_cents: amountCents,
+          currency: body.currency ?? "usd",
+          policy_id: policy?.id || null,
+          terms_url: termsUrl,
+          privacy_url: privacyUrl,
+          terms_version: policy?.version || body.terms_version,
+          terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
+          token_hash: tokenHash,
+          token_last4: tokenLast4,
+          expires_at: expiresAt.toISOString(),
+          status: "created",
+          opened_at: null,
+          terms_accepted_at: null,
+          terms_accept_ip: null,
+          terms_accept_user_agent: null,
+          processing_at: null,
+          paid_at: null,
+          failed_at: null,
+          expired_at: null,
+          stripe_session_id: null,
+          stripe_payment_intent_id: null,
+          stripe_customer_id: null,
+          payment_method_type: null,
+        })
+        .eq("id", existingEnrollment.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error("Failed to update enrollment:", updateError);
+        throw new Error(`Failed to update enrollment: ${updateError.message}`);
+      }
+      enrollment = updated;
+
+      // Log the regenerated event
+      await supabase.from("enrollment_events").insert({
+        enrollment_id: enrollment.id,
+        event_type: "regenerated",
+        event_data: {
+          source: "zoho_crm",
+          zoho_record_id: body.zoho_record_id,
+          previous_status: existingEnrollment.status,
+          amount_cents: amountCents,
+          expires_at: expiresAt.toISOString(),
+          policy_id: policy?.id || null,
+        },
+      });
+    } else {
+      // Create new enrollment record
+      const { data: inserted, error: insertError } = await supabase
+        .from("enrollments")
+        .insert({
+          zoho_record_id: body.zoho_record_id,
+          zoho_module: body.zoho_module,
+          patient_id: patientId,
+          patient_name: body.patient_name,
+          patient_email: body.patient_email,
+          patient_phone: body.patient_phone,
+          amount_cents: amountCents,
+          currency: body.currency ?? "usd",
+          policy_id: policy?.id || null,
+          terms_url: termsUrl,
+          privacy_url: privacyUrl,
+          terms_version: policy?.version || body.terms_version,
+          terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
+          token_hash: tokenHash,
+          token_last4: tokenLast4,
+          expires_at: expiresAt.toISOString(),
+          status: "created",
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Failed to create enrollment:", insertError);
+        throw new Error(`Failed to create enrollment: ${insertError.message}`);
+      }
+      enrollment = inserted;
+
+      // Log the created event
+      await supabase.from("enrollment_events").insert({
+        enrollment_id: enrollment.id,
+        event_type: "created",
+        event_data: {
+          source: "zoho_crm",
+          zoho_record_id: body.zoho_record_id,
+          zoho_module: body.zoho_module,
+          amount_cents: amountCents,
+          amount_decimal: body.amount,
+          expires_at: expiresAt.toISOString(),
+          policy_id: policy?.id || null,
+          policy_name: policy?.name || "custom",
+        },
+      });
     }
-
-    // Log the created event
-    await supabase.from("enrollment_events").insert({
-      enrollment_id: enrollment.id,
-      event_type: "created",
-      event_data: {
-        source: "zoho_crm",
-        zoho_record_id: body.zoho_record_id,
-        zoho_module: body.zoho_module,
-        amount_cents: amountCents,
-        amount_decimal: body.amount,
-        expires_at: expiresAt.toISOString(),
-        policy_id: policy?.id || null,
-        policy_name: policy?.name || "custom",
-      },
-    });
 
     // Build enrollment URL using APP_URL environment variable (appUrl already defined above)
     const enrollmentUrl = `${appUrl}/enroll/${rawToken}`;
 
-    console.log(`Created enrollment ${enrollment.id} for Zoho record ${body.zoho_record_id}`);
+    console.log(`Enrollment ${enrollment.id} for Zoho record ${body.zoho_record_id} | URL: ${enrollmentUrl} | APP_URL: ${appUrl}`);
 
     // Update Zoho CRM record with enrollment data - MUST await before returning
     // Edge functions shut down after response, so fire-and-forget won't work
