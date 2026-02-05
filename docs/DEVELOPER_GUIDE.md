@@ -134,12 +134,14 @@
  | Recharts | Analytics charts |
  
  ### Backend (Lovable Cloud / Supabase)
+
+> **Note**: This project uses **Lovable Cloud**, which provides a fully-managed backend. You do NOT need a separate Supabase account - everything is integrated automatically through Lovable. Access your backend via the "Cloud View" button in your Lovable project.
  
  | Technology | Purpose |
  |------------|---------|
- | Supabase Database | PostgreSQL database |
- | Supabase Auth | Admin user authentication |
- | Supabase Edge Functions | Serverless API endpoints (Deno) |
+| Lovable Cloud Database | PostgreSQL database (auto-provisioned) |
+| Lovable Cloud Auth | Admin user authentication |
+| Edge Functions | Serverless API endpoints (Deno runtime) |
  | Row Level Security | Data access control |
  
  ### External Services
