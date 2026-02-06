@@ -1,13 +1,26 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { Loader2 } from "lucide-react";
+import { MfaSetupChoice } from "./MfaSetupChoice";
+import { MfaChallenge } from "./MfaChallenge";
 
 interface AdminProtectedRouteProps {
   children: React.ReactNode;
 }
 
 export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
-  const { isLoading, isAuthenticated, isAdmin } = useAdminAuth();
+  const {
+    isLoading,
+    isAuthenticated,
+    isAdmin,
+    user,
+    mfaVerified,
+    mfaRequired,
+    mfaMethod,
+    signOut,
+    setMfaVerified,
+    setMfaMethod,
+  } = useAdminAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -24,6 +37,31 @@ export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
 
   if (!isAdmin) {
     return <Navigate to="/admin/pending" state={{ from: location }} replace />;
+  }
+
+  // MFA not set up yet — force setup
+  if (mfaRequired || (!mfaMethod && !mfaVerified)) {
+    return (
+      <MfaSetupChoice
+        userEmail={user?.email || ""}
+        onComplete={async (method) => {
+          await setMfaMethod(method);
+        }}
+        onSignOut={signOut}
+      />
+    );
+  }
+
+  // MFA set up but not verified this session
+  if (mfaMethod && !mfaVerified) {
+    return (
+      <MfaChallenge
+        mfaMethod={mfaMethod}
+        userEmail={user?.email || ""}
+        onVerified={() => setMfaVerified()}
+        onSignOut={signOut}
+      />
+    );
   }
 
   return <>{children}</>;

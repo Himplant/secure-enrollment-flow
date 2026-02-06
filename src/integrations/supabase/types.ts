@@ -22,6 +22,7 @@ export type Database = {
           id: string
           invited_at: string
           invited_by: string | null
+          mfa_method: string | null
           role: Database["public"]["Enums"]["admin_role"]
           updated_at: string
           user_id: string | null
@@ -33,6 +34,7 @@ export type Database = {
           id?: string
           invited_at?: string
           invited_by?: string | null
+          mfa_method?: string | null
           role?: Database["public"]["Enums"]["admin_role"]
           updated_at?: string
           user_id?: string | null
@@ -44,6 +46,7 @@ export type Database = {
           id?: string
           invited_at?: string
           invited_by?: string | null
+          mfa_method?: string | null
           role?: Database["public"]["Enums"]["admin_role"]
           updated_at?: string
           user_id?: string | null
@@ -213,6 +216,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      mfa_email_codes: {
+        Row: {
+          code: string
+          created_at: string
+          expires_at: string
+          id: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       patients: {
         Row: {
