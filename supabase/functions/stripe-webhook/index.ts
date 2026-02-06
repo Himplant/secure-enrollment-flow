@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import Stripe from "npm:stripe@18.5.0";
+import { generateConsentPdf } from "../_shared/consent-pdf.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -98,6 +99,66 @@ async function addZohoNote(
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`Failed to add Zoho note: ${errorText}`);
+  }
+}
+
+// Generate and store consent PDF when payment is confirmed
+async function generateAndStoreConsentPdf(
+  supabase: any,
+  enrollment: any,
+  paymentDate: string,
+): Promise<void> {
+  try {
+    // Fetch policy text
+    const { data: policy } = enrollment.policy_id
+      ? await supabase.from("policies").select("terms_text, privacy_text").eq("id", enrollment.policy_id).single()
+      : { data: null };
+
+    // Decode signature if stored
+    let signaturePngBytes: Uint8Array | null = null;
+    if (enrollment.signature_data && enrollment.signature_data !== "stored") {
+      const base64Match = enrollment.signature_data.match(/^data:image\/png;base64,(.+)$/);
+      if (base64Match) {
+        const binaryString = atob(base64Match[1]);
+        signaturePngBytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          signaturePngBytes[i] = binaryString.charCodeAt(i);
+        }
+      }
+    }
+
+    const pdfBytes = await generateConsentPdf(
+      enrollment,
+      policy?.terms_text || null,
+      policy?.privacy_text || null,
+      signaturePngBytes,
+      enrollment.terms_accept_ip || "unknown",
+      enrollment.terms_accept_user_agent || "unknown",
+      paymentDate,
+    );
+
+    const pdfFileName = `${enrollment.id}/${Date.now()}-consent.pdf`;
+    const { error: uploadError } = await supabase.storage
+      .from("consent-documents")
+      .upload(pdfFileName, pdfBytes, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error("Error uploading consent PDF:", uploadError);
+      return;
+    }
+
+    await supabase
+      .from("enrollments")
+      .update({ consent_pdf_path: pdfFileName })
+      .eq("id", enrollment.id);
+
+    console.log(`Consent PDF generated and stored: ${pdfFileName}`);
+  } catch (err) {
+    console.error("Error generating consent PDF:", err);
+    // Don't block the webhook if PDF generation fails
   }
 }
 
@@ -249,6 +310,11 @@ serve(async (req) => {
           );
         }
 
+        // Generate consent PDF with payment date timestamp
+        if (enrollment && newStatus === "paid") {
+          await generateAndStoreConsentPdf(supabase, enrollment, paidAt!);
+        }
+
         console.log(`Enrollment ${enrollmentId} updated to ${newStatus}`);
         break;
       }
@@ -302,6 +368,9 @@ serve(async (req) => {
             "Payment Confirmed",
             `ACH payment confirmed. Amount: $${(enrollment.amount_cents / 100).toFixed(2)}`
           );
+
+          // Generate consent PDF with payment date
+          await generateAndStoreConsentPdf(supabase, enrollment, enrollment.paid_at);
 
           console.log(`Enrollment ${enrollmentId} payment confirmed`);
         }

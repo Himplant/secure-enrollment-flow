@@ -1,6 +1,7 @@
 import { CheckCircle2, XCircle, Timer, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import himplantLogo from "@/assets/himplant-logo.png";
 
 type StatusType = 'success' | 'processing' | 'failed' | 'expired' | 'invalid';
 
@@ -63,6 +64,7 @@ export function EnrollmentStatus({
       "flex flex-col items-center text-center max-w-md mx-auto animate-fade-in",
       className
     )}>
+      <img src={himplantLogo} alt="Himplant" className="h-14 w-auto mb-6 object-contain" />
       <div className={cn(
         "w-20 h-20 rounded-full flex items-center justify-center mb-6",
         styles.bgClass

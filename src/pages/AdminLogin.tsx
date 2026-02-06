@@ -9,6 +9,7 @@ import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import himplantLogo from "@/assets/himplant-logo.png";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -105,9 +106,7 @@ export default function AdminLogin() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
       <Card className="w-full max-w-md card-premium">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-            <Shield className="h-6 w-6 text-primary" />
-          </div>
+          <img src={himplantLogo} alt="Himplant" className="h-16 w-auto mx-auto mb-4 object-contain" />
           <CardTitle className="text-2xl">Admin Dashboard</CardTitle>
           <CardDescription>
             Sign in with your authorized account to access the enrollment dashboard

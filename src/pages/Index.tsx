@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Lock } from "lucide-react";
+import himplantLogo from "@/assets/himplant-logo.png";
 
 export default function Index() {
   return (
@@ -8,6 +9,12 @@ export default function Index() {
       <main className="flex-1 flex items-center justify-center">
         <div className="container mx-auto px-6 py-20">
           <div className="max-w-2xl mx-auto text-center space-y-8">
+            <img
+              src={himplantLogo}
+              alt="Himplant - Implant for Men"
+              className="h-24 md:h-32 w-auto mx-auto object-contain"
+            />
+
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium">
               <Lock className="h-4 w-4" />
               Secure Payment Portal
