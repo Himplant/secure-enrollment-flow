@@ -409,6 +409,7 @@ serve(async (req) => {
       customer: customerId,
       customer_email: customerId ? undefined : enrollment.patient_email || undefined,
       payment_method_types: ["card", "us_bank_account"],
+      billing_address_collection: "required",
       line_items: [
         {
           price_data: {
