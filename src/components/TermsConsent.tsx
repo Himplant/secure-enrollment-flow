@@ -201,12 +201,10 @@ export function TermsConsent({
       <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Shield className="h-3.5 w-3.5" />
-          256-bit SSL
+          Secure Connection
         </span>
         <span>·</span>
         <span>Powered by Stripe</span>
-        <span>·</span>
-        <span>HIPAA Compliant</span>
       </div>
     </div>
   );
