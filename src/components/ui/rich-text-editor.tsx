@@ -367,7 +367,15 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
 );
 
 // Export a simple HTML renderer for displaying rich text
+// SECURITY: Sanitized with DOMPurify to prevent XSS even from trusted admin content
+import DOMPurify from "dompurify";
+
 export function RichTextDisplay({ content, className }: { content: string; className?: string }) {
+  const sanitized = DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ["p", "br", "strong", "em", "u", "a", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table", "thead", "tbody", "tr", "th", "td", "blockquote", "span", "div"],
+    ALLOWED_ATTR: ["href", "target", "rel", "class", "style"],
+  });
+
   return (
     <div
       className={cn(
@@ -378,7 +386,7 @@ export function RichTextDisplay({ content, className }: { content: string; class
         "[&_a]:text-primary [&_a]:underline",
         className
       )}
-      dangerouslySetInnerHTML={{ __html: content }}
+      dangerouslySetInnerHTML={{ __html: sanitized }}
     />
   );
 }

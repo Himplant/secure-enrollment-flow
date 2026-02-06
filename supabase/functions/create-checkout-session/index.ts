@@ -289,12 +289,20 @@ serve(async (req) => {
     }
 
     // Record terms acceptance
-    const clientIp = body.consent_ip || req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
-    const userAgent = body.consent_user_agent || req.headers.get("user-agent") || "unknown";
+    // SECURITY: Always use server-side IP, never trust client-provided value
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const userAgent = req.headers.get("user-agent") || body.consent_user_agent || "unknown";
 
-    // Process signature
+    // Process and validate signature
     let signaturePngBytes: Uint8Array | null = null;
     if (body.signature_data) {
+      // SECURITY: Validate signature size (max 500KB base64 ~ 375KB image)
+      if (body.signature_data.length > 500_000) {
+        return new Response(JSON.stringify({ error: "Signature data too large" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       // Extract base64 from data URL
       const base64Match = body.signature_data.match(/^data:image\/png;base64,(.+)$/);
       if (base64Match) {

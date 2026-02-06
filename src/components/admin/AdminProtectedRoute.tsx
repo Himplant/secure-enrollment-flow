@@ -16,7 +16,7 @@ export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
     user,
     mfaVerified,
     mfaRequired,
-    mfaMethod,
+    adminUser,
     signOut,
     setMfaVerified,
     setMfaMethod,
@@ -39,8 +39,8 @@ export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
     return <Navigate to="/admin/pending" state={{ from: location }} replace />;
   }
 
-  // MFA not set up yet — force setup
-  if (mfaRequired || (!mfaMethod && !mfaVerified)) {
+  // MFA not set up yet — force TOTP setup
+  if (mfaRequired || (!adminUser?.mfa_method && !mfaVerified)) {
     return (
       <MfaSetupChoice
         userEmail={user?.email || ""}
@@ -52,11 +52,10 @@ export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
     );
   }
 
-  // MFA set up but not verified this session
-  if (mfaMethod && !mfaVerified) {
+  // MFA set up but not verified this session (AAL1 instead of AAL2)
+  if (!mfaVerified) {
     return (
       <MfaChallenge
-        mfaMethod={mfaMethod}
         userEmail={user?.email || ""}
         onVerified={() => setMfaVerified()}
         onSignOut={signOut}

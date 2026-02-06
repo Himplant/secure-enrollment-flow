@@ -3,21 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Shield, LogOut, Smartphone, Mail } from "lucide-react";
+import { Loader2, Shield, LogOut, Smartphone } from "lucide-react";
 
 interface MfaChallengeProps {
-  mfaMethod: "totp" | "email";
   userEmail: string;
   onVerified: () => void;
   onSignOut: () => void;
 }
 
-export function MfaChallenge({ mfaMethod: defaultMethod, userEmail, onVerified, onSignOut }: MfaChallengeProps) {
-  const [activeMethod, setActiveMethod] = useState<"totp" | "email" | null>(null);
+export function MfaChallenge({ userEmail, onVerified, onSignOut }: MfaChallengeProps) {
   const [code, setCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-  const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [error, setError] = useState("");
 
   const handleTotpVerify = async () => {
@@ -58,102 +54,6 @@ export function MfaChallenge({ mfaMethod: defaultMethod, userEmail, onVerified, 
     }
   };
 
-  const sendEmailCode = async () => {
-    setIsSending(true);
-    setError("");
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await supabase.functions.invoke("send-mfa-email-code", {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (res.error) throw new Error(res.error.message);
-      setEmailCodeSent(true);
-    } catch (err: any) {
-      setError(err.message || "Failed to send code");
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleEmailVerify = async () => {
-    if (code.length !== 6) return;
-    setIsVerifying(true);
-    setError("");
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await supabase.functions.invoke("verify-mfa-email-code", {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-        body: { code },
-      });
-      if (res.error) throw new Error(res.error.message);
-      if (res.data?.error) throw new Error(res.data.error);
-      onVerified();
-    } catch (err: any) {
-      setError(err.message || "Invalid or expired code");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleVerify = activeMethod === "totp" ? handleTotpVerify : handleEmailVerify;
-
-  const goBack = () => {
-    setActiveMethod(null);
-    setCode("");
-    setError("");
-    setEmailCodeSent(false);
-  };
-
-  // Method selection screen
-  if (!activeMethod) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-              <Shield className="h-6 w-6 text-primary" />
-            </div>
-            <CardTitle>Two-Factor Authentication</CardTitle>
-            <CardDescription>Choose your verification method</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full justify-start gap-3 h-auto py-4"
-              onClick={() => setActiveMethod("totp")}
-            >
-              <Smartphone className="h-5 w-5 text-primary shrink-0" />
-              <div className="text-left">
-                <div className="font-medium">Authenticator App</div>
-                <div className="text-xs text-muted-foreground">Use your authenticator app code</div>
-              </div>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full justify-start gap-3 h-auto py-4"
-              onClick={() => setActiveMethod("email")}
-            >
-              <Mail className="h-5 w-5 text-primary shrink-0" />
-              <div className="text-left">
-                <div className="font-medium">Email Code</div>
-                <div className="text-xs text-muted-foreground">Send a code to {userEmail}</div>
-              </div>
-            </Button>
-
-            <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground mt-2" onClick={onSignOut}>
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Verification screen
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
       <Card className="w-full max-w-md">
@@ -163,59 +63,36 @@ export function MfaChallenge({ mfaMethod: defaultMethod, userEmail, onVerified, 
           </div>
           <CardTitle>Two-Factor Authentication</CardTitle>
           <CardDescription>
-            {activeMethod === "totp"
-              ? "Enter the code from your authenticator app"
-              : `We'll send a code to ${userEmail}`}
+            Enter the 6-digit code from your authenticator app
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {activeMethod === "email" && !emailCodeSent ? (
-            <Button className="w-full" onClick={sendEmailCode} disabled={isSending}>
-              {isSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Send Code to Email
-            </Button>
-          ) : (
-            <>
-              <Input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                className="text-center text-lg tracking-widest"
-                autoFocus
-              />
-              {activeMethod === "email" && (
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline w-full text-center"
-                  onClick={sendEmailCode}
-                  disabled={isSending}
-                >
-                  {isSending ? "Sending..." : "Resend code"}
-                </button>
-              )}
-              <Button
-                className="w-full"
-                onClick={handleVerify}
-                disabled={code.length !== 6 || isVerifying}
-              >
-                {isVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Verify
-              </Button>
-            </>
-          )}
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-2">
+            <Smartphone className="h-4 w-4" />
+            <span>Authenticator App</span>
+          </div>
+
+          <Input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="000000"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            className="text-center text-lg tracking-widest"
+            autoFocus
+          />
+
+          <Button
+            className="w-full"
+            onClick={handleTotpVerify}
+            disabled={code.length !== 6 || isVerifying}
+          >
+            {isVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Verify
+          </Button>
 
           {error && <p className="text-sm text-destructive text-center">{error}</p>}
-
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground hover:underline w-full text-center"
-            onClick={goBack}
-          >
-            ← Choose a different method
-          </button>
 
           <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground" onClick={onSignOut}>
             <LogOut className="h-4 w-4" />

@@ -1,10 +1,17 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Rate limit: max 5 verification attempts per 10 minutes per user
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const RATE_LIMIT_MAX = 5;
+
+// Track failed attempts in memory (resets on function cold start, but still useful)
+const failedAttempts = new Map<string, { count: number; firstAttempt: number }>();
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -34,9 +41,26 @@ serve(async (req) => {
       });
     }
 
+    // SECURITY: Rate limiting on verification attempts
+    const now = Date.now();
+    const userAttempts = failedAttempts.get(user.id);
+    if (userAttempts) {
+      if (now - userAttempts.firstAttempt < RATE_LIMIT_WINDOW_MS) {
+        if (userAttempts.count >= RATE_LIMIT_MAX) {
+          return new Response(JSON.stringify({ error: "Too many failed attempts. Please wait before trying again." }), {
+            status: 429,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } else {
+        // Window expired, reset
+        failedAttempts.delete(user.id);
+      }
+    }
+
     const { code } = await req.json();
-    if (!code || typeof code !== "string") {
-      return new Response(JSON.stringify({ error: "Code is required" }), {
+    if (!code || typeof code !== "string" || code.length !== 6 || !/^\d{6}$/.test(code)) {
+      return new Response(JSON.stringify({ error: "Invalid code format" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -58,6 +82,14 @@ serve(async (req) => {
       .maybeSingle();
 
     if (fetchError || !mfaCode) {
+      // Track failed attempt
+      const existing = failedAttempts.get(user.id);
+      if (existing && now - existing.firstAttempt < RATE_LIMIT_WINDOW_MS) {
+        existing.count++;
+      } else {
+        failedAttempts.set(user.id, { count: 1, firstAttempt: now });
+      }
+
       return new Response(JSON.stringify({ error: "Invalid or expired code" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -69,6 +101,9 @@ serve(async (req) => {
       .from("mfa_email_codes")
       .update({ used_at: new Date().toISOString() })
       .eq("id", mfaCode.id);
+
+    // Clear failed attempts on success
+    failedAttempts.delete(user.id);
 
     return new Response(JSON.stringify({ success: true, verified: true }), {
       status: 200,
