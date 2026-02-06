@@ -21,7 +21,9 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
+  Download,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface TransactionDetailsModalProps {
   isOpen: boolean;
@@ -55,6 +57,7 @@ interface EnrollmentDetails {
   stripe_payment_intent_id: string | null;
   token_last4: string;
   policy_id: string | null;
+  consent_pdf_path: string | null;
 }
 
 interface EnrollmentEvent {
@@ -254,7 +257,7 @@ export function TransactionDetailsModal({
                       {enrollment.terms_accept_user_agent || "Unknown"}
                     </p>
                   </div>
-                  <div className="flex gap-4 pt-2">
+                  <div className="flex gap-4 pt-2 flex-wrap">
                     <a
                       href={enrollment.terms_url}
                       target="_blank"
@@ -273,6 +276,24 @@ export function TransactionDetailsModal({
                       <FileText className="h-3 w-3" />
                       View Privacy Policy
                     </a>
+                    {enrollment.consent_pdf_path && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={async () => {
+                          const { data } = await supabase.storage
+                            .from("consent-documents")
+                            .createSignedUrl(enrollment.consent_pdf_path!, 60);
+                          if (data?.signedUrl) {
+                            window.open(data.signedUrl, "_blank");
+                          }
+                        }}
+                      >
+                        <Download className="h-3 w-3" />
+                        Download Consent PDF
+                      </Button>
+                    )}
                   </div>
                 </div>
               ) : (
