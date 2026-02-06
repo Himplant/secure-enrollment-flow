@@ -163,9 +163,9 @@ export default function EnrollPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center animate-fade-in">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <Shield className="h-8 w-8 text-primary animate-pulse" />
-          </div>
+           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+             <Shield className="h-8 w-8 text-primary animate-pulse" />
+           </div>
           <p className="text-muted-foreground">Loading secure payment...</p>
         </div>
       </div>

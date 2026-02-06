@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CountdownTimer } from "@/components/CountdownTimer";
@@ -23,10 +24,10 @@ export function EnrollmentCard({
   paymentMethod,
   className,
 }: EnrollmentCardProps) {
-  const formattedAmount = new Intl.NumberFormat('en-US', {
+  const formattedAmount = useMemo(() => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: currency.toUpperCase(),
-  }).format(amount / 100);
+  }).format(amount / 100), [amount, currency]);
 
   const showCountdown = ['created', 'sent', 'opened'].includes(status);
 
