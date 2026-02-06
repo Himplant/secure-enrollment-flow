@@ -324,6 +324,9 @@ serve(async (req) => {
       patient_email: body.patient_email,
       patient_phone: body.patient_phone,
       amount: body.amount,
+      zoho_surgeon_id: body.zoho_surgeon_id,
+      surgeon_zoho_id: body.surgeon_zoho_id,
+      surgeon_name: body.surgeon_name,
     }));
     let amountCents: number;
     if (body.amount !== undefined) {
@@ -436,7 +439,7 @@ serve(async (req) => {
       const { data: surgeon } = await supabase
         .from("surgeons")
         .select("id, name")
-        .eq("zoho_id", body.zoho_surgeon_id)
+        .eq("zoho_id", zohoSurgeonId)
         .eq("is_active", true)
         .maybeSingle();
       
