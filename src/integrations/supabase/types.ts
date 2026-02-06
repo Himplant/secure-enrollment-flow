@@ -85,6 +85,7 @@ export type Database = {
       enrollments: {
         Row: {
           amount_cents: number
+          consent_pdf_path: string | null
           created_at: string | null
           currency: string | null
           expired_at: string | null
@@ -103,6 +104,7 @@ export type Database = {
           policy_id: string | null
           privacy_url: string
           processing_at: string | null
+          signature_data: string | null
           status: Database["public"]["Enums"]["enrollment_status"]
           stripe_customer_id: string | null
           stripe_payment_intent_id: string | null
@@ -121,6 +123,7 @@ export type Database = {
         }
         Insert: {
           amount_cents: number
+          consent_pdf_path?: string | null
           created_at?: string | null
           currency?: string | null
           expired_at?: string | null
@@ -139,6 +142,7 @@ export type Database = {
           policy_id?: string | null
           privacy_url: string
           processing_at?: string | null
+          signature_data?: string | null
           status?: Database["public"]["Enums"]["enrollment_status"]
           stripe_customer_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -157,6 +161,7 @@ export type Database = {
         }
         Update: {
           amount_cents?: number
+          consent_pdf_path?: string | null
           created_at?: string | null
           currency?: string | null
           expired_at?: string | null
@@ -175,6 +180,7 @@ export type Database = {
           policy_id?: string | null
           privacy_url?: string
           processing_at?: string | null
+          signature_data?: string | null
           status?: Database["public"]["Enums"]["enrollment_status"]
           stripe_customer_id?: string | null
           stripe_payment_intent_id?: string | null
