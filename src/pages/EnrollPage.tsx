@@ -315,10 +315,7 @@ export default function EnrollPage() {
       <footer className="border-t border-border mt-auto">
         <div className="container max-w-2xl mx-auto px-4 py-6">
           <p className="text-xs text-center text-muted-foreground">
-            Questions? Contact our support team at{" "}
-            <a href="mailto:support@example.com" className="text-primary hover:underline">
-              support@example.com
-            </a>
+            © {new Date().getFullYear()} Himplant. All rights reserved.
           </p>
         </div>
       </footer>
