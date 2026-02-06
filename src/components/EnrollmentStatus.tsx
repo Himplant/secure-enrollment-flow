@@ -64,7 +64,7 @@ export function EnrollmentStatus({
       "flex flex-col items-center text-center max-w-md mx-auto animate-fade-in",
       className
     )}>
-      <img src={himplantLogo} alt="Himplant" className="h-14 w-auto mb-6 object-contain" />
+      <img src={himplantLogo} alt="Himplant®" className="h-14 w-auto mb-6 object-contain" />
       <div className={cn(
         "w-20 h-20 rounded-full flex items-center justify-center mb-6",
         styles.bgClass
