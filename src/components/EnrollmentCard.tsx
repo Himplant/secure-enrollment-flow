@@ -87,7 +87,7 @@ export function EnrollmentCard({
         <div className="flex items-start gap-2 p-3 bg-success/5 rounded-lg border border-success/10">
           <Shield className="h-4 w-4 text-success mt-0.5" />
           <p className="text-xs text-muted-foreground">
-            Your payment is secured with 256-bit SSL encryption. 
+            Your payment is processed securely by Stripe. 
             We never store your card or bank details.
           </p>
         </div>
