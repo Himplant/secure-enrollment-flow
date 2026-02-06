@@ -11,7 +11,7 @@ export default function Index() {
           <div className="max-w-2xl mx-auto text-center space-y-8">
             <img
               src={himplantLogo}
-              alt="Himplant - Implant for Men"
+              alt="Himplant® - Implant for Men"
               className="h-24 md:h-32 w-auto mx-auto object-contain"
             />
 
@@ -45,7 +45,7 @@ export default function Index() {
       <footer className="border-t border-border py-8">
         <div className="container mx-auto px-6">
           <p className="text-sm text-center text-muted-foreground">
-            © {new Date().getFullYear()} Himplant. All rights reserved.
+            © {new Date().getFullYear()} Himplant®. All rights reserved.
           </p>
         </div>
       </footer>
