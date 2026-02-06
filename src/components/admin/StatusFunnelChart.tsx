@@ -1,8 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { cn } from "@/lib/utils";
 
 interface StatusFunnelChartProps {
   stats: {
@@ -30,11 +29,21 @@ const STATUS_COLORS: Record<string, string> = {
   Canceled: "hsl(var(--border))",
 };
 
-const FUNNEL_STEPS = [
-  { key: "sent", label: "Sent" },
-  { key: "opened", label: "Opened" },
-  { key: "paid", label: "Paid" },
-];
+const renderCustomLabel = ({ name, percent, cx, x, y, midAngle }: any) => {
+  if (percent < 0.04) return null;
+  const pct = (percent * 100).toFixed(1);
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor={x > cx ? "start" : "end"}
+      dominantBaseline="central"
+      style={{ fontSize: "11px", fill: "hsl(var(--foreground))" }}
+    >
+      {name} {pct}%
+    </text>
+  );
+};
 
 export function StatusFunnelChart({ stats, isLoading }: StatusFunnelChartProps) {
   const donutData = useMemo(() => {
@@ -53,7 +62,6 @@ export function StatusFunnelChart({ stats, isLoading }: StatusFunnelChartProps) 
 
   const funnelData = useMemo(() => {
     if (!stats || stats.total === 0) return [];
-    // Funnel: total → sent → opened → paid
     const steps = [
       { label: "Created", value: stats.total, pct: 100 },
       { label: "Sent", value: stats.sent + stats.opened + stats.processing + stats.paid, pct: 0 },
@@ -98,19 +106,21 @@ export function StatusFunnelChart({ stats, isLoading }: StatusFunnelChartProps) 
         <CardTitle className="text-lg">Status Breakdown</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Donut chart */}
-        <div className="h-[220px]">
+        {/* Donut chart with percentage labels */}
+        <div className="h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={donutData}
                 cx="50%"
                 cy="50%"
-                innerRadius={55}
-                outerRadius={90}
+                innerRadius={50}
+                outerRadius={85}
                 paddingAngle={2}
                 dataKey="value"
                 nameKey="name"
+                label={renderCustomLabel}
+                labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
               >
                 {donutData.map((entry) => (
                   <Cell key={entry.name} fill={STATUS_COLORS[entry.name]} />
@@ -123,11 +133,29 @@ export function StatusFunnelChart({ stats, isLoading }: StatusFunnelChartProps) 
                   borderRadius: "8px",
                   fontSize: "12px",
                 }}
-                formatter={(value: number, name: string) => [value, name]}
+                formatter={(value: number, name: string) => {
+                  const pct = stats.total > 0 ? ((value / stats.total) * 100).toFixed(1) : "0";
+                  return [`${value} (${pct}%)`, name];
+                }}
               />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px" }} />
             </PieChart>
           </ResponsiveContainer>
+        </div>
+
+        {/* Status table with percentages */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+          {donutData.map((d) => {
+            const pct = stats.total > 0 ? ((d.value / stats.total) * 100).toFixed(1) : "0";
+            return (
+              <div key={d.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_COLORS[d.name] }} />
+                  <span className="text-foreground">{d.name}</span>
+                </div>
+                <span className="text-muted-foreground font-medium">{d.value} <span className="text-xs">({pct}%)</span></span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Conversion funnel */}
