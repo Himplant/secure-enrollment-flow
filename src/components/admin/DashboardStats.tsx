@@ -46,8 +46,7 @@ export function computeStats(enrollments: Enrollment[]): EnrollmentStats {
     .filter(e => e.status === "processing")
     .reduce((sum, e) => sum + e.amount_cents, 0);
 
-  const completed = paid + expired + failed;
-  const conversionRate = completed > 0 ? (paid / completed) * 100 : 0;
+  const conversionRate = total > 0 ? (paid / total) * 100 : 0;
 
   return { total, created, sent, opened, paid, processing, pending, expired, failed, canceled, totalPaidAmount, totalProcessingAmount, conversionRate };
 }
@@ -89,7 +88,7 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
     {
       title: "Conversion Rate",
       value: `${(stats?.conversionRate ?? 0).toFixed(1)}%`,
-      subtitle: `${stats?.failed ?? 0} failed, ${stats?.expired ?? 0} expired`,
+      subtitle: `${stats?.paid ?? 0} of ${stats?.total ?? 0} created`,
       icon: TrendingUp,
       color: "text-primary",
       bgColor: "bg-primary/10",

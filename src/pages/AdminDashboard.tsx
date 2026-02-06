@@ -16,6 +16,8 @@ import { DashboardStats, computeStats } from "@/components/admin/DashboardStats"
 import { SurgeonDistributionCard } from "@/components/admin/SurgeonDistributionCard";
 import { EnrollmentTrendChart } from "@/components/admin/EnrollmentTrendChart";
 import { StatusFunnelChart } from "@/components/admin/StatusFunnelChart";
+import { SurgeonTrendChart } from "@/components/admin/SurgeonTrendChart";
+import { PeriodComparisonCard } from "@/components/admin/PeriodComparisonCard";
 import { AnalyticsDateFilter, getDateRangeForPreset, type DatePreset } from "@/components/admin/AnalyticsDateFilter";
 import { PatientsTab } from "@/components/admin/PatientsTab";
 import { TransactionsTab } from "@/components/admin/TransactionsTab";
@@ -89,7 +91,7 @@ export default function AdminDashboard() {
               <Button variant="outline" size="icon" onClick={handleRefresh}>
                 <RefreshCw className="h-4 w-4" />
               </Button>
-              <span className="text-sm text-muted-foreground hidden sm:block">{user?.email}</span>
+           <p className="text-sm text-muted-foreground hidden sm:block">{user?.email}</p>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon"><Settings className="h-4 w-4" /></Button>
@@ -134,8 +136,17 @@ export default function AdminDashboard() {
             <StatusFunnelChart stats={stats} isLoading={statsLoading} />
           </div>
 
-          {/* Surgeon distribution */}
+          {/* Period comparison */}
+          <PeriodComparisonCard
+            dateFrom={dateRange.from}
+            dateTo={dateRange.to}
+            currentStats={stats}
+            isLoading={statsLoading}
+          />
+
+          {/* Surgeon charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SurgeonTrendChart dateFrom={dateRange.from} dateTo={dateRange.to} />
             <SurgeonDistributionCard />
           </div>
         </div>
