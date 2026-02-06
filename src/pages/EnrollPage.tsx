@@ -249,32 +249,30 @@ export default function EnrollPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background safe-area-inset">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container max-w-2xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-center gap-3">
-            <img src={himplantLogo} alt="Himplant" className="h-10 w-auto object-contain" />
-          </div>
+    <div className="min-h-screen bg-background safe-area-inset flex flex-col">
+      {/* Header with prominent logo */}
+      <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container max-w-2xl mx-auto px-4 py-5">
+          <img src={himplantLogo} alt="Himplant" className="h-14 w-auto object-contain mx-auto" />
         </div>
       </header>
 
       {/* Main content */}
-      <main className="container max-w-2xl mx-auto px-4 py-8 animate-fade-in">
+      <main className="flex-1 container max-w-2xl mx-auto px-4 py-10 animate-fade-in">
         <div className="space-y-8">
           {/* Welcome message */}
-          <div className="text-center space-y-2">
-            <h1 className="text-2xl font-semibold text-foreground">
+          <div className="text-center space-y-3">
+            <h1 className="text-3xl font-bold text-foreground tracking-tight">
               Complete Your Enrollment
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-base max-w-md mx-auto">
               Review the details below and complete your secure payment
             </p>
           </div>
 
           {/* Error message */}
           {error && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center">
+            <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 text-center">
               <p className="text-destructive text-sm">{error}</p>
             </div>
           )}
@@ -289,7 +287,7 @@ export default function EnrollPage() {
           />
 
           {/* Terms and payment button */}
-          <div className="card-premium p-6">
+          <div className="card-premium p-6 md:p-8">
             <TermsConsent
               termsUrl={enrollment.terms_url}
               privacyUrl={enrollment.privacy_url}
@@ -313,7 +311,7 @@ export default function EnrollPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border mt-auto">
+      <footer className="border-t border-border">
         <div className="container max-w-2xl mx-auto px-4 py-6">
           <p className="text-xs text-center text-muted-foreground">
             © {new Date().getFullYear()} Himplant. All rights reserved.
