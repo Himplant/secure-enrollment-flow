@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Shield, LogOut } from "lucide-react";
+import { Loader2, Shield, LogOut, Smartphone, Mail } from "lucide-react";
 
 interface MfaChallengeProps {
   mfaMethod: "totp" | "email";
@@ -13,7 +13,7 @@ interface MfaChallengeProps {
 }
 
 export function MfaChallenge({ mfaMethod: defaultMethod, userEmail, onVerified, onSignOut }: MfaChallengeProps) {
-  const [activeMethod, setActiveMethod] = useState<"totp" | "email">(defaultMethod);
+  const [activeMethod, setActiveMethod] = useState<"totp" | "email" | null>(null);
   const [code, setCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -97,13 +97,63 @@ export function MfaChallenge({ mfaMethod: defaultMethod, userEmail, onVerified, 
 
   const handleVerify = activeMethod === "totp" ? handleTotpVerify : handleEmailVerify;
 
-  const switchMethod = () => {
-    setActiveMethod(prev => prev === "totp" ? "email" : "totp");
+  const goBack = () => {
+    setActiveMethod(null);
     setCode("");
     setError("");
     setEmailCodeSent(false);
   };
 
+  // Method selection screen
+  if (!activeMethod) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+              <Shield className="h-6 w-6 text-primary" />
+            </div>
+            <CardTitle>Two-Factor Authentication</CardTitle>
+            <CardDescription>Choose your verification method</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full justify-start gap-3 h-auto py-4"
+              onClick={() => setActiveMethod("totp")}
+            >
+              <Smartphone className="h-5 w-5 text-primary shrink-0" />
+              <div className="text-left">
+                <div className="font-medium">Authenticator App</div>
+                <div className="text-xs text-muted-foreground">Use your authenticator app code</div>
+              </div>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full justify-start gap-3 h-auto py-4"
+              onClick={() => setActiveMethod("email")}
+            >
+              <Mail className="h-5 w-5 text-primary shrink-0" />
+              <div className="text-left">
+                <div className="font-medium">Email Code</div>
+                <div className="text-xs text-muted-foreground">Send a code to {userEmail}</div>
+              </div>
+            </Button>
+
+            <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground mt-2" onClick={onSignOut}>
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Verification screen
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
       <Card className="w-full max-w-md">
@@ -162,9 +212,9 @@ export function MfaChallenge({ mfaMethod: defaultMethod, userEmail, onVerified, 
           <button
             type="button"
             className="text-xs text-muted-foreground hover:text-foreground hover:underline w-full text-center"
-            onClick={switchMethod}
+            onClick={goBack}
           >
-            {activeMethod === "totp" ? "Use email code instead" : "Use authenticator app instead"}
+            ← Choose a different method
           </button>
 
           <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground" onClick={onSignOut}>
