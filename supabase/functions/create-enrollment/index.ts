@@ -14,6 +14,7 @@ interface EnrollmentRequest {
   patient_phone?: string;
   surgeon_id?: string;        // Optional local surgeon UUID
   zoho_surgeon_id?: string;   // Zoho surgeon record ID (from lookup field)
+  surgeon_zoho_id?: string;   // Alternative key name (from Zoho Deluge)
   surgeon_name?: string;      // Fallback surgeon name
   amount?: number;            // Decimal from Zoho (e.g., 500.00)
   amount_cents?: number;  // Legacy support for cents
@@ -426,9 +427,10 @@ serve(async (req) => {
 
     // Resolve surgeon: prefer zoho_surgeon_id lookup, fall back to direct surgeon_id
     let resolvedSurgeonId = body.surgeon_id || null;
-    let resolvedSurgeonName: string | undefined;
+    let resolvedSurgeonName = body.surgeon_name;
+    const zohoSurgeonId = body.zoho_surgeon_id || body.surgeon_zoho_id;
     
-    if (body.zoho_surgeon_id && !resolvedSurgeonId) {
+    if (zohoSurgeonId && !resolvedSurgeonId) {
       const { data: surgeon } = await supabase
         .from("surgeons")
         .select("id, name")
@@ -439,9 +441,9 @@ serve(async (req) => {
       if (surgeon) {
         resolvedSurgeonId = surgeon.id;
         resolvedSurgeonName = surgeon.name;
-        console.log(`Resolved Zoho surgeon ${body.zoho_surgeon_id} -> ${surgeon.name} (${surgeon.id})`);
+        console.log(`Resolved Zoho surgeon ${zohoSurgeonId} -> ${surgeon.name} (${surgeon.id})`);
       } else {
-        console.warn(`Zoho surgeon ${body.zoho_surgeon_id} not found in local surgeons table`);
+        console.warn(`Zoho surgeon ${zohoSurgeonId} not found in local surgeons table`);
       }
     }
 
