@@ -12,7 +12,8 @@ interface MfaChallengeProps {
   onSignOut: () => void;
 }
 
-export function MfaChallenge({ mfaMethod, userEmail, onVerified, onSignOut }: MfaChallengeProps) {
+export function MfaChallenge({ mfaMethod: defaultMethod, userEmail, onVerified, onSignOut }: MfaChallengeProps) {
+  const [activeMethod, setActiveMethod] = useState<"totp" | "email">(defaultMethod);
   const [code, setCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -94,7 +95,14 @@ export function MfaChallenge({ mfaMethod, userEmail, onVerified, onSignOut }: Mf
     }
   };
 
-  const handleVerify = mfaMethod === "totp" ? handleTotpVerify : handleEmailVerify;
+  const handleVerify = activeMethod === "totp" ? handleTotpVerify : handleEmailVerify;
+
+  const switchMethod = () => {
+    setActiveMethod(prev => prev === "totp" ? "email" : "totp");
+    setCode("");
+    setError("");
+    setEmailCodeSent(false);
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
@@ -105,13 +113,13 @@ export function MfaChallenge({ mfaMethod, userEmail, onVerified, onSignOut }: Mf
           </div>
           <CardTitle>Two-Factor Authentication</CardTitle>
           <CardDescription>
-            {mfaMethod === "totp"
+            {activeMethod === "totp"
               ? "Enter the code from your authenticator app"
               : `We'll send a code to ${userEmail}`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {mfaMethod === "email" && !emailCodeSent ? (
+          {activeMethod === "email" && !emailCodeSent ? (
             <Button className="w-full" onClick={sendEmailCode} disabled={isSending}>
               {isSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Send Code to Email
@@ -128,7 +136,7 @@ export function MfaChallenge({ mfaMethod, userEmail, onVerified, onSignOut }: Mf
                 className="text-center text-lg tracking-widest"
                 autoFocus
               />
-              {mfaMethod === "email" && (
+              {activeMethod === "email" && (
                 <button
                   type="button"
                   className="text-xs text-primary hover:underline w-full text-center"
@@ -150,6 +158,14 @@ export function MfaChallenge({ mfaMethod, userEmail, onVerified, onSignOut }: Mf
           )}
 
           {error && <p className="text-sm text-destructive text-center">{error}</p>}
+
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground hover:underline w-full text-center"
+            onClick={switchMethod}
+          >
+            {activeMethod === "totp" ? "Use email code instead" : "Use authenticator app instead"}
+          </button>
 
           <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground" onClick={onSignOut}>
             <LogOut className="h-4 w-4" />
