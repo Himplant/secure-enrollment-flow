@@ -93,17 +93,6 @@ export function TermsConsent({
                       <p className="text-sm text-muted-foreground">Terms of Service not available.</p>
                     )}
                   </ScrollArea>
-                  {termsUrl && (
-                    <a
-                      href={termsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 underline underline-offset-4 transition-colors mt-2"
-                    >
-                      View full document
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
                 </TabsContent>
                 <TabsContent value="privacy" className="mt-3">
                   <ScrollArea className="h-64 w-full rounded-md border bg-background p-4">
@@ -113,17 +102,6 @@ export function TermsConsent({
                       <p className="text-sm text-muted-foreground">Privacy Policy not available.</p>
                     )}
                   </ScrollArea>
-                  {privacyUrl && (
-                    <a
-                      href={privacyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 underline underline-offset-4 transition-colors mt-2"
-                    >
-                      View full document
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
                 </TabsContent>
               </Tabs>
             ) : (
