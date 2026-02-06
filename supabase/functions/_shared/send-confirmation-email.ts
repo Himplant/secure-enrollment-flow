@@ -1,4 +1,27 @@
 import { Resend } from "npm:resend@2.0.0";
+import { encode as base64Encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
+
+// Embedded logo as base64 - loaded once at module level
+let logoBase64Cache: string | null = null;
+
+async function getLogoBase64(): Promise<string | null> {
+  if (logoBase64Cache) return logoBase64Cache;
+  try {
+    const appUrl = Deno.env.get("APP_URL") || "https://enroll.himplant.com";
+    const logoUrl = `${appUrl.replace(/\/$/, "")}/himplant-logo.png`;
+    const resp = await fetch(logoUrl);
+    if (!resp.ok) {
+      console.error(`Failed to fetch logo from ${logoUrl}: ${resp.status}`);
+      return null;
+    }
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    logoBase64Cache = base64Encode(bytes);
+    return logoBase64Cache;
+  } catch (err) {
+    console.error("Failed to load logo:", err);
+    return null;
+  }
+}
 
 interface SendConfirmationEmailParams {
   patientName: string;
@@ -19,8 +42,6 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
   }
 
   const resend = new Resend(resendApiKey);
-  const appUrl = Deno.env.get("APP_URL") || "https://enroll.himplant.com";
-  const logoUrl = `${appUrl.replace(/\/$/, "")}/himplant-logo.png`;
 
   const amount = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -36,6 +57,13 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
 
   const paymentMethod = params.paymentMethodType === "ach" ? "ACH Bank Transfer" : "Credit Card";
 
+  // Try to get logo as base64 for inline embedding
+  const logoB64 = await getLogoBase64();
+  const logoSrc = logoB64 ? `data:image/png;base64,${logoB64}` : "";
+  const logoHtml = logoSrc
+    ? `<img src="${logoSrc}" alt="Himplant®" width="180" style="display:block; margin:0 auto; max-width:180px; height:auto;" />`
+    : `<p style="margin:0; font-size:24px; color:#1a1a2e; font-weight:700; letter-spacing:1px;">Himplant®</p>`;
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -50,8 +78,8 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
           <!-- Header with logo -->
           <tr>
-            <td style="padding:32px 40px 24px; text-align:center; background-color:#1a1a2e;">
-              <img src="${logoUrl}" alt="Himplant®" width="180" style="display:block; margin:0 auto; max-width:180px; height:auto;" />
+            <td style="padding:32px 40px 24px; text-align:center; border-bottom:2px solid #f0f0f0;">
+              ${logoHtml}
             </td>
           </tr>
           <!-- Body -->
@@ -123,7 +151,6 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
 
   const attachments: Array<{ filename: string; content: string }> = [];
   if (params.pdfBytes) {
-    // Convert Uint8Array to base64
     let binary = "";
     for (let i = 0; i < params.pdfBytes.length; i++) {
       binary += String.fromCharCode(params.pdfBytes[i]);
@@ -149,6 +176,5 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
     console.log(`Confirmation email sent to ${params.patientEmail}:`, result);
   } catch (err) {
     console.error("Failed to send confirmation email:", err);
-    // Don't throw - email failure shouldn't block the webhook
   }
 }
