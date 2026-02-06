@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,13 +12,11 @@ interface InviteRequest {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Get authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -27,14 +25,12 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase client with user's auth token
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Get the current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       return new Response(
@@ -43,12 +39,14 @@ serve(async (req) => {
       );
     }
 
-    // Verify user is an admin
-    const { data: adminUser, error: adminError } = await supabase
+    // SECURITY: Verify the user is an admin or super_admin
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: adminUser, error: adminError } = await supabaseAdmin
       .from("admin_users")
       .select("role")
       .eq("user_id", user.id)
-      .eq("role", "admin")
       .not("accepted_at", "is", null)
       .maybeSingle();
 
@@ -59,7 +57,6 @@ serve(async (req) => {
       );
     }
 
-    // Parse request body
     const { email, role }: InviteRequest = await req.json();
     
     if (!email || !role) {
@@ -69,10 +66,35 @@ serve(async (req) => {
       );
     }
 
+    // SECURITY: Validate role values and enforce privilege hierarchy
+    if (!["admin", "viewer"].includes(role)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid role" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // SECURITY: Only super_admins can invite admins; regular admins can only invite viewers
+    if (role === "admin" && adminUser.role !== "super_admin") {
+      return new Response(
+        JSON.stringify({ error: "Only super admins can invite admin-level users" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const normalizedEmail = email.toLowerCase().trim();
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail) || normalizedEmail.length > 255) {
+      return new Response(
+        JSON.stringify({ error: "Invalid email address" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Check if user already exists
-    const { data: existingUser } = await supabase
+    const { data: existingUser } = await supabaseAdmin
       .from("admin_users")
       .select("id, accepted_at")
       .eq("email", normalizedEmail)
@@ -84,10 +106,6 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Use service role to insert the admin user (bypasses RLS)
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     // Insert the new admin user invite
     const { error: insertError } = await supabaseAdmin
@@ -107,7 +125,7 @@ serve(async (req) => {
     }
 
     // Get the app URL for the invite link
-    const appUrl = Deno.env.get("APP_URL") || req.headers.get("origin") || "https://secure-enrollment-flow.lovable.app";
+    const appUrl = (Deno.env.get("APP_URL") || "https://secure-enrollment-flow.lovable.app").replace(/\/+$/, "");
     const inviteLink = `${appUrl}/admin/login`;
 
     // Send email using Resend if API key is configured
@@ -124,14 +142,14 @@ serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: Deno.env.get("EMAIL_FROM") || "noreply@himplant.com",
+            from: "noreply@himplant.com",
             to: normalizedEmail,
             subject: "You've been invited to the Admin Dashboard",
             html: `
               <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
                 <h2>Admin Dashboard Invitation</h2>
                 <p>You've been invited to access the Enrollment Admin Dashboard as a <strong>${role}</strong>.</p>
-                <p>Click the button below to sign in with your Google account:</p>
+                <p>Click the button below to sign in:</p>
                 <p style="margin: 24px 0;">
                   <a href="${inviteLink}" 
                      style="background-color: #c65d21; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
@@ -164,7 +182,7 @@ serve(async (req) => {
         success: true, 
         emailSent,
         emailError: emailSent ? null : (emailError || "Email service not configured"),
-        inviteLink: emailSent ? null : inviteLink, // Only return link if email wasn't sent
+        inviteLink: emailSent ? null : inviteLink,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

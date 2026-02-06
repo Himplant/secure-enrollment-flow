@@ -21,7 +21,6 @@ interface AdminAuthState {
   isAuthenticated: boolean;
   mfaVerified: boolean;
   mfaRequired: boolean;
-  mfaMethod: "totp" | "email" | null;
 }
 
 export function useAdminAuth() {
@@ -34,7 +33,6 @@ export function useAdminAuth() {
     isAuthenticated: false,
     mfaVerified: false,
     mfaRequired: false,
-    mfaMethod: null,
   });
 
   const fetchAdminUser = useCallback(async (userId: string, userEmail: string | undefined) => {
@@ -72,6 +70,27 @@ export function useAdminAuth() {
     }
   }, []);
 
+  const resolveState = useCallback(async (session: Session) => {
+    const adminUser = await fetchAdminUser(session.user.id, session.user.email);
+    const { hasTotpFactor, aal } = await checkMfaStatus();
+
+    const isAccepted = !!adminUser?.accepted_at;
+    // SECURITY: MFA is TOTP-only, verified server-side via Supabase AAL2
+    const mfaVerified = isAccepted && hasTotpFactor && aal === "aal2";
+    const mfaRequired = isAccepted && !hasTotpFactor; // needs to set up TOTP
+
+    return {
+      user: session.user,
+      session,
+      adminUser,
+      isLoading: false,
+      isAdmin: isAccepted,
+      isAuthenticated: true,
+      mfaVerified,
+      mfaRequired,
+    };
+  }, [fetchAdminUser, checkMfaStatus]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -82,36 +101,10 @@ export function useAdminAuth() {
         if (session?.user) {
           setTimeout(async () => {
             if (!mounted) return;
-            const adminUser = await fetchAdminUser(session.user.id, session.user.email);
-            const { hasTotpFactor, aal } = await checkMfaStatus();
-
-            const mfaMethod = (adminUser?.mfa_method as "totp" | "email") || null;
-            const isAccepted = !!adminUser?.accepted_at;
-            
-            // MFA is verified if:
-            // - TOTP: aal2 level achieved
-            // - Email: tracked via session storage (set after email code verification)
-            // - No MFA set up yet: not verified (needs setup)
-            const emailMfaVerified = mfaMethod === "email" && sessionStorage.getItem("mfa_email_verified") === "true";
-            const totpMfaVerified = mfaMethod === "totp" && aal === "aal2";
-            const mfaVerified = !isAccepted ? false : (!mfaMethod ? false : (totpMfaVerified || emailMfaVerified));
-
-            if (mounted) {
-              setState({
-                user: session.user,
-                session,
-                adminUser,
-                isLoading: false,
-                isAdmin: isAccepted,
-                isAuthenticated: true,
-                mfaVerified,
-                mfaRequired: isAccepted && !mfaMethod, // needs to set up MFA
-                mfaMethod,
-              });
-            }
+            const newState = await resolveState(session);
+            if (mounted) setState(newState);
           }, 0);
         } else {
-          sessionStorage.removeItem("mfa_email_verified");
           setState({
             user: null,
             session: null,
@@ -121,7 +114,6 @@ export function useAdminAuth() {
             isAuthenticated: false,
             mfaVerified: false,
             mfaRequired: false,
-            mfaMethod: null,
           });
         }
       }
@@ -131,28 +123,8 @@ export function useAdminAuth() {
       if (!mounted) return;
 
       if (session?.user) {
-        const adminUser = await fetchAdminUser(session.user.id, session.user.email);
-        const { hasTotpFactor, aal } = await checkMfaStatus();
-
-        const mfaMethod = (adminUser?.mfa_method as "totp" | "email") || null;
-        const isAccepted = !!adminUser?.accepted_at;
-        const emailMfaVerified = mfaMethod === "email" && sessionStorage.getItem("mfa_email_verified") === "true";
-        const totpMfaVerified = mfaMethod === "totp" && aal === "aal2";
-        const mfaVerified = !isAccepted ? false : (!mfaMethod ? false : (totpMfaVerified || emailMfaVerified));
-
-        if (mounted) {
-          setState({
-            user: session.user,
-            session,
-            adminUser,
-            isLoading: false,
-            isAdmin: isAccepted,
-            isAuthenticated: true,
-            mfaVerified,
-            mfaRequired: isAccepted && !mfaMethod,
-            mfaMethod,
-          });
-        }
+        const newState = await resolveState(session);
+        if (mounted) setState(newState);
       } else {
         setState(prev => ({ ...prev, isLoading: false }));
       }
@@ -162,34 +134,26 @@ export function useAdminAuth() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchAdminUser, checkMfaStatus]);
+  }, [resolveState]);
 
   const signOut = async () => {
-    sessionStorage.removeItem("mfa_email_verified");
     await supabase.auth.signOut();
   };
 
   const setMfaVerified = () => {
-    sessionStorage.setItem("mfa_email_verified", "true");
     setState(prev => ({ ...prev, mfaVerified: true }));
   };
 
-  const setMfaMethod = async (method: "totp" | "email") => {
+  const setMfaMethod = async (method: "totp") => {
     if (!state.user) return;
     
-    // Update mfa_method in admin_users
     await supabase
       .from("admin_users")
       .update({ mfa_method: method })
       .eq("user_id", state.user.id);
 
-    if (method === "email") {
-      sessionStorage.setItem("mfa_email_verified", "true");
-    }
-
     setState(prev => ({
       ...prev,
-      mfaMethod: method,
       mfaRequired: false,
       mfaVerified: true,
       adminUser: prev.adminUser ? { ...prev.adminUser, mfa_method: method } : null,
@@ -225,7 +189,6 @@ export function useAdminAuth() {
       adminUser,
       isAdmin: !!adminUser?.accepted_at,
       mfaRequired: !!adminUser?.accepted_at && !adminUser?.mfa_method,
-      mfaMethod: (adminUser?.mfa_method as "totp" | "email") || null,
     }));
 
     return { error: null };

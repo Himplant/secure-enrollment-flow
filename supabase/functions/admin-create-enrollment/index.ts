@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,7 +68,7 @@ serve(async (req) => {
       });
     }
 
-    // Verify user is an admin
+    // Verify user is an admin (not viewer) - viewers cannot create enrollments
     const { data: adminUser, error: adminError } = await supabase
       .from("admin_users")
       .select("id, role")
@@ -78,6 +78,14 @@ serve(async (req) => {
 
     if (adminError || !adminUser) {
       return new Response(JSON.stringify({ error: "Only admins can create enrollments" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // SECURITY: Viewers cannot create enrollments
+    if (adminUser.role === "viewer") {
+      return new Response(JSON.stringify({ error: "Viewers do not have permission to create enrollments" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -198,7 +206,7 @@ serve(async (req) => {
     });
 
     // Build enrollment URL
-    const appUrl = Deno.env.get("APP_URL") || req.headers.get("origin") || "https://secure-enrollment-flow.lovable.app";
+    const appUrl = (Deno.env.get("APP_URL") || "https://secure-enrollment-flow.lovable.app").replace(/\/+$/, "");
     const enrollmentUrl = `${appUrl}/enroll/${rawToken}`;
 
     console.log(`Admin ${user.email} created enrollment ${enrollment.id}`);
