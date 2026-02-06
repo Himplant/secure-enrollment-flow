@@ -6,7 +6,7 @@ interface AdminUser {
   id: string;
   user_id: string | null;
   email: string;
-  role: "admin" | "viewer";
+  role: "admin" | "viewer" | "super_admin";
   invited_at: string;
   accepted_at: string | null;
 }

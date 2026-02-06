@@ -126,7 +126,7 @@ export default function AdminDashboard() {
               <UserCog className="h-4 w-4" />
               Surgeons
             </TabsTrigger>
-            {adminUser?.role === "admin" && (
+            {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2">
                 <Settings className="h-4 w-4" />
                 User Management
@@ -150,7 +150,7 @@ export default function AdminDashboard() {
             <SurgeonManagement />
           </TabsContent>
 
-          {adminUser?.role === "admin" && (
+          {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users">
               <UserManagement />
             </TabsContent>

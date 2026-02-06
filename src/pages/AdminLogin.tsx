@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Shield, Loader2 } from "lucide-react";
+import { Shield, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { lovable } from "@/integrations/lovable/index";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminLogin() {
@@ -13,6 +16,10 @@ export default function AdminLogin() {
   const { isAuthenticated, isAdmin, isLoading } = useAdminAuth();
   const { toast } = useToast();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isEmailLogin, setIsEmailLogin] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/admin";
 
@@ -49,6 +56,43 @@ export default function AdminLogin() {
     }
   };
 
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) return;
+
+    setIsEmailLogin(true);
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            emailRedirectTo: window.location.origin + "/admin",
+          },
+        });
+        if (error) throw error;
+        toast({
+          title: "Check your email",
+          description: "We sent you a verification link. Please verify your email to continue.",
+        });
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      toast({
+        title: isSignUp ? "Sign up failed" : "Login failed",
+        description: err.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailLogin(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -66,7 +110,7 @@ export default function AdminLogin() {
           </div>
           <CardTitle className="text-2xl">Admin Dashboard</CardTitle>
           <CardDescription>
-            Sign in with your authorized Google account to access the enrollment dashboard
+            Sign in with your authorized account to access the enrollment dashboard
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -101,6 +145,53 @@ export default function AdminLogin() {
             )}
             Continue with Google
           </Button>
+
+          <div className="flex items-center gap-3">
+            <Separator className="flex-1" />
+            <span className="text-xs text-muted-foreground">or</span>
+            <Separator className="flex-1" />
+          </div>
+
+          <form onSubmit={handleEmailAuth} className="space-y-3">
+            <Input
+              type="email"
+              placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+            />
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full gap-2"
+              disabled={isEmailLogin}
+            >
+              {isEmailLogin ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mail className="h-4 w-4" />
+              )}
+              {isSignUp ? "Create Account" : "Sign In with Email"}
+            </Button>
+          </form>
+
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline w-full text-center"
+            onClick={() => setIsSignUp(!isSignUp)}
+          >
+            {isSignUp
+              ? "Already have an account? Sign in"
+              : "Received an invite? Create your account"}
+          </button>
 
           <p className="text-xs text-center text-muted-foreground">
             Only pre-authorized users can access this dashboard.

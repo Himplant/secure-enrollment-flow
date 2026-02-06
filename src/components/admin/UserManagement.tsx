@@ -56,7 +56,7 @@ interface AdminUser {
   id: string;
   user_id: string | null;
   email: string;
-  role: "admin" | "viewer";
+  role: "admin" | "viewer" | "super_admin";
   invited_at: string;
   invited_by: string | null;
   accepted_at: string | null;
@@ -255,16 +255,20 @@ export function UserManagement() {
                     <TableCell className="font-medium">{user.email}</TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${
-                        user.role === "admin" 
-                          ? "bg-primary/10 text-primary" 
-                          : "bg-muted text-muted-foreground"
+                        user.role === "super_admin"
+                          ? "bg-destructive/10 text-destructive"
+                          : user.role === "admin" 
+                            ? "bg-primary/10 text-primary" 
+                            : "bg-muted text-muted-foreground"
                       }`}>
-                        {user.role === "admin" ? (
+                        {user.role === "super_admin" ? (
+                          <Shield className="h-3 w-3" />
+                        ) : user.role === "admin" ? (
                           <Shield className="h-3 w-3" />
                         ) : (
                           <Eye className="h-3 w-3" />
                         )}
-                        {user.role}
+                        {user.role === "super_admin" ? "Super Admin" : user.role}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -284,30 +288,32 @@ export function UserManagement() {
                       {format(new Date(user.invited_at), "MMM d, yyyy")}
                     </TableCell>
                     <TableCell>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Remove User</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to remove {user.email} from the admin list? They will lose access to the dashboard.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteMutation.mutate(user.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Remove
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {user.role !== "super_admin" && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove User</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to remove {user.email} from the admin list? They will lose access to the dashboard.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteMutation.mutate(user.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Remove
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
