@@ -12,8 +12,10 @@ interface EnrollmentRequest {
   patient_name?: string;
   patient_email?: string;
   patient_phone?: string;
-  surgeon_id?: string;    // Optional surgeon reference
-  amount?: number;        // Decimal from Zoho (e.g., 500.00)
+  surgeon_id?: string;        // Optional local surgeon UUID
+  zoho_surgeon_id?: string;   // Zoho surgeon record ID (from lookup field)
+  surgeon_name?: string;      // Fallback surgeon name
+  amount?: number;            // Decimal from Zoho (e.g., 500.00)
   amount_cents?: number;  // Legacy support for cents
   currency?: string;
   terms_url?: string;
@@ -422,13 +424,34 @@ serve(async (req) => {
       });
     }
 
+    // Resolve surgeon: prefer zoho_surgeon_id lookup, fall back to direct surgeon_id
+    let resolvedSurgeonId = body.surgeon_id || null;
+    let resolvedSurgeonName: string | undefined;
+    
+    if (body.zoho_surgeon_id && !resolvedSurgeonId) {
+      const { data: surgeon } = await supabase
+        .from("surgeons")
+        .select("id, name")
+        .eq("zoho_id", body.zoho_surgeon_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      
+      if (surgeon) {
+        resolvedSurgeonId = surgeon.id;
+        resolvedSurgeonName = surgeon.name;
+        console.log(`Resolved Zoho surgeon ${body.zoho_surgeon_id} -> ${surgeon.name} (${surgeon.id})`);
+      } else {
+        console.warn(`Zoho surgeon ${body.zoho_surgeon_id} not found in local surgeons table`);
+      }
+    }
+
     // Find or create patient record
     const patientId = await findOrCreatePatient(
       supabase,
       body.patient_email,
       body.patient_phone,
       body.patient_name,
-      body.surgeon_id
+      resolvedSurgeonId
     );
 
     // Check for existing open enrollment for the same Zoho record
