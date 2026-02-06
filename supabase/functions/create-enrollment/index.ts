@@ -135,10 +135,11 @@ async function findOrCreatePatient(
       .maybeSingle();
     
     if (existingByEmail) {
-      // Update phone/name if provided and patient found by email
-      const updates: Record<string, string> = {};
+      // Update phone/name/surgeon if provided and patient found by email
+      const updates: Record<string, string | null> = {};
       if (phone) updates.phone = phone;
       if (name?.trim()) updates.name = name.trim();
+      if (surgeonId) updates.surgeon_id = surgeonId;
       if (Object.keys(updates).length > 0) {
         await supabase.from("patients").update(updates).eq("id", existingByEmail.id);
       }
@@ -155,10 +156,11 @@ async function findOrCreatePatient(
       .maybeSingle();
     
     if (existingByPhone) {
-      // Update email/name if provided and patient found by phone
-      const updates: Record<string, string> = {};
+      // Update email/name/surgeon if provided and patient found by phone
+      const updates: Record<string, string | null> = {};
       if (email) updates.email = email.toLowerCase();
       if (name?.trim()) updates.name = name.trim();
+      if (surgeonId) updates.surgeon_id = surgeonId;
       if (Object.keys(updates).length > 0) {
         await supabase.from("patients").update(updates).eq("id", existingByPhone.id);
       }
