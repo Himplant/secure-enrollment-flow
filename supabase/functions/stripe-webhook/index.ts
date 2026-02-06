@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import Stripe from "npm:stripe@18.5.0";
 import { generateConsentPdf } from "../_shared/consent-pdf.ts";
+import { sendConfirmationEmail } from "../_shared/send-confirmation-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -107,7 +108,7 @@ async function generateAndStoreConsentPdf(
   supabase: any,
   enrollment: any,
   paymentDate: string,
-): Promise<void> {
+): Promise<Uint8Array | null> {
   try {
     // Fetch policy text
     const { data: policy } = enrollment.policy_id
@@ -147,7 +148,7 @@ async function generateAndStoreConsentPdf(
 
     if (uploadError) {
       console.error("Error uploading consent PDF:", uploadError);
-      return;
+      return pdfBytes; // Still return bytes for email even if upload fails
     }
 
     await supabase
@@ -156,9 +157,10 @@ async function generateAndStoreConsentPdf(
       .eq("id", enrollment.id);
 
     console.log(`Consent PDF generated and stored: ${pdfFileName}`);
+    return pdfBytes;
   } catch (err) {
     console.error("Error generating consent PDF:", err);
-    // Don't block the webhook if PDF generation fails
+    return null;
   }
 }
 
@@ -312,7 +314,17 @@ serve(async (req) => {
 
         // Generate consent PDF with payment date timestamp
         if (enrollment && newStatus === "paid") {
-          await generateAndStoreConsentPdf(supabase, enrollment, paidAt!);
+          const pdfBytes = await generateAndStoreConsentPdf(supabase, enrollment, paidAt!);
+          await sendConfirmationEmail({
+            patientName: enrollment.patient_name || "Valued Patient",
+            patientEmail: enrollment.patient_email,
+            amountCents: enrollment.amount_cents,
+            currency: enrollment.currency || "usd",
+            paymentMethodType: paymentMethodType,
+            paymentDate: paidAt!,
+            pdfBytes: pdfBytes,
+            enrollmentId: enrollment.id,
+          });
         }
 
         console.log(`Enrollment ${enrollmentId} updated to ${newStatus}`);
@@ -370,7 +382,17 @@ serve(async (req) => {
           );
 
           // Generate consent PDF with payment date
-          await generateAndStoreConsentPdf(supabase, enrollment, enrollment.paid_at);
+          const pdfBytes = await generateAndStoreConsentPdf(supabase, enrollment, enrollment.paid_at);
+          await sendConfirmationEmail({
+            patientName: enrollment.patient_name || "Valued Patient",
+            patientEmail: enrollment.patient_email,
+            amountCents: enrollment.amount_cents,
+            currency: enrollment.currency || "usd",
+            paymentMethodType: "ach",
+            paymentDate: enrollment.paid_at,
+            pdfBytes: pdfBytes,
+            enrollmentId: enrollment.id,
+          });
 
           console.log(`Enrollment ${enrollmentId} payment confirmed`);
         }
