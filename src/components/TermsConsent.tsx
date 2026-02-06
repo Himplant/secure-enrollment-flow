@@ -1,12 +1,13 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RichTextDisplay } from "@/components/ui/rich-text-editor";
-import { ExternalLink, Shield, FileText, ChevronDown, ChevronUp } from "lucide-react";
+import { Shield, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { replacePlaceholders } from "@/components/admin/PolicyPlaceholders";
+import { SignaturePad } from "@/components/SignaturePad";
 
 interface PlaceholderData {
   patient_name?: string | null;
@@ -25,7 +26,7 @@ interface TermsConsentProps {
   privacyText?: string | null;
   termsVersion: string;
   placeholderData?: PlaceholderData;
-  onAccept: () => void;
+  onAccept: (signatureDataUrl: string) => void;
   isLoading?: boolean;
   className?: string;
 }
@@ -43,10 +44,10 @@ export function TermsConsent({
 }: TermsConsentProps) {
   const [accepted, setAccepted] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
 
   const hasFullText = termsText || privacyText;
   
-  // Process placeholders in the text content
   const processedTermsText = useMemo(() => {
     if (!termsText || !placeholderData) return termsText;
     return replacePlaceholders(termsText, placeholderData);
@@ -56,6 +57,12 @@ export function TermsConsent({
     if (!privacyText || !placeholderData) return privacyText;
     return replacePlaceholders(privacyText, placeholderData);
   }, [privacyText, placeholderData]);
+
+  const handleSignatureChange = useCallback((dataUrl: string | null) => {
+    setSignatureDataUrl(dataUrl);
+  }, []);
+
+  const canProceed = accepted && !!signatureDataUrl;
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -105,27 +112,9 @@ export function TermsConsent({
                 </TabsContent>
               </Tabs>
             ) : (
-              <div className="flex flex-wrap gap-3 pt-2">
-                <a
-                  href={termsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 underline underline-offset-4 transition-colors"
-                >
-                  Terms of Service
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-                <span className="text-muted-foreground">·</span>
-                <a
-                  href={privacyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 underline underline-offset-4 transition-colors"
-                >
-                  Privacy Policy
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
+              <p className="text-sm text-muted-foreground pt-2">
+                Terms of Service and Privacy Policy documents are available for review.
+              </p>
             )}
 
             <p className="text-xs text-muted-foreground mt-3">
@@ -134,6 +123,9 @@ export function TermsConsent({
           </div>
         )}
       </div>
+
+      {/* Signature */}
+      <SignaturePad onSignatureChange={handleSignatureChange} />
 
       {/* Consent checkbox */}
       <div className="flex items-start gap-3">
@@ -159,8 +151,8 @@ export function TermsConsent({
         variant="hero"
         size="xl"
         className="w-full"
-        onClick={onAccept}
-        disabled={!accepted || isLoading}
+        onClick={() => signatureDataUrl && onAccept(signatureDataUrl)}
+        disabled={!canProceed || isLoading}
       >
         {isLoading ? (
           <>

@@ -119,7 +119,7 @@ export default function EnrollPage() {
     loadEnrollment();
   }, [token, returnStatus]);
 
-  const handleAcceptTerms = async () => {
+  const handleAcceptTerms = async (signatureDataUrl: string) => {
     if (!token || !enrollment) return;
     
     setIsSubmitting(true);
@@ -132,6 +132,7 @@ export default function EnrollPage() {
           token: token,
           terms_accepted: true,
           consent_user_agent: navigator.userAgent,
+          signature_data: signatureDataUrl,
         },
       });
 
