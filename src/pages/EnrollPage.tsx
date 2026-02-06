@@ -5,6 +5,7 @@ import { TermsConsent } from "@/components/TermsConsent";
 import { EnrollmentStatus } from "@/components/EnrollmentStatus";
 import { Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import himplantLogo from "@/assets/himplant-logo.png";
 
 // Secure enrollment data - only non-sensitive fields from edge function
 interface EnrollmentData {
@@ -252,9 +253,8 @@ export default function EnrollPage() {
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container max-w-2xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">Secure Payment</span>
+          <div className="flex items-center justify-center gap-3">
+            <img src={himplantLogo} alt="Himplant" className="h-10 w-auto object-contain" />
           </div>
         </div>
       </header>
