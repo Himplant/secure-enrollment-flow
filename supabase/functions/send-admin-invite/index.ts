@@ -124,7 +124,7 @@ serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: Deno.env.get("EMAIL_FROM") || "noreply@resend.dev",
+            from: Deno.env.get("EMAIL_FROM") || "noreply@himplant.com",
             to: normalizedEmail,
             subject: "You've been invited to the Admin Dashboard",
             html: `
