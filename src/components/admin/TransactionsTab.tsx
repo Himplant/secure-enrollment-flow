@@ -47,8 +47,10 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { RegenerateLinkModal } from "./RegenerateLinkModal";
 import { TransactionDetailsModal } from "./TransactionDetailsModal";
+import { DeleteConfirmationDialog } from "./DeleteConfirmationDialog";
 
 type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled';
 
@@ -86,7 +88,9 @@ export function TransactionsTab() {
   const [sortByExpiration, setSortByExpiration] = useState<"asc" | "desc" | null>(null);
   const [regenerateEnrollment, setRegenerateEnrollment] = useState<Transaction | null>(null);
   const [detailsEnrollmentId, setDetailsEnrollmentId] = useState<string | null>(null);
+  const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
+  const { user } = useAdminAuth();
   const queryClient = useQueryClient();
 
   // Fetch surgeons for filter dropdown
@@ -148,20 +152,39 @@ export function TransactionsTab() {
     },
   });
 
-  // Delete transaction mutation
+  // Delete transaction mutation with audit logging
   const deleteTransactionMutation = useMutation({
-    mutationFn: async (transactionId: string) => {
+    mutationFn: async (transaction: Transaction) => {
+      // Log to audit trail first (before deletion)
+      await supabase.from("admin_audit_log").insert({
+        admin_user_id: user?.id || null,
+        admin_email: user?.email || null,
+        action: "delete",
+        resource_type: "enrollment",
+        resource_id: transaction.id,
+        resource_summary: {
+          patient_name: transaction.patient_name,
+          patient_email: transaction.patient_email,
+          amount_cents: transaction.amount_cents,
+          status: transaction.status,
+          token_last4: transaction.token_last4,
+          created_at: transaction.created_at,
+        },
+      });
+
       const { error } = await supabase
         .from("enrollments")
         .delete()
-        .eq("id", transactionId);
+        .eq("id", transaction.id);
 
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["enrollment-stats"] });
-      toast({ title: "Transaction deleted", description: "Enrollment has been removed" });
+      queryClient.invalidateQueries({ queryKey: ["audit-log"] });
+      setDeleteTransaction(null);
+      toast({ title: "Transaction deleted", description: "Enrollment has been removed and logged to audit trail" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -436,11 +459,7 @@ export function TransactionsTab() {
                           </DropdownMenuItem>
                           {!["paid", "processing"].includes(transaction.status) && (
                             <DropdownMenuItem 
-                              onClick={() => {
-                                if (confirm(`Delete this enrollment for ${transaction.patient_name || 'Unknown'}? This cannot be undone.`)) {
-                                  deleteTransactionMutation.mutate(transaction.id);
-                                }
-                              }}
+                              onClick={() => setDeleteTransaction(transaction)}
                               className="text-destructive focus:text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
@@ -473,6 +492,19 @@ export function TransactionsTab() {
           isOpen={!!detailsEnrollmentId}
           onClose={() => setDetailsEnrollmentId(null)}
           enrollmentId={detailsEnrollmentId}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteTransaction && (
+        <DeleteConfirmationDialog
+          isOpen={!!deleteTransaction}
+          onClose={() => setDeleteTransaction(null)}
+          onConfirm={() => deleteTransactionMutation.mutate(deleteTransaction)}
+          isPending={deleteTransactionMutation.isPending}
+          resourceType="Transaction"
+          resourceName={`enrollment for ${deleteTransaction.patient_name || "Unknown"} (${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(deleteTransaction.amount_cents / 100)})`}
+          warning="This action cannot be undone. The enrollment record and all associated events will be permanently removed. This action will be logged to the audit trail."
         />
       )}
     </div>

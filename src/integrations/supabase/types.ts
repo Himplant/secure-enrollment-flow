@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_log: {
+        Row: {
+          action: string
+          admin_email: string | null
+          admin_user_id: string | null
+          created_at: string
+          id: string
+          resource_id: string | null
+          resource_summary: Json | null
+          resource_type: string
+        }
+        Insert: {
+          action: string
+          admin_email?: string | null
+          admin_user_id?: string | null
+          created_at?: string
+          id?: string
+          resource_id?: string | null
+          resource_summary?: Json | null
+          resource_type: string
+        }
+        Update: {
+          action?: string
+          admin_email?: string | null
+          admin_user_id?: string | null
+          created_at?: string
+          id?: string
+          resource_id?: string | null
+          resource_summary?: Json | null
+          resource_type?: string
+        }
+        Relationships: []
+      }
       admin_users: {
         Row: {
           accepted_at: string | null

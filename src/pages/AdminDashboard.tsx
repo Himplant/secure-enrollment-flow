@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog
+  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,7 @@ import { PatientsTab } from "@/components/admin/PatientsTab";
 import { TransactionsTab } from "@/components/admin/TransactionsTab";
 import { PoliciesTab } from "@/components/admin/PoliciesTab";
 import { SurgeonManagement } from "@/components/admin/SurgeonManagement";
+import { AuditLogTab } from "@/components/admin/AuditLogTab";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -70,6 +71,7 @@ export default function AdminDashboard() {
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
+    queryClient.invalidateQueries({ queryKey: ["audit-log"] });
     queryClient.invalidateQueries({ queryKey: ["policies"] });
     queryClient.invalidateQueries({ queryKey: ["surgeons"] });
     queryClient.invalidateQueries({ queryKey: ["surgeons-management"] });
@@ -158,6 +160,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="transactions" className="gap-2"><Receipt className="h-4 w-4" />Transactions</TabsTrigger>
             <TabsTrigger value="policies" className="gap-2"><FileText className="h-4 w-4" />Policies</TabsTrigger>
             <TabsTrigger value="surgeons" className="gap-2"><UserCog className="h-4 w-4" />Surgeons</TabsTrigger>
+            <TabsTrigger value="audit" className="gap-2"><Shield className="h-4 w-4" />Audit Log</TabsTrigger>
             {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2"><Settings className="h-4 w-4" />User Management</TabsTrigger>
             )}
@@ -166,6 +169,7 @@ export default function AdminDashboard() {
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
           <TabsContent value="policies"><PoliciesTab /></TabsContent>
           <TabsContent value="surgeons"><SurgeonManagement /></TabsContent>
+          <TabsContent value="audit"><AuditLogTab /></TabsContent>
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
           )}

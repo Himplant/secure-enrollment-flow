@@ -41,10 +41,12 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { CreateEnrollmentModal } from "./CreateEnrollmentModal";
 import { PatientHistoryModal } from "./PatientHistoryModal";
 import { ImportPatientsModal } from "./ImportPatientsModal";
 import { SurgeonSelect } from "./SurgeonSelect";
+import { DeleteConfirmationDialog } from "./DeleteConfirmationDialog";
 
 interface Patient {
   id: string;
@@ -67,7 +69,9 @@ export function PatientsTab() {
   const [createForPatient, setCreateForPatient] = useState<Patient | null>(null);
   const [addPatientOpen, setAddPatientOpen] = useState(false);
   const [newPatient, setNewPatient] = useState({ name: "", email: "", phone: "", surgeon_id: null as string | null });
+  const [deletePatient2, setDeletePatient2] = useState<Patient | null>(null);
   const { toast } = useToast();
+  const { user } = useAdminAuth();
   const queryClient = useQueryClient();
 
   // Fetch patients with aggregated enrollment data
@@ -176,19 +180,35 @@ export function PatientsTab() {
     },
   });
 
-  // Delete patient mutation
+  // Delete patient mutation with audit logging
   const deletePatientMutation = useMutation({
-    mutationFn: async (patientId: string) => {
+    mutationFn: async (patient: Patient) => {
+      // Log to audit trail first
+      await supabase.from("admin_audit_log").insert({
+        admin_user_id: user?.id || null,
+        admin_email: user?.email || null,
+        action: "delete",
+        resource_type: "patient",
+        resource_id: patient.id,
+        resource_summary: {
+          name: patient.name,
+          email: patient.email,
+          phone: patient.phone,
+        },
+      });
+
       const { error } = await supabase
         .from("patients")
         .delete()
-        .eq("id", patientId);
+        .eq("id", patient.id);
 
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] });
-      toast({ title: "Patient deleted", description: "Patient has been removed" });
+      queryClient.invalidateQueries({ queryKey: ["audit-log"] });
+      setDeletePatient2(null);
+      toast({ title: "Patient deleted", description: "Patient has been removed and logged to audit trail" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -343,11 +363,7 @@ export function PatientsTab() {
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem 
-                                onClick={() => {
-                                  if (confirm(`Delete ${patient.name}? This cannot be undone.`)) {
-                                    deletePatientMutation.mutate(patient.id);
-                                  }
-                                }}
+                                onClick={() => setDeletePatient2(patient)}
                                 className="text-destructive focus:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
@@ -516,6 +532,19 @@ export function PatientsTab() {
           patientId={createForPatient.id}
           isOpen={!!createForPatient}
           onOpenChange={(open) => !open && setCreateForPatient(null)}
+        />
+      )}
+
+      {/* Delete Patient Confirmation Dialog */}
+      {deletePatient2 && (
+        <DeleteConfirmationDialog
+          isOpen={!!deletePatient2}
+          onClose={() => setDeletePatient2(null)}
+          onConfirm={() => deletePatientMutation.mutate(deletePatient2)}
+          isPending={deletePatientMutation.isPending}
+          resourceType="Patient"
+          resourceName={deletePatient2.name}
+          warning="This action cannot be undone. The patient record will be permanently removed. This action will be logged to the audit trail."
         />
       )}
     </div>
