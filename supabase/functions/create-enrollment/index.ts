@@ -16,6 +16,7 @@ interface EnrollmentRequest {
   zoho_surgeon_id?: string;   // Zoho surgeon record ID (from lookup field)
   surgeon_zoho_id?: string;   // Alternative key name (from Zoho Deluge)
   surgeon_name?: string;      // Fallback surgeon name
+  owner_name?: string;        // Zoho record Owner (consultant name)
   amount?: number;            // Decimal from Zoho (e.g., 500.00)
   amount_cents?: number;  // Legacy support for cents
   currency?: string;
@@ -327,6 +328,7 @@ serve(async (req) => {
       zoho_surgeon_id: body.zoho_surgeon_id,
       surgeon_zoho_id: body.surgeon_zoho_id,
       surgeon_name: body.surgeon_name,
+      owner_name: body.owner_name,
     }));
     let amountCents: number;
     if (body.amount !== undefined) {
@@ -493,11 +495,12 @@ serve(async (req) => {
           privacy_url: privacyUrl,
           terms_version: policy?.version || body.terms_version,
           terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
-          token_hash: tokenHash,
-          token_last4: tokenLast4,
-          expires_at: expiresAt.toISOString(),
-          status: "created",
-          opened_at: null,
+           owner_name: body.owner_name || null,
+           token_hash: tokenHash,
+           token_last4: tokenLast4,
+           expires_at: expiresAt.toISOString(),
+           status: "created",
+           opened_at: null,
           terms_accepted_at: null,
           terms_accept_ip: null,
           terms_accept_user_agent: null,
@@ -551,6 +554,7 @@ serve(async (req) => {
           privacy_url: privacyUrl,
           terms_version: policy?.version || body.terms_version,
           terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
+          owner_name: body.owner_name || null,
           token_hash: tokenHash,
           token_last4: tokenLast4,
           expires_at: expiresAt.toISOString(),

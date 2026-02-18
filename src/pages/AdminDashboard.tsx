@@ -44,7 +44,7 @@ export default function AdminDashboard() {
     queryFn: async () => {
       let query = supabase
         .from("enrollments")
-        .select("status, amount_cents, created_at, paid_at");
+        .select("status, amount_cents, created_at, paid_at, owner_name");
 
       if (dateRange.from) {
         query = query.gte("created_at", dateRange.from.toISOString());
