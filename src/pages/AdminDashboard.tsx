@@ -23,6 +23,8 @@ import { PatientsTab } from "@/components/admin/PatientsTab";
 import { TransactionsTab } from "@/components/admin/TransactionsTab";
 import { PoliciesTab } from "@/components/admin/PoliciesTab";
 import { SurgeonManagement } from "@/components/admin/SurgeonManagement";
+import { ConsultantDistributionCard } from "@/components/admin/ConsultantDistributionCard";
+import { ConsultantTrendChart } from "@/components/admin/ConsultantTrendChart";
 import { AuditLogTab } from "@/components/admin/AuditLogTab";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -150,6 +152,12 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <SurgeonTrendChart dateFrom={dateRange.from} dateTo={dateRange.to} />
             <SurgeonDistributionCard />
+          </div>
+
+          {/* Consultant charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ConsultantTrendChart dateFrom={dateRange.from} dateTo={dateRange.to} />
+            <ConsultantDistributionCard />
           </div>
         </div>
 
