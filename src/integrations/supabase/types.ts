@@ -129,6 +129,7 @@ export type Database = {
           failed_at: string | null
           id: string
           opened_at: string | null
+          owner_name: string | null
           paid_at: string | null
           patient_email: string | null
           patient_id: string | null
@@ -167,6 +168,7 @@ export type Database = {
           failed_at?: string | null
           id?: string
           opened_at?: string | null
+          owner_name?: string | null
           paid_at?: string | null
           patient_email?: string | null
           patient_id?: string | null
@@ -205,6 +207,7 @@ export type Database = {
           failed_at?: string | null
           id?: string
           opened_at?: string | null
+          owner_name?: string | null
           paid_at?: string | null
           patient_email?: string | null
           patient_id?: string | null

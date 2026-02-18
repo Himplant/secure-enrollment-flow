@@ -11,7 +11,9 @@ import {
   Building2,
   Clock,
   Trash2,
-  ArrowUpDown
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +75,7 @@ interface Transaction {
   expires_at: string;
   terms_accept_ip: string | null;
   policy_id: string | null;
+  owner_name: string | null;
   surgeon_name?: string | null;
 }
 
@@ -81,11 +84,16 @@ interface Surgeon {
   name: string;
 }
 
+type SortField = 'patient_name' | 'surgeon_name' | 'owner_name' | 'amount_cents' | 'status' | 'payment_method_type' | 'created_at' | 'expires_at';
+type SortDirection = 'asc' | 'desc' | null;
+
 export function TransactionsTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [surgeonFilter, setSurgeonFilter] = useState<string>("all");
-  const [sortByExpiration, setSortByExpiration] = useState<"asc" | "desc" | null>(null);
+  const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [regenerateEnrollment, setRegenerateEnrollment] = useState<Transaction | null>(null);
   const [detailsEnrollmentId, setDetailsEnrollmentId] = useState<string | null>(null);
   const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
@@ -110,12 +118,11 @@ export function TransactionsTab() {
   const { data: transactions, isLoading, refetch } = useQuery({
     queryKey: ["transactions", statusFilter, surgeonFilter],
     queryFn: async () => {
-      // Fetch enrollments with patient and surgeon info
       let query = supabase
         .from("enrollments")
         .select(`
           id, token_last4, patient_name, patient_email, patient_id, 
-          amount_cents, status, payment_method_type, 
+          amount_cents, status, payment_method_type, owner_name,
           created_at, opened_at, terms_accepted_at, processing_at, 
           paid_at, failed_at, expired_at, expires_at, 
           terms_accept_ip, policy_id,
@@ -134,14 +141,12 @@ export function TransactionsTab() {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Process data to flatten surgeon info and apply surgeon filter
       const processed = (data || []).map((enrollment: any) => ({
         ...enrollment,
         surgeon_name: enrollment.patients?.surgeon?.name || null,
         surgeon_id: enrollment.patients?.surgeon_id || null,
       }));
 
-      // Apply surgeon filter client-side (since it's nested)
       if (surgeonFilter !== "all") {
         return processed.filter((t: any) => 
           surgeonFilter === "unassigned" ? !t.surgeon_id : t.surgeon_id === surgeonFilter
@@ -152,10 +157,17 @@ export function TransactionsTab() {
     },
   });
 
+  // Extract unique owner names for filter dropdown
+  const ownerNames = useMemo(() => {
+    if (!transactions) return [];
+    const names = new Set<string>();
+    transactions.forEach(t => { if (t.owner_name) names.add(t.owner_name); });
+    return Array.from(names).sort();
+  }, [transactions]);
+
   // Delete transaction mutation with audit logging
   const deleteTransactionMutation = useMutation({
     mutationFn: async (transaction: Transaction) => {
-      // Log to audit trail first (before deletion)
       await supabase.from("admin_audit_log").insert({
         admin_user_id: user?.id || null,
         admin_email: user?.email || null,
@@ -191,6 +203,26 @@ export function TransactionsTab() {
     },
   });
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Cycle: asc -> desc -> null
+      setSortDirection(prev => prev === 'asc' ? 'desc' : prev === 'desc' ? null : 'asc');
+      if (sortDirection === 'desc') setSortField(null);
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field || !sortDirection) {
+      return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="ml-1 h-3 w-3 text-primary" />
+      : <ArrowDown className="ml-1 h-3 w-3 text-primary" />;
+  };
+
   const filteredTransactions = useMemo(() => {
     if (!transactions) return [];
     
@@ -203,21 +235,71 @@ export function TransactionsTab() {
         (t) =>
           t.patient_name?.toLowerCase().includes(searchLower) ||
           t.patient_email?.toLowerCase().includes(searchLower) ||
+          t.owner_name?.toLowerCase().includes(searchLower) ||
           t.token_last4.includes(search)
       );
     }
+
+    // Apply owner filter
+    if (ownerFilter !== "all") {
+      if (ownerFilter === "unassigned") {
+        result = result.filter(t => !t.owner_name);
+      } else {
+        result = result.filter(t => t.owner_name === ownerFilter);
+      }
+    }
     
-    // Apply expiration sorting
-    if (sortByExpiration) {
+    // Apply column sorting
+    if (sortField && sortDirection) {
       result = [...result].sort((a, b) => {
-        const aTime = new Date(a.expires_at).getTime();
-        const bTime = new Date(b.expires_at).getTime();
-        return sortByExpiration === "asc" ? aTime - bTime : bTime - aTime;
+        let aVal: any;
+        let bVal: any;
+
+        switch (sortField) {
+          case 'patient_name':
+            aVal = (a.patient_name || '').toLowerCase();
+            bVal = (b.patient_name || '').toLowerCase();
+            break;
+          case 'surgeon_name':
+            aVal = (a.surgeon_name || '').toLowerCase();
+            bVal = (b.surgeon_name || '').toLowerCase();
+            break;
+          case 'owner_name':
+            aVal = (a.owner_name || '').toLowerCase();
+            bVal = (b.owner_name || '').toLowerCase();
+            break;
+          case 'amount_cents':
+            aVal = a.amount_cents;
+            bVal = b.amount_cents;
+            break;
+          case 'status':
+            aVal = a.status;
+            bVal = b.status;
+            break;
+          case 'payment_method_type':
+            aVal = a.payment_method_type || '';
+            bVal = b.payment_method_type || '';
+            break;
+          case 'created_at':
+            aVal = new Date(a.created_at || 0).getTime();
+            bVal = new Date(b.created_at || 0).getTime();
+            break;
+          case 'expires_at':
+            aVal = new Date(a.expires_at).getTime();
+            bVal = new Date(b.expires_at).getTime();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
       });
     }
     
     return result;
-  }, [transactions, search, sortByExpiration]);
+  }, [transactions, search, ownerFilter, sortField, sortDirection]);
 
   const formatAmount = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -238,7 +320,6 @@ export function TransactionsTab() {
     setDetailsEnrollmentId(transaction.id);
   };
 
-  // Format timestamps for tooltip
   const getTimestampTooltip = (transaction: Transaction) => {
     const lines: string[] = [];
     if (transaction.created_at) lines.push(`Created: ${format(new Date(transaction.created_at), "MMM d, h:mm a")}`);
@@ -248,13 +329,25 @@ export function TransactionsTab() {
     return lines.join("\n");
   };
 
+  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-auto p-0 font-medium hover:bg-transparent"
+      onClick={() => handleSort(field)}
+    >
+      {children}
+      {getSortIcon(field)}
+    </Button>
+  );
+
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1">
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex-1 min-w-[200px]">
           <Input
-            placeholder="Search by patient name, email, or token..."
+            placeholder="Search by patient, email, owner, or token..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-md"
@@ -290,6 +383,20 @@ export function TransactionsTab() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All consultants" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Consultants</SelectItem>
+            <SelectItem value="unassigned">Unassigned</SelectItem>
+            {ownerNames.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button variant="outline" size="icon" onClick={() => refetch()}>
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -320,25 +427,14 @@ export function TransactionsTab() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Patient</TableHead>
-                  <TableHead>Surgeon</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto p-0 font-medium hover:bg-transparent"
-                      onClick={() => setSortByExpiration(prev => 
-                        prev === null ? "asc" : prev === "asc" ? "desc" : null
-                      )}
-                    >
-                      Expires
-                      <ArrowUpDown className={`ml-1 h-3 w-3 ${sortByExpiration ? "text-primary" : "text-muted-foreground"}`} />
-                    </Button>
-                  </TableHead>
+                  <TableHead><SortableHeader field="patient_name">Patient</SortableHeader></TableHead>
+                  <TableHead><SortableHeader field="surgeon_name">Surgeon</SortableHeader></TableHead>
+                  <TableHead><SortableHeader field="owner_name">Consultant</SortableHeader></TableHead>
+                  <TableHead><SortableHeader field="amount_cents">Amount</SortableHeader></TableHead>
+                  <TableHead><SortableHeader field="status">Status</SortableHeader></TableHead>
+                  <TableHead><SortableHeader field="payment_method_type">Payment</SortableHeader></TableHead>
+                  <TableHead><SortableHeader field="created_at">Created</SortableHeader></TableHead>
+                  <TableHead><SortableHeader field="expires_at">Expires</SortableHeader></TableHead>
                   <TableHead>Key Dates</TableHead>
                   <TableHead>Token</TableHead>
                   <TableHead className="w-12"></TableHead>
@@ -360,6 +456,13 @@ export function TransactionsTab() {
                     <TableCell>
                       {transaction.surgeon_name ? (
                         <span className="text-sm text-foreground">{transaction.surgeon_name}</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {transaction.owner_name ? (
+                        <span className="text-sm text-foreground">{transaction.owner_name}</span>
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                       )}
