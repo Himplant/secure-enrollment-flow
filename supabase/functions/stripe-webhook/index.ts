@@ -408,6 +408,21 @@ serve(async (req) => {
           break;
         }
 
+        // Cross-project guard: verify enrollment exists in this project's database
+        const { data: existingFailed } = await supabase
+          .from("enrollments")
+          .select("id")
+          .eq("id", enrollmentId)
+          .single();
+
+        if (!existingFailed) {
+          console.log(`No matching record found for enrollment ${enrollmentId} - skipping (likely another project)`);
+          return new Response(JSON.stringify({ received: true, skipped: true }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         const { data: enrollment, error: updateError } = await supabase
           .from("enrollments")
           .update({
@@ -459,6 +474,21 @@ serve(async (req) => {
         if (!enrollmentId) {
           console.log("No enrollment_id in session metadata, skipping");
           break;
+        }
+
+        // Cross-project guard: verify enrollment exists in this project's database
+        const { data: existingExpired } = await supabase
+          .from("enrollments")
+          .select("id")
+          .eq("id", enrollmentId)
+          .single();
+
+        if (!existingExpired) {
+          console.log(`No matching record found for enrollment ${enrollmentId} - skipping (likely another project)`);
+          return new Response(JSON.stringify({ received: true, skipped: true }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
 
         const { data: enrollment, error: updateError } = await supabase
