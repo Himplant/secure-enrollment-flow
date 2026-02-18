@@ -9,6 +9,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { UserManagement } from "@/components/admin/UserManagement";
@@ -40,13 +43,37 @@ export default function AdminDashboard() {
   const [preset, setPreset] = useState<DatePreset>("30d");
   const [dateRange, setDateRange] = useState(getDateRangeForPreset("30d"));
 
-  // Single query for analytics enrollments
-  const { data: enrollments = [], isLoading: statsLoading } = useQuery({
+  // Global analytics filters
+  const [analyticsSurgeonFilter, setAnalyticsSurgeonFilter] = useState<string>("all");
+  const [analyticsConsultantFilter, setAnalyticsConsultantFilter] = useState<string>("all");
+
+  // Fetch surgeons for filter
+  const { data: surgeonsList = [] } = useQuery({
+    queryKey: ["surgeons-analytics-filter"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("surgeons")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Single query for analytics enrollments (includes owner_name + patient surgeon)
+  const { data: rawEnrollments = [], isLoading: statsLoading } = useQuery({
     queryKey: ["analytics-enrollments", dateRange.from?.toISOString(), dateRange.to?.toISOString()],
     queryFn: async () => {
       let query = supabase
         .from("enrollments")
-        .select("status, amount_cents, created_at, paid_at, owner_name");
+        .select(`
+          status, amount_cents, created_at, paid_at, owner_name,
+          patients!enrollments_patient_id_fkey (
+            surgeon_id,
+            surgeon:surgeons(id, name)
+          )
+        `);
 
       if (dateRange.from) {
         query = query.gte("created_at", dateRange.from.toISOString());
@@ -57,9 +84,43 @@ export default function AdminDashboard() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      return (data || []).map((e: any) => ({
+        ...e,
+        surgeon_name: e.patients?.surgeon?.name || null,
+        surgeon_id: e.patients?.surgeon_id || null,
+      }));
     },
   });
+
+  // Extract unique consultant names for filter
+  const consultantNames = useMemo(() => {
+    const names = new Set<string>();
+    rawEnrollments.forEach((e: any) => { if (e.owner_name) names.add(e.owner_name); });
+    return Array.from(names).sort();
+  }, [rawEnrollments]);
+
+  // Apply global filters to enrollments
+  const enrollments = useMemo(() => {
+    let result = rawEnrollments;
+
+    if (analyticsSurgeonFilter !== "all") {
+      if (analyticsSurgeonFilter === "unassigned") {
+        result = result.filter((e: any) => !e.surgeon_id);
+      } else {
+        result = result.filter((e: any) => e.surgeon_id === analyticsSurgeonFilter);
+      }
+    }
+
+    if (analyticsConsultantFilter !== "all") {
+      if (analyticsConsultantFilter === "unassigned") {
+        result = result.filter((e: any) => !e.owner_name);
+      } else {
+        result = result.filter((e: any) => e.owner_name === analyticsConsultantFilter);
+      }
+    }
+
+    return result;
+  }, [rawEnrollments, analyticsSurgeonFilter, analyticsConsultantFilter]);
 
   const stats = useMemo(() => (enrollments.length ? computeStats(enrollments) : null), [enrollments]);
 
@@ -78,6 +139,8 @@ export default function AdminDashboard() {
     queryClient.invalidateQueries({ queryKey: ["surgeons"] });
     queryClient.invalidateQueries({ queryKey: ["surgeons-management"] });
     queryClient.invalidateQueries({ queryKey: ["surgeon-distribution"] });
+    queryClient.invalidateQueries({ queryKey: ["consultant-distribution"] });
+    queryClient.invalidateQueries({ queryKey: ["surgeons-analytics-filter"] });
     toast({ title: "Refreshed", description: "Data has been refreshed" });
   };
 
@@ -118,13 +181,52 @@ export default function AdminDashboard() {
       <main className="container mx-auto px-6 py-8">
         {/* Analytics section */}
         <div className="mb-8 space-y-6">
-          {/* Date filter */}
-          <AnalyticsDateFilter
-            dateRange={dateRange}
-            preset={preset}
-            onPresetChange={setPreset}
-            onDateRangeChange={setDateRange}
-          />
+          {/* Date filter + global surgeon/consultant filters */}
+          <div className="space-y-3">
+            <AnalyticsDateFilter
+              dateRange={dateRange}
+              preset={preset}
+              onPresetChange={setPreset}
+              onDateRangeChange={setDateRange}
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-medium text-muted-foreground">Filter by:</span>
+              <Select value={analyticsSurgeonFilter} onValueChange={setAnalyticsSurgeonFilter}>
+                <SelectTrigger className="w-[180px] h-8 text-xs">
+                  <SelectValue placeholder="All Surgeons" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Surgeons</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {surgeonsList.map((s: any) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={analyticsConsultantFilter} onValueChange={setAnalyticsConsultantFilter}>
+                <SelectTrigger className="w-[180px] h-8 text-xs">
+                  <SelectValue placeholder="All Consultants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Consultants</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {consultantNames.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(analyticsSurgeonFilter !== "all" || analyticsConsultantFilter !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => { setAnalyticsSurgeonFilter("all"); setAnalyticsConsultantFilter("all"); }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          </div>
 
           {/* KPI cards */}
           <DashboardStats stats={stats} isLoading={statsLoading} />
