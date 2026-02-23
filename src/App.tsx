@@ -14,7 +14,7 @@ import NotFound from "./pages/NotFound";
 // Lazy-load admin pages — they share heavy deps (TipTap, Recharts, etc.)
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
-const AdminPending = lazy(() => import("./pages/AdminPending"));
+
 const AdminProtectedRoute = lazy(() =>
   import("./components/admin/AdminProtectedRoute").then(m => ({ default: m.AdminProtectedRoute }))
 );
@@ -49,11 +49,6 @@ const App = () => (
           <Route path="/admin/login" element={
             <Suspense fallback={<AdminFallback />}>
               <AdminLogin />
-            </Suspense>
-          } />
-          <Route path="/admin/pending" element={
-            <Suspense fallback={<AdminFallback />}>
-              <AdminPending />
             </Suspense>
           } />
           <Route path="/admin" element={
