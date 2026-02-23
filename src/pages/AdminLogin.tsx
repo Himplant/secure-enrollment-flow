@@ -14,7 +14,7 @@ import himplantLogo from "@/assets/himplant-logo.png";
 export default function AdminLogin() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isAdmin, isLoading } = useAdminAuth();
+  const { isAuthenticated, isLoading } = useAdminAuth();
   const { toast } = useToast();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [email, setEmail] = useState("");
@@ -25,12 +25,10 @@ export default function AdminLogin() {
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/admin";
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && isAdmin) {
+    if (!isLoading && isAuthenticated) {
       navigate(from, { replace: true });
-    } else if (!isLoading && isAuthenticated && !isAdmin) {
-      navigate("/admin/pending", { replace: true });
     }
-  }, [isAuthenticated, isAdmin, isLoading, navigate, from]);
+  }, [isAuthenticated, isLoading, navigate, from]);
 
   const handleGoogleLogin = async () => {
     setIsSigningIn(true);
