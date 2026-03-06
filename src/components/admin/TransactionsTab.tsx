@@ -205,37 +205,22 @@ export function TransactionsTab() {
     },
   });
 
-  // Mark as refunded mutation
+  // Mark as refunded mutation (calls edge function for Zoho sync)
   const refundMutation = useMutation({
     mutationFn: async (transaction: Transaction) => {
-      await supabase.from("admin_audit_log").insert({
-        admin_user_id: user?.id || null,
-        admin_email: user?.email || null,
-        action: "refund",
-        resource_type: "enrollment",
-        resource_id: transaction.id,
-        resource_summary: {
-          patient_name: transaction.patient_name,
-          patient_email: transaction.patient_email,
-          amount_cents: transaction.amount_cents,
-          previous_status: transaction.status,
-          token_last4: transaction.token_last4,
-        },
+      const { data, error } = await supabase.functions.invoke("mark-refunded", {
+        body: { enrollment_id: transaction.id },
       });
 
-      const { error } = await supabase
-        .from("enrollments")
-        .update({ status: "refunded" as any, refunded_at: new Date().toISOString() } as any)
-        .eq("id", transaction.id);
-
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
       queryClient.invalidateQueries({ queryKey: ["audit-log"] });
       setRefundTransaction(null);
-      toast({ title: "Marked as refunded", description: "Enrollment status updated and logged to audit trail" });
+      toast({ title: "Marked as refunded", description: "Enrollment status updated, synced to Zoho, and logged to audit trail" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
