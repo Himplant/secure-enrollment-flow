@@ -674,6 +674,9 @@ export function TransactionsTab() {
           resourceType="Refund"
           resourceName={`enrollment for ${refundTransaction.patient_name || "Unknown"} (${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(refundTransaction.amount_cents / 100)})`}
           warning="This will mark the enrollment as refunded. The status change will be logged to the audit trail. Make sure you have already processed the refund in Stripe before confirming."
+          title="Mark as Refunded"
+          confirmText="REFUND"
+          actionLabel="Confirm Refund"
         />
       )}
     </div>
