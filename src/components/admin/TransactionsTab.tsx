@@ -557,12 +557,21 @@ export function TransactionsTab() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setRegenerateEnrollment(transaction)}
-                            disabled={["paid", "processing"].includes(transaction.status)}
+                            disabled={["paid", "processing", "refunded"].includes(transaction.status)}
                           >
                             <RefreshCw className="h-4 w-4 mr-2" />
                             Get New Link
                           </DropdownMenuItem>
-                          {!["paid", "processing"].includes(transaction.status) && (
+                          {transaction.status === "paid" && (
+                            <DropdownMenuItem
+                              onClick={() => handleMarkRefunded(transaction)}
+                              className="text-warning-foreground"
+                            >
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Mark as Refunded
+                            </DropdownMenuItem>
+                          )}
+                          {!["paid", "processing", "refunded"].includes(transaction.status) && (
                             <DropdownMenuItem 
                               onClick={() => setDeleteTransaction(transaction)}
                               className="text-destructive focus:text-destructive"
