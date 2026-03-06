@@ -141,6 +141,7 @@ export type Database = {
           policy_id: string | null
           privacy_url: string
           processing_at: string | null
+          refunded_at: string | null
           signature_data: string | null
           status: Database["public"]["Enums"]["enrollment_status"]
           stripe_customer_id: string | null
@@ -180,6 +181,7 @@ export type Database = {
           policy_id?: string | null
           privacy_url: string
           processing_at?: string | null
+          refunded_at?: string | null
           signature_data?: string | null
           status?: Database["public"]["Enums"]["enrollment_status"]
           stripe_customer_id?: string | null
@@ -219,6 +221,7 @@ export type Database = {
           policy_id?: string | null
           privacy_url?: string
           processing_at?: string | null
+          refunded_at?: string | null
           signature_data?: string | null
           status?: Database["public"]["Enums"]["enrollment_status"]
           stripe_customer_id?: string | null
@@ -448,6 +451,7 @@ export type Database = {
         | "failed"
         | "expired"
         | "canceled"
+        | "refunded"
       payment_method_type: "card" | "ach"
     }
     CompositeTypes: {
@@ -586,6 +590,7 @@ export const Constants = {
         "failed",
         "expired",
         "canceled",
+        "refunded",
       ],
       payment_method_type: ["card", "ach"],
     },
