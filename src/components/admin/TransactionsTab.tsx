@@ -663,6 +663,19 @@ export function TransactionsTab() {
           warning="This action cannot be undone. The enrollment record and all associated events will be permanently removed. This action will be logged to the audit trail."
         />
       )}
+
+      {/* Refund Confirmation Dialog */}
+      {refundTransaction && (
+        <DeleteConfirmationDialog
+          isOpen={!!refundTransaction}
+          onClose={() => setRefundTransaction(null)}
+          onConfirm={() => refundMutation.mutate(refundTransaction)}
+          isPending={refundMutation.isPending}
+          resourceType="Refund"
+          resourceName={`enrollment for ${refundTransaction.patient_name || "Unknown"} (${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(refundTransaction.amount_cents / 100)})`}
+          warning="This will mark the enrollment as refunded. The status change will be logged to the audit trail. Make sure you have already processed the refund in Stripe before confirming."
+        />
+      )}
     </div>
   );
 }
