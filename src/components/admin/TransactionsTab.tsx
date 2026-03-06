@@ -98,6 +98,7 @@ export function TransactionsTab() {
   const [regenerateEnrollment, setRegenerateEnrollment] = useState<Transaction | null>(null);
   const [detailsEnrollmentId, setDetailsEnrollmentId] = useState<string | null>(null);
   const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
+  const [refundTransaction, setRefundTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
   const { user } = useAdminAuth();
   const queryClient = useQueryClient();
@@ -233,6 +234,7 @@ export function TransactionsTab() {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
       queryClient.invalidateQueries({ queryKey: ["audit-log"] });
+      setRefundTransaction(null);
       toast({ title: "Marked as refunded", description: "Enrollment status updated and logged to audit trail" });
     },
     onError: (error: Error) => {
@@ -241,9 +243,7 @@ export function TransactionsTab() {
   });
 
   const handleMarkRefunded = (transaction: Transaction) => {
-    if (confirm(`Mark enrollment for ${transaction.patient_name || "Unknown"} as refunded?`)) {
-      refundMutation.mutate(transaction);
-    }
+    setRefundTransaction(transaction);
   };
 
   const handleSort = (field: SortField) => {
