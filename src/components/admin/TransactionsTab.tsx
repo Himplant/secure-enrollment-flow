@@ -13,7 +13,8 @@ import {
   Trash2,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  RotateCcw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +55,7 @@ import { RegenerateLinkModal } from "./RegenerateLinkModal";
 import { TransactionDetailsModal } from "./TransactionDetailsModal";
 import { DeleteConfirmationDialog } from "./DeleteConfirmationDialog";
 
-type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled';
+type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled' | 'refunded';
 
 interface Transaction {
   id: string;
@@ -202,6 +203,48 @@ export function TransactionsTab() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+
+  // Mark as refunded mutation
+  const refundMutation = useMutation({
+    mutationFn: async (transaction: Transaction) => {
+      await supabase.from("admin_audit_log").insert({
+        admin_user_id: user?.id || null,
+        admin_email: user?.email || null,
+        action: "refund",
+        resource_type: "enrollment",
+        resource_id: transaction.id,
+        resource_summary: {
+          patient_name: transaction.patient_name,
+          patient_email: transaction.patient_email,
+          amount_cents: transaction.amount_cents,
+          previous_status: transaction.status,
+          token_last4: transaction.token_last4,
+        },
+      });
+
+      const { error } = await supabase
+        .from("enrollments")
+        .update({ status: "refunded" as any, refunded_at: new Date().toISOString() } as any)
+        .eq("id", transaction.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
+      queryClient.invalidateQueries({ queryKey: ["audit-log"] });
+      toast({ title: "Marked as refunded", description: "Enrollment status updated and logged to audit trail" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleMarkRefunded = (transaction: Transaction) => {
+    if (confirm(`Mark enrollment for ${transaction.patient_name || "Unknown"} as refunded?`)) {
+      refundMutation.mutate(transaction);
+    }
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -367,6 +410,7 @@ export function TransactionsTab() {
             <SelectItem value="failed">Failed</SelectItem>
             <SelectItem value="expired">Expired</SelectItem>
             <SelectItem value="canceled">Canceled</SelectItem>
+            <SelectItem value="refunded">Refunded</SelectItem>
           </SelectContent>
         </Select>
         <Select value={surgeonFilter} onValueChange={setSurgeonFilter}>
@@ -555,12 +599,21 @@ export function TransactionsTab() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setRegenerateEnrollment(transaction)}
-                            disabled={["paid", "processing"].includes(transaction.status)}
+                            disabled={["paid", "processing", "refunded"].includes(transaction.status)}
                           >
                             <RefreshCw className="h-4 w-4 mr-2" />
                             Get New Link
                           </DropdownMenuItem>
-                          {!["paid", "processing"].includes(transaction.status) && (
+                          {transaction.status === "paid" && (
+                            <DropdownMenuItem
+                              onClick={() => handleMarkRefunded(transaction)}
+                              className="text-warning-foreground"
+                            >
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Mark as Refunded
+                            </DropdownMenuItem>
+                          )}
+                          {!["paid", "processing", "refunded"].includes(transaction.status) && (
                             <DropdownMenuItem 
                               onClick={() => setDeleteTransaction(transaction)}
                               className="text-destructive focus:text-destructive"

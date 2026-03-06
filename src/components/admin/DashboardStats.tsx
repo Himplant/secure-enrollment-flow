@@ -21,8 +21,10 @@ export interface EnrollmentStats {
   expired: number;
   failed: number;
   canceled: number;
+  refunded: number;
   totalPaidAmount: number;
   totalProcessingAmount: number;
+  totalRefundedAmount: number;
   conversionRate: number;
 }
 
@@ -37,6 +39,7 @@ export function computeStats(enrollments: Enrollment[]): EnrollmentStats {
   const expired = enrollments.filter(e => e.status === "expired").length;
   const failed = enrollments.filter(e => e.status === "failed").length;
   const canceled = enrollments.filter(e => e.status === "canceled").length;
+  const refunded = enrollments.filter(e => e.status === "refunded").length;
 
   const totalPaidAmount = enrollments
     .filter(e => e.status === "paid")
@@ -46,9 +49,13 @@ export function computeStats(enrollments: Enrollment[]): EnrollmentStats {
     .filter(e => e.status === "processing")
     .reduce((sum, e) => sum + e.amount_cents, 0);
 
+  const totalRefundedAmount = enrollments
+    .filter(e => e.status === "refunded")
+    .reduce((sum, e) => sum + e.amount_cents, 0);
+
   const conversionRate = total > 0 ? (paid / total) * 100 : 0;
 
-  return { total, created, sent, opened, paid, processing, pending, expired, failed, canceled, totalPaidAmount, totalProcessingAmount, conversionRate };
+  return { total, created, sent, opened, paid, processing, pending, expired, failed, canceled, refunded, totalPaidAmount, totalProcessingAmount, totalRefundedAmount, conversionRate };
 }
 
 interface DashboardStatsProps {
@@ -86,6 +93,14 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
       bgColor: "bg-warning/10",
     },
     {
+      title: "Refunded",
+      value: formatCurrency(stats?.totalRefundedAmount ?? 0),
+      subtitle: `${stats?.refunded ?? 0} enrollments`,
+      icon: DollarSign,
+      color: "text-destructive",
+      bgColor: "bg-destructive/10",
+    },
+    {
       title: "Conversion Rate",
       value: `${(stats?.conversionRate ?? 0).toFixed(1)}%`,
       subtitle: `${stats?.paid ?? 0} of ${stats?.total ?? 0} created`,
@@ -97,8 +112,8 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      {[1, 2, 3, 4, 5].map((i) => (
           <Card key={i} className="card-premium">
             <CardContent className="p-6">
               <Skeleton className="h-4 w-24 mb-2" />
@@ -112,7 +127,7 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
       {statCards.map((stat) => (
         <Card key={stat.title} className="card-premium">
           <CardContent className="p-6">

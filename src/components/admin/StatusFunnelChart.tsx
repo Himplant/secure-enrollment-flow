@@ -13,6 +13,7 @@ interface StatusFunnelChartProps {
     failed: number;
     expired: number;
     canceled: number;
+    refunded: number;
     total: number;
   } | null;
   isLoading: boolean;
@@ -27,6 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
   Failed: "hsl(var(--destructive))",
   Expired: "hsl(var(--muted-foreground))",
   Canceled: "hsl(var(--border))",
+  Refunded: "hsl(var(--destructive))",
 };
 
 const renderCustomLabel = ({ name, percent, cx, x, y, midAngle }: any) => {
@@ -57,6 +59,7 @@ export function StatusFunnelChart({ stats, isLoading }: StatusFunnelChartProps) 
       { name: "Failed", value: stats.failed },
       { name: "Expired", value: stats.expired },
       { name: "Canceled", value: stats.canceled },
+      { name: "Refunded", value: stats.refunded },
     ].filter((d) => d.value > 0);
   }, [stats]);
 
