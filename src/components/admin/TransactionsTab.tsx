@@ -13,7 +13,8 @@ import {
   Trash2,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  RotateCcw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +55,7 @@ import { RegenerateLinkModal } from "./RegenerateLinkModal";
 import { TransactionDetailsModal } from "./TransactionDetailsModal";
 import { DeleteConfirmationDialog } from "./DeleteConfirmationDialog";
 
-type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled';
+type EnrollmentStatus = 'created' | 'sent' | 'opened' | 'processing' | 'paid' | 'failed' | 'expired' | 'canceled' | 'refunded';
 
 interface Transaction {
   id: string;
@@ -367,6 +368,7 @@ export function TransactionsTab() {
             <SelectItem value="failed">Failed</SelectItem>
             <SelectItem value="expired">Expired</SelectItem>
             <SelectItem value="canceled">Canceled</SelectItem>
+            <SelectItem value="refunded">Refunded</SelectItem>
           </SelectContent>
         </Select>
         <Select value={surgeonFilter} onValueChange={setSurgeonFilter}>

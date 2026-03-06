@@ -18,7 +18,8 @@ type EnrollmentStatus =
   | 'paid' 
   | 'failed' 
   | 'expired' 
-  | 'canceled';
+  | 'canceled'
+  | 'refunded';
 
 interface StatusBadgeProps {
   status: EnrollmentStatus;
@@ -69,6 +70,11 @@ const statusConfig: Record<EnrollmentStatus, {
     label: 'Canceled',
     icon: Ban,
     className: 'bg-muted/50 text-muted-foreground',
+  },
+  refunded: {
+    label: 'Refunded',
+    icon: XCircle,
+    className: 'bg-warning/20 text-warning-foreground border border-warning/30',
   },
 };
 
