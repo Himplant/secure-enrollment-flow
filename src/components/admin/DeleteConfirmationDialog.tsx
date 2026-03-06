@@ -21,6 +21,9 @@ interface DeleteConfirmationDialogProps {
   resourceName: string;
   confirmText?: string;
   warning?: string;
+  title?: string;
+  actionLabel?: string;
+  actionVariant?: "destructive" | "default";
 }
 
 export function DeleteConfirmationDialog({
@@ -32,6 +35,9 @@ export function DeleteConfirmationDialog({
   resourceName,
   confirmText,
   warning = "This action cannot be undone. The record will be permanently removed.",
+  title,
+  actionLabel,
+  actionVariant = "destructive",
 }: DeleteConfirmationDialogProps) {
   const [typedConfirmation, setTypedConfirmation] = useState("");
   const requiredText = confirmText || "DELETE";
@@ -48,11 +54,11 @@ export function DeleteConfirmationDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-5 w-5" />
-            Delete {resourceType}
+            {title || `Delete ${resourceType}`}
           </AlertDialogTitle>
           <AlertDialogDescription className="space-y-3">
             <p>
-              You are about to permanently delete{" "}
+              You are about to {actionLabel ? actionLabel.toLowerCase() : "permanently delete"}{" "}
               <strong className="text-foreground">{resourceName}</strong>.
             </p>
             <p className="text-destructive font-medium">{warning}</p>
@@ -76,12 +82,12 @@ export function DeleteConfirmationDialog({
             Cancel
           </Button>
           <Button
-            variant="destructive"
+            variant={actionVariant}
             onClick={onConfirm}
             disabled={!isConfirmed || isPending}
           >
             {isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Delete Permanently
+            {actionLabel || "Delete Permanently"}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

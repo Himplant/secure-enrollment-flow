@@ -98,6 +98,7 @@ export function TransactionsTab() {
   const [regenerateEnrollment, setRegenerateEnrollment] = useState<Transaction | null>(null);
   const [detailsEnrollmentId, setDetailsEnrollmentId] = useState<string | null>(null);
   const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
+  const [refundTransaction, setRefundTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
   const { user } = useAdminAuth();
   const queryClient = useQueryClient();
@@ -233,6 +234,7 @@ export function TransactionsTab() {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
       queryClient.invalidateQueries({ queryKey: ["audit-log"] });
+      setRefundTransaction(null);
       toast({ title: "Marked as refunded", description: "Enrollment status updated and logged to audit trail" });
     },
     onError: (error: Error) => {
@@ -241,9 +243,7 @@ export function TransactionsTab() {
   });
 
   const handleMarkRefunded = (transaction: Transaction) => {
-    if (confirm(`Mark enrollment for ${transaction.patient_name || "Unknown"} as refunded?`)) {
-      refundMutation.mutate(transaction);
-    }
+    setRefundTransaction(transaction);
   };
 
   const handleSort = (field: SortField) => {
@@ -661,6 +661,22 @@ export function TransactionsTab() {
           resourceType="Transaction"
           resourceName={`enrollment for ${deleteTransaction.patient_name || "Unknown"} (${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(deleteTransaction.amount_cents / 100)})`}
           warning="This action cannot be undone. The enrollment record and all associated events will be permanently removed. This action will be logged to the audit trail."
+        />
+      )}
+
+      {/* Refund Confirmation Dialog */}
+      {refundTransaction && (
+        <DeleteConfirmationDialog
+          isOpen={!!refundTransaction}
+          onClose={() => setRefundTransaction(null)}
+          onConfirm={() => refundMutation.mutate(refundTransaction)}
+          isPending={refundMutation.isPending}
+          resourceType="Refund"
+          resourceName={`enrollment for ${refundTransaction.patient_name || "Unknown"} (${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(refundTransaction.amount_cents / 100)})`}
+          warning="This will mark the enrollment as refunded. The status change will be logged to the audit trail. Make sure you have already processed the refund in Stripe before confirming."
+          title="Mark as Refunded"
+          confirmText="REFUND"
+          actionLabel="Confirm Refund"
         />
       )}
     </div>
