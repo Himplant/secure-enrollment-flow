@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
@@ -6,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -34,10 +33,10 @@ serve(async (req) => {
       });
     }
 
-    // Verify user is an admin with mfa_method = null (re-invited, needs fresh setup)
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, serviceKey);
 
+    // Only allow reset if admin user has mfa_method = null (fresh/re-invite)
     const { data: adminUser } = await supabaseAdmin
       .from("admin_users")
       .select("mfa_method")
@@ -51,7 +50,6 @@ serve(async (req) => {
       });
     }
 
-    // Only allow reset if mfa_method is null (fresh invite / re-invite)
     if (adminUser.mfa_method) {
       return new Response(JSON.stringify({ error: "MFA already configured" }), {
         status: 400,
@@ -59,21 +57,23 @@ serve(async (req) => {
       });
     }
 
-    // Use Admin API to list and delete all MFA factors for this user
+    // Use Admin API to force-delete all MFA factors
     const { data: factors } = await supabaseAdmin.auth.admin.mfa.listFactors({
       userId: user.id,
     });
 
+    let deleted = 0;
     if (factors?.factors) {
       for (const factor of factors.factors) {
         await supabaseAdmin.auth.admin.mfa.deleteFactor({
           userId: user.id,
           factorId: factor.id,
         });
+        deleted++;
       }
     }
 
-    return new Response(JSON.stringify({ success: true, deleted: factors?.factors?.length ?? 0 }), {
+    return new Response(JSON.stringify({ success: true, deleted }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
