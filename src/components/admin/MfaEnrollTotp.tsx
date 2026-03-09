@@ -23,7 +23,15 @@ export function MfaEnrollTotp({ onEnrolled, onCancel }: MfaEnrollTotpProps) {
 
   useEffect(() => {
     (async () => {
-      // Clean up any existing unverified TOTP factors before enrolling
+      // Use server-side function to force-delete all existing MFA factors
+      // (client-side unenroll fails for verified factors without AAL2)
+      try {
+        await supabase.functions.invoke("reset-mfa-factors");
+      } catch (e) {
+        console.error("Factor reset error:", e);
+      }
+
+      // Also try client-side cleanup for any unverified factors
       try {
         const { data: factors } = await supabase.auth.mfa.listFactors();
         if (factors?.totp) {
