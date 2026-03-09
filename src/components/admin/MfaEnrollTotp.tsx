@@ -28,9 +28,7 @@ export function MfaEnrollTotp({ onEnrolled, onCancel }: MfaEnrollTotpProps) {
         const { data: factors } = await supabase.auth.mfa.listFactors();
         if (factors?.totp) {
           for (const factor of factors.totp) {
-            if ((factor.status as string) !== "verified") {
-              await supabase.auth.mfa.unenroll({ factorId: factor.id });
-            }
+            await supabase.auth.mfa.unenroll({ factorId: factor.id });
           }
         }
       } catch (e) {
