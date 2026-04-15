@@ -119,72 +119,90 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    // Allow cron calls (anon key with no user) OR authenticated admin calls
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    let isCronCall = false;
+
+    if (authHeader) {
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (user) {
+        // Authenticated user — verify admin access
+        const supabaseAdminCheck = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: adminUser } = await supabaseAdminCheck
+          .from("admin_users")
+          .select("id")
+          .eq("user_id", user.id)
+          .not("accepted_at", "is", null)
+          .maybeSingle();
+
+        if (!adminUser) {
+          return new Response(JSON.stringify({ error: "Admin access required" }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } else {
+        // No user resolved — treat as cron/service call
+        isCronCall = true;
+      }
+    } else {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { data: adminUser } = await supabaseAdmin
-      .from("admin_users")
-      .select("id, role, email")
-      .eq("user_id", user.id)
-      .not("accepted_at", "is", null)
-      .maybeSingle();
-
-    if (!adminUser) {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     // Fetch deals from Zoho
     const accessToken = await getZohoAccessToken();
     const deals = await fetchDealsFromZoho(accessToken);
     console.log(`Fetched ${deals.length} paid deals from Zoho`);
 
-    // Fetch surgeons for matching
+    // --- BATCH: Load all existing credits and surgeons upfront ---
     const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name");
-    // Build surgeon map with multiple key variations for matching
     const surgeonMap = new Map<string, { id: string; name: string }>();
     for (const s of surgeons || []) {
       const lower = s.name.toLowerCase();
       surgeonMap.set(lower, { id: s.id, name: s.name });
-      // Also map without "Dr." prefix
       const noDr = lower.replace(/^dr\.?\s*/i, "").trim();
       if (noDr !== lower) surgeonMap.set(noDr, { id: s.id, name: s.name });
     }
 
-    // Fetch existing import records by email for dedup
-    const { data: importRecords } = await supabaseAdmin
+    // Fetch ALL existing credits in one query (not one per deal)
+    const { data: allCredits } = await supabaseAdmin
       .from("surgeon_credits")
-      .select("id, patient_email, credit_status")
-      .eq("source", "import");
-    const importEmailSet = new Set<string>();
-    for (const r of importRecords || []) {
-      if (r.patient_email) importEmailSet.add(r.patient_email.toLowerCase().trim());
+      .select("id, zoho_deal_id, patient_email, credit_status, source");
+
+    // Build lookup maps
+    const creditsByZohoId = new Map<string, { id: string; credit_status: string; source: string }>();
+    const creditsByEmail = new Map<string, { id: string; credit_status: string; source: string }>();
+    for (const c of allCredits || []) {
+      if (c.zoho_deal_id) {
+        creditsByZohoId.set(c.zoho_deal_id, { id: c.id, credit_status: c.credit_status, source: c.source });
+      }
+      if (c.patient_email) {
+        const key = c.patient_email.toLowerCase().trim();
+        // For email lookup, prefer import records (they need updating from Zoho)
+        const existing = creditsByEmail.get(key);
+        if (!existing || c.source === "import") {
+          creditsByEmail.set(key, { id: c.id, credit_status: c.credit_status, source: c.source });
+        }
+      }
     }
 
     let upserted = 0;
     let skipped = 0;
-    let skippedImport = 0;
+
+    // Batch upserts: collect all operations then execute in chunks
+    const toInsert: any[] = [];
+    const toUpdate: { id: string; record: any }[] = [];
 
     for (const deal of deals) {
       const rawSurgeonName = deal.Surgeon_Name || deal.Surgeon?.name || null;
@@ -193,18 +211,13 @@ Deno.serve(async (req) => {
       const credit500Expires = parseZohoDate(deal.$500_Credit_Applies_Until);
       const enrollmentDate = parseZohoDate(deal.Enrollment_Date);
       const patientEmail = deal.Email || null;
-
-      // Skip if this patient already exists in imported records (by email)
-      if (patientEmail && importEmailSet.has(patientEmail.toLowerCase().trim())) {
-        skippedImport++;
-        continue;
-      }
+      const consultantEmail = deal.Owner?.email || null;
+      const patientName = deal.Contact_Name?.name || deal.Deal_Name || "Unknown";
 
       const { credit_amount, credit_status } = calculateCredit(
         deal.Stage, surgeryDate, credit750Expires, credit500Expires
       );
 
-      // Match surgeon by name (try exact, then without "Dr." prefix)
       let surgeonId: string | null = null;
       let surgeonName = rawSurgeonName || "Unknown";
       if (rawSurgeonName) {
@@ -212,26 +225,29 @@ Deno.serve(async (req) => {
         const match = surgeonMap.get(key) || surgeonMap.get(key.replace(/^dr\.?\s*/i, "").trim());
         if (match) {
           surgeonId = match.id;
-          surgeonName = match.name; // Use canonical name from DB
+          surgeonName = match.name;
         }
       }
 
-      const consultantEmail = deal.Owner?.email || null;
-      const patientName = deal.Contact_Name?.name || deal.Deal_Name || "Unknown";
+      // Check if record exists by zoho_deal_id first
+      let existing = creditsByZohoId.get(deal.id);
 
-      // Check if already exists by zoho_deal_id — don't overwrite issued
-      const { data: existing } = await supabaseAdmin
-        .from("surgeon_credits")
-        .select("id, credit_status")
-        .eq("zoho_deal_id", deal.id)
-        .maybeSingle();
+      // If not found by zoho_deal_id, check by email (matches imported records)
+      if (!existing && patientEmail) {
+        const emailKey = patientEmail.toLowerCase().trim();
+        const byEmail = creditsByEmail.get(emailKey);
+        if (byEmail && byEmail.source === "import") {
+          existing = byEmail;
+        }
+      }
 
+      // Skip records already marked as "issued" — admin has finalized them
       if (existing?.credit_status === "issued") {
         skipped++;
         continue;
       }
 
-      const record = {
+      const record: any = {
         zoho_deal_id: deal.id,
         surgeon_id: surgeonId,
         surgeon_name: surgeonName,
@@ -245,24 +261,38 @@ Deno.serve(async (req) => {
         credit_500_expires: credit500Expires,
         credit_amount,
         credit_status,
-        source: "zoho" as const,
+        source: "zoho",
       };
 
       if (existing) {
-        await supabaseAdmin
-          .from("surgeon_credits")
-          .update(record)
-          .eq("id", existing.id);
+        toUpdate.push({ id: existing.id, record });
       } else {
-        await supabaseAdmin.from("surgeon_credits").insert(record);
+        toInsert.push(record);
       }
-      upserted++;
     }
 
-    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${skippedImport} skipped (import exists)`);
+    // Execute batch inserts (chunks of 100)
+    for (let i = 0; i < toInsert.length; i += 100) {
+      const chunk = toInsert.slice(i, i + 100);
+      const { error } = await supabaseAdmin.from("surgeon_credits").insert(chunk);
+      if (error) console.error(`Insert batch error at ${i}:`, error.message);
+      else upserted += chunk.length;
+    }
+
+    // Execute batch updates (chunks of 50 — each is an individual update by id)
+    for (const { id, record } of toUpdate) {
+      const { error } = await supabaseAdmin
+        .from("surgeon_credits")
+        .update(record)
+        .eq("id", id);
+      if (error) console.error(`Update error for ${id}:`, error.message);
+      else upserted++;
+    }
+
+    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${toInsert.length} new, ${toUpdate.length} updated`);
 
     return new Response(
-      JSON.stringify({ success: true, total: deals.length, upserted, skipped, skippedImport }),
+      JSON.stringify({ success: true, total: deals.length, upserted, skipped, newRecords: toInsert.length, updated: toUpdate.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
