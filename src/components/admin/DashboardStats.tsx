@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Users, DollarSign, Clock, TrendingUp, CheckCircle } from "lucide-react";
+import { Users, DollarSign, Clock, TrendingUp, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -91,6 +91,14 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
       icon: Clock,
       color: "text-warning",
       bgColor: "bg-warning/10",
+    },
+    {
+      title: "Expired",
+      value: stats?.expired ?? 0,
+      subtitle: `${stats?.failed ?? 0} failed, ${stats?.canceled ?? 0} canceled`,
+      icon: XCircle,
+      color: "text-muted-foreground",
+      bgColor: "bg-muted",
     },
     {
       title: "Refunded",
