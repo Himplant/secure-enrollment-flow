@@ -48,6 +48,100 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
+
+    // Handle dispute action
+    if (body.action === "dispute") {
+      const { credit_ids, reason } = body;
+      if (!credit_ids || !Array.isArray(credit_ids) || credit_ids.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing credit_ids" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let updated = 0;
+      for (const id of credit_ids) {
+        const { data: credit } = await supabaseAdmin
+          .from("surgeon_credits")
+          .select("id, credit_status, credit_amount, patient_name")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (!credit) continue;
+
+        await supabaseAdmin
+          .from("surgeon_credits")
+          .update({ credit_status: "disputed" })
+          .eq("id", id);
+
+        await supabaseAdmin.from("admin_audit_log").insert({
+          admin_user_id: user.id,
+          admin_email: adminUser.email,
+          action: "credit_disputed",
+          resource_type: "surgeon_credit",
+          resource_id: id,
+          resource_summary: {
+            patient_name: credit.patient_name,
+            previous_status: credit.credit_status,
+            credit_amount: credit.credit_amount,
+            reason: reason || "No reason provided",
+          },
+        });
+
+        updated++;
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, updated }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle resolve action (move disputed back to earned)
+    if (body.action === "resolve") {
+      const { credit_ids } = body;
+      if (!credit_ids || !Array.isArray(credit_ids) || credit_ids.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing credit_ids" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let updated = 0;
+      for (const id of credit_ids) {
+        const { data: credit } = await supabaseAdmin
+          .from("surgeon_credits")
+          .select("id, credit_status, credit_amount, patient_name")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (!credit || credit.credit_status !== "disputed") continue;
+
+        await supabaseAdmin
+          .from("surgeon_credits")
+          .update({ credit_status: "earned" })
+          .eq("id", id);
+
+        await supabaseAdmin.from("admin_audit_log").insert({
+          admin_user_id: user.id,
+          admin_email: adminUser.email,
+          action: "credit_dispute_resolved",
+          resource_type: "surgeon_credit",
+          resource_id: id,
+          resource_summary: {
+            patient_name: credit.patient_name,
+            credit_amount: credit.credit_amount,
+          },
+        });
+
+        updated++;
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, updated }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle mark-as-issued (existing logic)
     const payments: { id: string; amount: number }[] = [];
 
     if (body.payments && Array.isArray(body.payments)) {
@@ -70,7 +164,7 @@ Deno.serve(async (req) => {
         .eq("id", payment.id)
         .maybeSingle();
 
-      if (!credit || credit.credit_status === "pending" || credit.credit_status === "forfeited") {
+      if (!credit || credit.credit_status === "pending" || credit.credit_status === "forfeited" || credit.credit_status === "disputed") {
         continue;
       }
 
