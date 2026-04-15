@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import {
   AreaChart,
   Area,
@@ -11,7 +12,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { format, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, differenceInDays, startOfDay, startOfWeek, startOfMonth } from "date-fns";
+import { format, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 
 interface Enrollment {
   status: string;
@@ -27,24 +28,26 @@ interface EnrollmentTrendChartProps {
   dateTo?: Date;
 }
 
+type Granularity = "daily" | "weekly" | "monthly";
+
 export function EnrollmentTrendChart({ enrollments, isLoading, dateFrom, dateTo }: EnrollmentTrendChartProps) {
+  const [granularity, setGranularity] = useState<Granularity>("weekly");
+
   const chartData = useMemo(() => {
     if (!enrollments.length) return [];
 
     const from = dateFrom || new Date(Math.min(...enrollments.map(e => new Date(e.created_at).getTime())));
     const to = dateTo || new Date();
-    const daysDiff = differenceInDays(to, from);
 
-    // Choose granularity based on range
     let intervals: Date[];
     let formatStr: string;
     let bucketFn: (d: Date) => string;
 
-    if (daysDiff <= 31) {
+    if (granularity === "daily") {
       intervals = eachDayOfInterval({ start: from, end: to });
       formatStr = "MMM d";
       bucketFn = (d) => format(startOfDay(d), "yyyy-MM-dd");
-    } else if (daysDiff <= 180) {
+    } else if (granularity === "weekly") {
       intervals = eachWeekOfInterval({ start: from, end: to });
       formatStr = "MMM d";
       bucketFn = (d) => format(startOfWeek(d), "yyyy-MM-dd");
@@ -57,7 +60,7 @@ export function EnrollmentTrendChart({ enrollments, isLoading, dateFrom, dateTo 
     // Build buckets
     const buckets = new Map<string, { created: number; paid: number; revenue: number }>();
     intervals.forEach((d) => {
-      const key = daysDiff <= 180 ? format(d, "yyyy-MM-dd") : format(d, "yyyy-MM");
+      const key = granularity === "monthly" ? format(d, "yyyy-MM") : format(d, "yyyy-MM-dd");
       buckets.set(key, { created: 0, paid: 0, revenue: 0 });
     });
 
@@ -82,7 +85,7 @@ export function EnrollmentTrendChart({ enrollments, isLoading, dateFrom, dateTo 
       paid: val.paid,
       revenue: val.revenue,
     }));
-  }, [enrollments, dateFrom, dateTo]);
+  }, [enrollments, dateFrom, dateTo, granularity]);
 
   if (isLoading) {
     return (
@@ -115,7 +118,22 @@ export function EnrollmentTrendChart({ enrollments, isLoading, dateFrom, dateTo 
   return (
     <Card className="card-premium">
       <CardHeader>
-        <CardTitle className="text-lg">Enrollment Trends</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Enrollment Trends</CardTitle>
+          <div className="flex items-center gap-1">
+            {(["daily", "weekly", "monthly"] as Granularity[]).map((g) => (
+              <Button
+                key={g}
+                variant={granularity === g ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-xs capitalize"
+                onClick={() => setGranularity(g)}
+              >
+                {g}
+              </Button>
+            ))}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="h-[280px]">
