@@ -1,0 +1,1 @@
+ALTER TABLE public.surgeon_credits ADD COLUMN issued_amount integer NOT NULL DEFAULT 0;

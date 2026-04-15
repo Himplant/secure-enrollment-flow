@@ -398,6 +398,7 @@ export type Database = {
           enrollment_date: string | null
           enrollment_id: string | null
           id: string
+          issued_amount: number
           issued_at: string | null
           issued_by: string | null
           patient_email: string | null
@@ -420,6 +421,7 @@ export type Database = {
           enrollment_date?: string | null
           enrollment_id?: string | null
           id?: string
+          issued_amount?: number
           issued_at?: string | null
           issued_by?: string | null
           patient_email?: string | null
@@ -442,6 +444,7 @@ export type Database = {
           enrollment_date?: string | null
           enrollment_id?: string | null
           id?: string
+          issued_amount?: number
           issued_at?: string | null
           issued_by?: string | null
           patient_email?: string | null
