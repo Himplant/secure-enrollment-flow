@@ -530,7 +530,7 @@ export type Database = {
     Enums: {
       admin_role: "admin" | "viewer" | "super_admin"
       credit_source: "zoho" | "import"
-      credit_status: "pending" | "earned" | "forfeited" | "issued"
+      credit_status: "pending" | "earned" | "forfeited" | "disputed" | "issued"
       enrollment_status:
         | "created"
         | "sent"
@@ -671,7 +671,7 @@ export const Constants = {
     Enums: {
       admin_role: ["admin", "viewer", "super_admin"],
       credit_source: ["zoho", "import"],
-      credit_status: ["pending", "earned", "forfeited", "issued"],
+      credit_status: ["pending", "earned", "forfeited", "disputed", "issued"],
       enrollment_status: [
         "created",
         "sent",
