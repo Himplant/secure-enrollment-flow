@@ -1,7 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/integrations/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 interface ConsultantStats {
@@ -11,41 +10,32 @@ interface ConsultantStats {
 }
 
 const COLORS = [
-  "#3b82f6", // blue
-  "#22c55e", // green
-  "#f59e0b", // amber
-  "#a855f7", // purple
-  "#ef4444", // red
-  "#06b6d4", // cyan
-  "#ec4899", // pink
-  "#84cc16", // lime
+  "#3b82f6", "#22c55e", "#f59e0b", "#a855f7",
+  "#ef4444", "#06b6d4", "#ec4899", "#84cc16",
 ];
 
-export function ConsultantDistributionCard() {
-  const { data: stats = [], isLoading } = useQuery({
-    queryKey: ["consultant-distribution"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("enrollments")
-        .select("amount_cents, owner_name")
-        .eq("status", "paid");
+interface ConsultantDistributionCardProps {
+  enrollments: any[];
+  isLoading: boolean;
+}
 
-      if (error) throw error;
+export function ConsultantDistributionCard({ enrollments, isLoading }: ConsultantDistributionCardProps) {
+  const stats = useMemo(() => {
+    const paidEnrollments = enrollments.filter((e: any) => e.status === "paid");
+    const map = new Map<string, { count: number; amount: number }>();
 
-      const map = new Map<string, { count: number; amount: number }>();
-      data?.forEach((e: any) => {
-        const name = e.owner_name || "Unassigned";
-        const cur = map.get(name) || { count: 0, amount: 0 };
-        cur.count += 1;
-        cur.amount += e.amount_cents;
-        map.set(name, cur);
-      });
+    paidEnrollments.forEach((e: any) => {
+      const name = e.owner_name || "Unassigned";
+      const cur = map.get(name) || { count: 0, amount: 0 };
+      cur.count += 1;
+      cur.amount += e.amount_cents;
+      map.set(name, cur);
+    });
 
-      return Array.from(map.entries())
-        .map(([name, d]) => ({ name, count: d.count, amount: d.amount }))
-        .sort((a, b) => b.amount - a.amount) as ConsultantStats[];
-    },
-  });
+    return Array.from(map.entries())
+      .map(([name, d]) => ({ name, count: d.count, amount: d.amount }))
+      .sort((a, b) => b.amount - a.amount) as ConsultantStats[];
+  }, [enrollments]);
 
   const fmt = (cents: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(cents / 100);
@@ -79,14 +69,9 @@ export function ConsultantDistributionCard() {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={stats}
-                cx="50%"
-                cy="50%"
-                innerRadius={40}
-                outerRadius={80}
-                paddingAngle={2}
-                dataKey="amount"
-                nameKey="name"
+                data={stats} cx="50%" cy="50%"
+                innerRadius={40} outerRadius={80} paddingAngle={2}
+                dataKey="amount" nameKey="name"
                 label={({ name, percent }) => `${name.split(" ")[0]} (${(percent * 100).toFixed(0)}%)`}
                 labelLine={false}
               >

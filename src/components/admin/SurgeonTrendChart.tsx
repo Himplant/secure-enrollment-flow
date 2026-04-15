@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -7,7 +6,6 @@ import {
   ResponsiveContainer, Legend,
 } from "recharts";
 import { format, eachMonthOfInterval, eachWeekOfInterval, eachDayOfInterval, differenceInDays, startOfDay, startOfWeek, startOfMonth } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
 
 const COLORS = [
   "#f97316", "#3b82f6", "#22c55e", "#a855f7",
@@ -15,37 +13,17 @@ const COLORS = [
 ];
 
 interface SurgeonTrendChartProps {
+  enrollments: any[];
+  isLoading: boolean;
   dateFrom?: Date;
   dateTo?: Date;
 }
 
-export function SurgeonTrendChart({ dateFrom, dateTo }: SurgeonTrendChartProps) {
-  const { data: rawData, isLoading } = useQuery({
-    queryKey: ["surgeon-trend", dateFrom?.toISOString(), dateTo?.toISOString()],
-    queryFn: async () => {
-      let query = supabase
-        .from("enrollments")
-        .select(`
-          created_at,
-          status,
-          patients!enrollments_patient_id_fkey (
-            surgeon:surgeons(name)
-          )
-        `);
-
-      if (dateFrom) query = query.gte("created_at", dateFrom.toISOString());
-      if (dateTo) query = query.lte("created_at", dateTo.toISOString());
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
+export function SurgeonTrendChart({ enrollments, isLoading, dateFrom, dateTo }: SurgeonTrendChartProps) {
   const { chartData, surgeonNames } = useMemo(() => {
-    if (!rawData?.length) return { chartData: [], surgeonNames: [] };
+    if (!enrollments?.length) return { chartData: [], surgeonNames: [] };
 
-    const from = dateFrom || new Date(Math.min(...rawData.map((e: any) => new Date(e.created_at).getTime())));
+    const from = dateFrom || new Date(Math.min(...enrollments.map((e: any) => new Date(e.created_at).getTime())));
     const to = dateTo || new Date();
     const daysDiff = differenceInDays(to, from);
 
@@ -67,7 +45,6 @@ export function SurgeonTrendChart({ dateFrom, dateTo }: SurgeonTrendChartProps) 
       bucketFn = (d) => format(startOfMonth(d), "yyyy-MM");
     }
 
-    // Collect surgeon names
     const surgeonSet = new Set<string>();
     const buckets = new Map<string, Record<string, number>>();
 
@@ -76,8 +53,8 @@ export function SurgeonTrendChart({ dateFrom, dateTo }: SurgeonTrendChartProps) 
       buckets.set(key, {});
     });
 
-    rawData.forEach((e: any) => {
-      const surgeonName = (e.patients as any)?.surgeon?.name || "Unassigned";
+    enrollments.forEach((e: any) => {
+      const surgeonName = e.surgeon_name || "Unassigned";
       surgeonSet.add(surgeonName);
       const key = bucketFn(new Date(e.created_at));
       if (buckets.has(key)) {
@@ -94,7 +71,7 @@ export function SurgeonTrendChart({ dateFrom, dateTo }: SurgeonTrendChartProps) 
     }));
 
     return { chartData: data, surgeonNames: names };
-  }, [rawData, dateFrom, dateTo]);
+  }, [enrollments, dateFrom, dateTo]);
 
   if (isLoading) {
     return (
@@ -109,9 +86,7 @@ export function SurgeonTrendChart({ dateFrom, dateTo }: SurgeonTrendChartProps) 
     return (
       <Card className="card-premium">
         <CardHeader><CardTitle className="text-lg">Enrollments by Surgeon</CardTitle></CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-12">No data for this period</p>
-        </CardContent>
+        <CardContent><p className="text-sm text-muted-foreground text-center py-12">No data for this period</p></CardContent>
       </Card>
     );
   }
@@ -124,34 +99,12 @@ export function SurgeonTrendChart({ dateFrom, dateTo }: SurgeonTrendChartProps) 
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                tickLine={false}
-                axisLine={false}
-                allowDecimals={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-              />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px" }} />
               {surgeonNames.map((name, i) => (
-                <Bar
-                  key={name}
-                  dataKey={name}
-                  stackId="a"
-                  fill={COLORS[i % COLORS.length]}
-                />
+                <Bar key={name} dataKey={name} stackId="a" fill={COLORS[i % COLORS.length]} />
               ))}
             </BarChart>
           </ResponsiveContainer>
