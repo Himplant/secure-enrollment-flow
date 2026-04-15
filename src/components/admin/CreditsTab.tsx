@@ -130,7 +130,8 @@ export function CreditsTab() {
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [disputeTargetIds, setDisputeTargetIds] = useState<string[]>([]);
-
+  const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   // Date filter state
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const [dateRange, setDateRange] = useState<DateRange>({});
