@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Users, DollarSign, Clock, TrendingUp, CheckCircle } from "lucide-react";
+import { Users, DollarSign, Clock, TrendingUp, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -93,6 +93,14 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
       bgColor: "bg-warning/10",
     },
     {
+      title: "Expired",
+      value: stats?.expired ?? 0,
+      subtitle: `${stats?.failed ?? 0} failed, ${stats?.canceled ?? 0} canceled`,
+      icon: XCircle,
+      color: "text-muted-foreground",
+      bgColor: "bg-muted",
+    },
+    {
       title: "Refunded",
       value: formatCurrency(stats?.totalRefundedAmount ?? 0),
       subtitle: `${stats?.refunded ?? 0} enrollments`,
@@ -112,8 +120,8 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
 
   if (isLoading) {
     return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-      {[1, 2, 3, 4, 5].map((i) => (
+    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {[1, 2, 3, 4, 5, 6].map((i) => (
           <Card key={i} className="card-premium">
             <CardContent className="p-6">
               <Skeleton className="h-4 w-24 mb-2" />
@@ -127,7 +135,7 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
       {statCards.map((stat) => (
         <Card key={stat.title} className="card-premium">
           <CardContent className="p-6">
