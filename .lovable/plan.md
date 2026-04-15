@@ -1,94 +1,108 @@
- # Current Project Status
- 
- The Secure Enrollment Payments Platform is fully functional with the following completed features:
- 
- ## Completed
- 
- - ✅ Enrollment creation from Zoho CRM via edge function
- - ✅ Secure SHA-256 token-based payment links
- - ✅ Stripe Checkout integration (Card + ACH)
- - ✅ Stripe webhook handling with async signature verification
- - ✅ Zoho CRM status sync on payment events
- - ✅ Admin dashboard with patients, transactions, policies, surgeons
- - ✅ Policy management with dynamic placeholders
- - ✅ Link regeneration with policy sync
- - ✅ Surgeon management and distribution analytics
- - ✅ Complete audit trail via enrollment_events
- - ✅ Automatic default policy lookup for Zoho enrollments
- - ✅ Full Zoho CRM 2-way sync documentation
- 
- ## Pending / Future
- 
- - [ ] Email notifications to patients
- - [ ] Refund processing via admin dashboard
- - [ ] Multi-currency support
- - [ ] Recurring payment schedules
- - [ ] PDF receipt generation
- 
- ## Technical Notes
- 
- - Backend: Lovable Cloud (auto-provisioned PostgreSQL, Auth, Edge Functions)
- - Payments: Stripe Checkout Sessions + Webhooks
- - CRM: Zoho CRM API with OAuth refresh token
- - See `docs/DEVELOPER_GUIDE.md` for complete technical documentation
 
- ## Zoho CRM Integration
- 
- The platform supports full 2-way sync with Zoho CRM:
- 
- 1. **Zoho → Platform**: Button in Deals module calls `create-enrollment` edge function
-    - Returns enrollment URL to store in Deal record
-    - Automatically uses default policy if not specified
- 
- 2. **Platform → Zoho**: Stripe webhook updates Zoho on payment events
-    - Updates Enrollment_Status field
-    - Sets Payment_Date, Processing_Date, etc.
-    - Adds timeline notes for each event
- 
-# Fix: Stripe Webhook Async Signature Verification
 
-## Problem Identified
+# Surgeon Credit Tracking and Reporting System
 
-The Stripe webhook is configured correctly and receiving events, but **all events are being rejected** with a signature verification error:
+## Summary
 
-```
-SubtleCryptoProvider cannot be used in a synchronous context.
-Use `await constructEventAsync(...)` instead of `constructEvent(...)`
-```
+Build a full credit tracking system that:
+1. Pulls deal data from Zoho CRM to calculate credits per surgeon
+2. Imports historical enrollment data from the uploaded Excel file (pre-Lovable patients)
+3. Tracks which credits have been issued vs. pending vs. forfeited
+4. Allows admins to mark credits as "issued" for accounting
+5. Generates per-surgeon credit reports
 
-## Root Cause
+## What Gets Built
 
-Line 159 in `stripe-webhook/index.ts` uses the synchronous method:
-```typescript
-event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-```
+### 1. New Database Tables
 
-Stripe SDK v18+ running in Deno/Edge Functions requires the async version because the Web Crypto API (SubtleCrypto) only supports async operations.
+**`surgeon_credits`** — stores each enrollment's credit eligibility and issuance status:
+- `id`, `surgeon_id` (FK to surgeons), `surgeon_name`, `patient_name`, `patient_email`
+- `enrollment_date`, `surgery_date`, `stage` (from Zoho)
+- `credit_750_expires`, `credit_500_expires` (the two deadline dates)
+- `credit_amount` (computed: 750, 500, or 0)
+- `credit_status` (enum: `pending`, `earned`, `forfeited`, `issued`)
+- `issued_at`, `issued_by` (admin email who marked it issued)
+- `zoho_deal_id` (for dedup), `source` (enum: `zoho`, `import` — to distinguish CRM-synced vs Excel-imported)
+- `consultant_email` (the owner field)
+- `enrollment_id` (nullable FK to local enrollments table, for platform-enrolled patients)
 
-## Solution
+### 2. Edge Function: `sync-credits`
 
-Change the synchronous `constructEvent` to the async `constructEventAsync`:
+Fetches deals from Zoho CRM Deals module where `Enrollment_Status = "Paid"` or stage is "Surgery Completed". For each deal, pulls:
+- `Deal_Name`, `Stage`, `Surgery_Date`, `$750_Credit_Applies_Until` (mapped from your field `$750 Expiry Date`), `$500_Credit_Applies_Until`, `Owner`, surgeon lookup
 
-```typescript
-event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-```
+Credit calculation logic:
+- Stage = "Surgery Completed" AND Surgery_Date is not empty:
+  - If Surgery_Date <= $750 expiry → credit = $750, status = `earned`
+  - Else if Surgery_Date <= $500 expiry → credit = $500, status = `earned`
+  - Else → credit = $0, status = `forfeited`
+- Stage != "Surgery Completed" → status = `pending`, credit = potential max based on current date vs expiry windows
 
-## Files to Modify
+Upserts results into `surgeon_credits` table (dedup by `zoho_deal_id`). Does NOT overwrite records marked as `issued`.
 
-| File | Change |
-|------|--------|
-| `supabase/functions/stripe-webhook/index.ts` | Replace `constructEvent` with `await constructEventAsync` |
+### 3. Edge Function: `mark-credit-issued`
+
+Allows admins to mark one or more credit records as "issued" (meaning the credit has been paid out to the surgeon). Updates `credit_status = 'issued'`, `issued_at`, `issued_by`.
+
+### 4. Excel Import (One-Time)
+
+A script or edge function to import the "Enrollments Data Captured" sheet. Maps columns:
+- **Surgeon** → `surgeon_name` (matched to `surgeons` table)
+- **Patient Name** → `patient_name`
+- **Email** → `patient_email`
+- **Enrollment PAID** → determines if the record qualifies
+- **Surgery Date** → `surgery_date`
+- **Enrollment Date** → `enrollment_date`
+- **$750 Expiry Date** → `credit_750_expires`
+- **$500 Expiry Date** → `credit_500_expires`
+- **Surgery Credit Status** → maps to `credit_status`
+- **Surgery Stage Status** → `stage`
+- **Surgery Owner** → `consultant_email`
+- `source = 'import'`
+
+Records where "Enrollment PAID" is set get imported. Credit amount is calculated using the same logic as the Zoho sync.
+
+### 5. Dashboard UI: Credits Tab
+
+New tab in the admin dashboard: **"Credits"** with a dollar-sign icon.
+
+**Top-level KPIs:**
+- Total Credits Earned (not yet issued)
+- Total Credits Issued (paid out)
+- Total Pending (surgery not yet completed)
+- Total Forfeited
+
+**Per-Surgeon Accordion/Table:**
+- Surgeon name, total earned, total issued, total pending, total forfeited
+- Expandable to see individual patient records with: patient name, enrollment date, surgery date, credit amount, status
+- "Mark as Issued" button on earned credits (single or bulk select)
+- Filter by surgeon, by status, by date range
+
+**Report Generation:**
+- "Generate Report" button per surgeon → downloads a formatted summary (CSV or PDF) showing all enrollments, credit amounts, issued vs. outstanding
+
+### 6. Dashboard Integration
+
+Add the Credits tab to `AdminDashboard.tsx` alongside Patients, Transactions, etc. Add a "Sync Credits from CRM" button that calls the `sync-credits` edge function.
 
 ## Technical Details
 
-- The fix is a one-line change at line 159
-- The function is already async, so adding `await` is safe
-- After deployment, all pending webhook events in Stripe's retry queue will process successfully
-- The "Real Test $1" payment should update to "paid" when Stripe retries the webhook (or you can trigger a manual retry from Stripe dashboard)
+- Database migration creates `surgeon_credits` table with RLS (admin-only access)
+- `sync-credits` edge function uses existing Zoho OAuth pattern with pagination
+- Excel import runs once via a script in the edge function or admin action
+- `mark-credit-issued` validates admin auth, updates status, logs to `admin_audit_log`
+- Credit reports use React Query to fetch from `surgeon_credits` table with surgeon joins
+- CSV export handled client-side from the queried data
 
-## Verification Steps
+## Files to Create/Modify
 
-1. Deploy the updated edge function
-2. In Stripe Dashboard → Webhooks → select your endpoint → view recent events
-3. Click "Resend" on the failed `checkout.session.completed` event
-4. Confirm the enrollment status updates to "paid" in the admin dashboard
+| File | Action |
+|------|--------|
+| Migration SQL | Create `surgeon_credits` table + enum |
+| `supabase/functions/sync-credits/index.ts` | New — Zoho deal fetch + credit calc |
+| `supabase/functions/mark-credit-issued/index.ts` | New — mark credits as issued |
+| `src/components/admin/CreditsTab.tsx` | New — credits management UI |
+| `src/pages/AdminDashboard.tsx` | Add Credits tab |
+| `supabase/config.toml` | Register new functions |
+| Import script | One-time Excel data import into `surgeon_credits` |
+
