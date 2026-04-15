@@ -37,14 +37,13 @@ interface ZohoDeal {
   Enrollment_Date?: string;
   Owner?: { name?: string; email?: string };
   Surgeon_Name?: string;
-  // The surgeon lookup field — try common names
   Surgeon?: { name?: string; id?: string };
-  Contact_Name?: { name?: string };
+  Contact_Name?: { name?: string; id?: string };
+  Email?: string;
 }
 
 function parseZohoDate(val: string | undefined | null): string | null {
   if (!val) return null;
-  // Zoho dates come as "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS"
   const d = new Date(val);
   if (isNaN(d.getTime())) return null;
   return d.toISOString().split("T")[0];
@@ -66,8 +65,7 @@ function calculateCredit(
     return { credit_amount: 0, credit_status: "forfeited" };
   }
 
-  // Not completed yet — check if windows are still open
-  if (stage === "Surgery Canceled" || stage === "Canceled") {
+  if (stage === "Surgery Canceled" || stage === "Canceled" || stage === "Close Lost") {
     return { credit_amount: 0, credit_status: "forfeited" };
   }
 
@@ -75,8 +73,6 @@ function calculateCredit(
   if (credit500Expires && today > credit500Expires) {
     return { credit_amount: 0, credit_status: "forfeited" };
   }
-
-  // Still pending
   if (credit750Expires && today <= credit750Expires) {
     return { credit_amount: 750, credit_status: "pending" };
   }
@@ -91,7 +87,7 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
   const deals: ZohoDeal[] = [];
   let page = 1;
   let hasMore = true;
-  const fields = "Deal_Name,Stage,Surgery_Date,$750_Credit_Applies_Until,$500_Credit_Applies_Until,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name";
+  const fields = "Deal_Name,Stage,Surgery_Date,$750_Credit_Applies_Until,$500_Credit_Applies_Until,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name,Email,Contact_Name";
 
   while (hasMore) {
     const url = `https://www.zohoapis.com/crm/v6/Deals?fields=${fields}&criteria=(Enrollment_Status:equals:Paid)&page=${page}&per_page=200`;
@@ -143,7 +139,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: adminUser } = await supabase
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: adminUser } = await supabaseAdmin
       .from("admin_users")
       .select("id, role, email")
       .eq("user_id", user.id)
@@ -162,17 +161,25 @@ Deno.serve(async (req) => {
     console.log(`Fetched ${deals.length} paid deals from Zoho`);
 
     // Fetch surgeons for matching
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
     const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name");
     const surgeonMap = new Map<string, string>();
     for (const s of surgeons || []) {
       surgeonMap.set(s.name.toLowerCase(), s.id);
     }
 
+    // Fetch existing import records by email for dedup
+    const { data: importRecords } = await supabaseAdmin
+      .from("surgeon_credits")
+      .select("id, patient_email, credit_status")
+      .eq("source", "import");
+    const importEmailSet = new Set<string>();
+    for (const r of importRecords || []) {
+      if (r.patient_email) importEmailSet.add(r.patient_email.toLowerCase().trim());
+    }
+
     let upserted = 0;
     let skipped = 0;
+    let skippedImport = 0;
 
     for (const deal of deals) {
       const surgeonName = deal.Surgeon_Name || deal.Deal_Name?.split(" - ")?.[0] || "Unknown";
@@ -180,6 +187,15 @@ Deno.serve(async (req) => {
       const credit750Expires = parseZohoDate(deal.$750_Credit_Applies_Until);
       const credit500Expires = parseZohoDate(deal.$500_Credit_Applies_Until);
       const enrollmentDate = parseZohoDate(deal.Enrollment_Date);
+
+      // Get patient email from deal - use Email field or Contact_Name lookup
+      const patientEmail = deal.Email || null;
+
+      // Skip if this patient already exists in imported records (by email)
+      if (patientEmail && importEmailSet.has(patientEmail.toLowerCase().trim())) {
+        skippedImport++;
+        continue;
+      }
 
       const { credit_amount, credit_status } = calculateCredit(
         deal.Stage, surgeryDate, credit750Expires, credit500Expires
@@ -192,7 +208,7 @@ Deno.serve(async (req) => {
       const consultantEmail = deal.Owner?.email || null;
       const patientName = deal.Deal_Name || "Unknown";
 
-      // Check if already issued — don't overwrite
+      // Check if already exists by zoho_deal_id — don't overwrite issued
       const { data: existing } = await supabaseAdmin
         .from("surgeon_credits")
         .select("id, credit_status")
@@ -209,6 +225,7 @@ Deno.serve(async (req) => {
         surgeon_id: surgeonId,
         surgeon_name: surgeonName,
         patient_name: patientName,
+        patient_email: patientEmail,
         consultant_email: consultantEmail,
         enrollment_date: enrollmentDate,
         surgery_date: surgeryDate,
@@ -231,10 +248,10 @@ Deno.serve(async (req) => {
       upserted++;
     }
 
-    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued)`);
+    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${skippedImport} skipped (import exists)`);
 
     return new Response(
-      JSON.stringify({ success: true, total: deals.length, upserted, skipped }),
+      JSON.stringify({ success: true, total: deals.length, upserted, skipped, skippedImport }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
