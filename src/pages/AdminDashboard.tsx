@@ -314,14 +314,14 @@ export default function AdminDashboard() {
 
           {/* Surgeon charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <SurgeonTrendChart dateFrom={dateRange.from} dateTo={dateRange.to} />
-            <SurgeonDistributionCard />
+            <SurgeonTrendChart enrollments={enrollments} isLoading={statsLoading} dateFrom={dateRange.from} dateTo={dateRange.to} />
+            <SurgeonDistributionCard enrollments={enrollments} isLoading={statsLoading} />
           </div>
 
           {/* Consultant charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ConsultantTrendChart dateFrom={dateRange.from} dateTo={dateRange.to} />
-            <ConsultantDistributionCard />
+            <ConsultantTrendChart enrollments={enrollments} isLoading={statsLoading} dateFrom={dateRange.from} dateTo={dateRange.to} />
+            <ConsultantDistributionCard enrollments={enrollments} isLoading={statsLoading} />
           </div>
         </div>
 
