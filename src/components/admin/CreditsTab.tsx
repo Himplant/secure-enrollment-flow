@@ -52,6 +52,7 @@ interface CreditRecord {
   issued_by: string | null;
   source: string;
   created_at: string;
+  notes: string | null;
 }
 
 interface SurgeonSummary {
