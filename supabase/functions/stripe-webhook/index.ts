@@ -103,6 +103,71 @@ async function addZohoNote(
   }
 }
 
+// Create a surgeon_credits record when enrollment is paid
+async function createCreditRecord(supabase: any, enrollment: any): Promise<void> {
+  try {
+    // Check if credit already exists for this enrollment
+    const { data: existing } = await supabase
+      .from("surgeon_credits")
+      .select("id")
+      .eq("enrollment_id", enrollment.id)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`Credit record already exists for enrollment ${enrollment.id}`);
+      return;
+    }
+
+    // Look up patient to get surgeon
+    let surgeonId: string | null = null;
+    let surgeonName = "Unknown";
+
+    if (enrollment.patient_id) {
+      const { data: patient } = await supabase
+        .from("patients")
+        .select("surgeon_id, surgeons(id, name)")
+        .eq("id", enrollment.patient_id)
+        .maybeSingle();
+
+      if (patient?.surgeon_id && patient?.surgeons) {
+        surgeonId = patient.surgeon_id;
+        surgeonName = patient.surgeons.name;
+      }
+    }
+
+    const enrollmentDate = enrollment.paid_at
+      ? new Date(enrollment.paid_at).toISOString().split("T")[0]
+      : new Date().toISOString().split("T")[0];
+
+    // Calculate expiry dates: $750 within 90 days, $500 within 180 days
+    const paidDate = new Date(enrollment.paid_at || new Date());
+    const credit750Date = new Date(paidDate);
+    credit750Date.setDate(credit750Date.getDate() + 90);
+    const credit500Date = new Date(paidDate);
+    credit500Date.setDate(credit500Date.getDate() + 180);
+
+    await supabase.from("surgeon_credits").insert({
+      enrollment_id: enrollment.id,
+      surgeon_id: surgeonId,
+      surgeon_name: surgeonName,
+      patient_name: enrollment.patient_name || "Unknown",
+      patient_email: enrollment.patient_email || null,
+      consultant_email: enrollment.owner_name || null,
+      enrollment_date: enrollmentDate,
+      credit_750_expires: credit750Date.toISOString().split("T")[0],
+      credit_500_expires: credit500Date.toISOString().split("T")[0],
+      credit_amount: 0,
+      credit_status: "pending",
+      source: "zoho",
+    });
+
+    console.log(`Credit record created for enrollment ${enrollment.id}, surgeon: ${surgeonName}`);
+  } catch (err) {
+    console.error("Error creating credit record:", err);
+    // Don't throw - credit creation failure shouldn't break payment flow
+  }
+}
+
 // Generate and store consent PDF when payment is confirmed
 async function generateAndStoreConsentPdf(
   supabase: any,
@@ -325,6 +390,8 @@ serve(async (req) => {
             pdfBytes: pdfBytes,
             enrollmentId: enrollment.id,
           });
+          // Auto-create credit record for the surgeon
+          await createCreditRecord(supabase, enrollment);
         }
 
         console.log(`Enrollment ${enrollmentId} updated to ${newStatus}`);
@@ -393,6 +460,9 @@ serve(async (req) => {
             pdfBytes: pdfBytes,
             enrollmentId: enrollment.id,
           });
+
+          // Auto-create credit record for the surgeon
+          await createCreditRecord(supabase, enrollment);
 
           console.log(`Enrollment ${enrollmentId} payment confirmed`);
         }
