@@ -159,7 +159,6 @@ Deno.serve(async (req) => {
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-    }
 
     // Fetch deals from Zoho
     const accessToken = await getZohoAccessToken();
