@@ -62,15 +62,21 @@ Deno.serve(async (req) => {
       for (const id of credit_ids) {
         const { data: credit } = await supabaseAdmin
           .from("surgeon_credits")
-          .select("id, credit_status, credit_amount, patient_name")
+          .select("id, credit_status, credit_amount, patient_name, notes")
           .eq("id", id)
           .maybeSingle();
 
         if (!credit) continue;
 
+        // Build notes with timestamp
+        const existingNotes = credit.notes || "";
+        const timestamp = new Date().toISOString();
+        const noteEntry = `[${timestamp}] ${adminUser.email} — DISPUTED: ${reason || "No reason provided"}`;
+        const updatedNotes = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry;
+
         await supabaseAdmin
           .from("surgeon_credits")
-          .update({ credit_status: "disputed" })
+          .update({ credit_status: "disputed", notes: updatedNotes })
           .eq("id", id);
 
         await supabaseAdmin.from("admin_audit_log").insert({
@@ -109,15 +115,20 @@ Deno.serve(async (req) => {
       for (const id of credit_ids) {
         const { data: credit } = await supabaseAdmin
           .from("surgeon_credits")
-          .select("id, credit_status, credit_amount, patient_name")
+          .select("id, credit_status, credit_amount, patient_name, notes")
           .eq("id", id)
           .maybeSingle();
 
         if (!credit || credit.credit_status !== "disputed") continue;
 
+        const existingNotes = credit.notes || "";
+        const timestamp = new Date().toISOString();
+        const noteEntry = `[${timestamp}] ${adminUser.email} — RESOLVED`;
+        const updatedNotes = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry;
+
         await supabaseAdmin
           .from("surgeon_credits")
-          .update({ credit_status: "earned" })
+          .update({ credit_status: "earned", notes: updatedNotes })
           .eq("id", id);
 
         await supabaseAdmin.from("admin_audit_log").insert({
@@ -137,6 +148,43 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, updated }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle add_note action
+    if (body.action === "add_note") {
+      const { credit_id, note } = body;
+      if (!credit_id || !note) {
+        return new Response(JSON.stringify({ error: "Missing credit_id or note" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: credit } = await supabaseAdmin
+        .from("surgeon_credits")
+        .select("id, notes, patient_name")
+        .eq("id", credit_id)
+        .maybeSingle();
+
+      if (!credit) {
+        return new Response(JSON.stringify({ error: "Credit not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const existingNotes = credit.notes || "";
+      const timestamp = new Date().toISOString();
+      const noteEntry = `[${timestamp}] ${adminUser.email} — ${note}`;
+      const updatedNotes = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry;
+
+      await supabaseAdmin
+        .from("surgeon_credits")
+        .update({ notes: updatedNotes })
+        .eq("id", credit_id);
+
+      return new Response(
+        JSON.stringify({ success: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

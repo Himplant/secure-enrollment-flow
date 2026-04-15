@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign, Download, RefreshCw, CheckCircle2, Clock, XCircle, BadgeCheck,
@@ -52,6 +52,7 @@ interface CreditRecord {
   issued_by: string | null;
   source: string;
   created_at: string;
+  notes: string | null;
 }
 
 interface SurgeonSummary {
@@ -129,7 +130,8 @@ export function CreditsTab() {
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [disputeTargetIds, setDisputeTargetIds] = useState<string[]>([]);
-
+  const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   // Date filter state
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const [dateRange, setDateRange] = useState<DateRange>({});
@@ -323,6 +325,17 @@ export function CreditsTab() {
     mutationFn: async (credit_ids: string[]) => callEdgeFunction({ action: "resolve", credit_ids }),
     onSuccess: (data) => {
       toast({ title: "Disputes Resolved", description: `${data.updated} credit(s) moved back to earned` });
+      queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
+    },
+    onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: async ({ credit_id, note }: { credit_id: string; note: string }) =>
+      callEdgeFunction({ action: "add_note", credit_id, note }),
+    onSuccess: () => {
+      toast({ title: "Note Added" });
+      setNoteInputs({});
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     },
     onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -625,49 +638,96 @@ export function CreditsTab() {
                       </TableHeader>
                       <TableBody>
                         {sorted.map(c => (
-                          <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-muted/30" : ""}>
-                            <TableCell>
-                              {c.credit_status === "earned" && <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} />}
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-medium">{c.patient_name}</div>
-                              {c.patient_email && <div className="text-xs text-muted-foreground">{c.patient_email}</div>}
-                            </TableCell>
-                            <TableCell className="text-sm">{formatDateUS(c.enrollment_date)}</TableCell>
-                            <TableCell className="text-sm">{formatDateUS(c.surgery_date)}</TableCell>
-                            <TableCell className="text-sm">{c.stage || "—"}</TableCell>
-                            <TableCell className="font-medium">${c.credit_amount}</TableCell>
-                            <TableCell>{statusBadge(c.credit_status)}</TableCell>
-                            <TableCell>
-                              {c.credit_status === "issued" ? (
-                                <span className="font-medium text-blue-600">${c.issued_amount || c.credit_amount}</span>
-                              ) : c.credit_status === "earned" ? (
-                                <Input type="number" className="w-20 h-7 text-xs" placeholder={`${c.credit_amount}`} value={paymentAmounts[c.id] || ""} onChange={(e) => setPaymentAmounts(prev => ({ ...prev, [c.id]: e.target.value }))} />
-                              ) : <span className="text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                {c.credit_status === "earned" && (
-                                  <>
-                                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={markIssuedMutation.isPending} onClick={() => handleMarkIssued(c.id, c.credit_amount)}>
-                                      <BadgeCheck className="h-3 w-3 mr-1" />Pay
+                          <React.Fragment key={c.id}>
+                            <TableRow className={selectedIds.has(c.id) ? "bg-muted/30" : ""}>
+                              <TableCell>
+                                {c.credit_status === "earned" && <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} />}
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">{c.patient_name}</div>
+                                {c.patient_email && <div className="text-xs text-muted-foreground">{c.patient_email}</div>}
+                              </TableCell>
+                              <TableCell className="text-sm">{formatDateUS(c.enrollment_date)}</TableCell>
+                              <TableCell className="text-sm">{formatDateUS(c.surgery_date)}</TableCell>
+                              <TableCell className="text-sm">{c.stage || "—"}</TableCell>
+                              <TableCell className="font-medium">${c.credit_amount}</TableCell>
+                              <TableCell>{statusBadge(c.credit_status)}</TableCell>
+                              <TableCell>
+                                {c.credit_status === "issued" ? (
+                                  <span className="font-medium text-blue-600">${c.issued_amount || c.credit_amount}</span>
+                                ) : c.credit_status === "earned" ? (
+                                  <Input type="number" className="w-20 h-7 text-xs" placeholder={`${c.credit_amount}`} value={paymentAmounts[c.id] || ""} onChange={(e) => setPaymentAmounts(prev => ({ ...prev, [c.id]: e.target.value }))} />
+                                ) : <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  {c.credit_status === "earned" && (
+                                    <>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs" disabled={markIssuedMutation.isPending} onClick={() => handleMarkIssued(c.id, c.credit_amount)}>
+                                        <BadgeCheck className="h-3 w-3 mr-1" />Pay
+                                      </Button>
+                                      <Button size="sm" variant="ghost" className="h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => openDisputeDialog([c.id])}>
+                                        <AlertTriangle className="h-3 w-3" />
+                                      </Button>
+                                    </>
+                                  )}
+                                  {c.credit_status === "disputed" && (
+                                    <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-300 hover:bg-emerald-50" disabled={resolveMutation.isPending} onClick={() => resolveMutation.mutate([c.id])}>
+                                      <ShieldCheck className="h-3 w-3 mr-1" />Resolve
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => openDisputeDialog([c.id])}>
-                                      <AlertTriangle className="h-3 w-3" />
+                                  )}
+                                  {c.credit_status === "issued" && c.issued_at && (
+                                    <span className="text-xs text-muted-foreground">{formatDateTimeUS(c.issued_at)}</span>
+                                  )}
+                                  {(c.credit_status === "disputed" || c.notes) && (
+                                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setExpandedNotes(prev => {
+                                      const next = new Set(prev);
+                                      next.has(c.id) ? next.delete(c.id) : next.add(c.id);
+                                      return next;
+                                    })}>
+                                      💬 {c.notes ? c.notes.split("\n").length : 0}
                                     </Button>
-                                  </>
-                                )}
-                                {c.credit_status === "disputed" && (
-                                  <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-300 hover:bg-emerald-50" disabled={resolveMutation.isPending} onClick={() => resolveMutation.mutate([c.id])}>
-                                    <ShieldCheck className="h-3 w-3 mr-1" />Resolve
-                                  </Button>
-                                )}
-                                {c.credit_status === "issued" && c.issued_at && (
-                                  <span className="text-xs text-muted-foreground">{formatDateTimeUS(c.issued_at)}</span>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            {expandedNotes.has(c.id) && (
+                              <TableRow>
+                                <TableCell colSpan={9} className="bg-muted/20 p-3">
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-muted-foreground">Notes & Activity</p>
+                                    {c.notes ? (
+                                      <div className="space-y-1 text-xs font-mono bg-background rounded p-2 border border-border max-h-40 overflow-y-auto">
+                                        {c.notes.split("\n").map((line, i) => (
+                                          <div key={i} className="text-muted-foreground">{line}</div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground italic">No notes yet</p>
+                                    )}
+                                    <div className="flex gap-2 items-end">
+                                      <Textarea
+                                        className="text-xs h-16 flex-1"
+                                        placeholder="Add a note..."
+                                        value={noteInputs[c.id] || ""}
+                                        onChange={(e) => setNoteInputs(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                      />
+                                      <Button
+                                        size="sm"
+                                        className="h-8 text-xs"
+                                        disabled={addNoteMutation.isPending || !noteInputs[c.id]?.trim()}
+                                        onClick={() => {
+                                          addNoteMutation.mutate({ credit_id: c.id, note: noteInputs[c.id].trim() });
+                                        }}
+                                      >
+                                        Add Note
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </React.Fragment>
                         ))}
                       </TableBody>
                     </Table>
