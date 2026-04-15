@@ -1,4 +1,3 @@
-import { serve } from "npm:@supabase/supabase-js/functions";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -118,7 +117,7 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
   return deals;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
