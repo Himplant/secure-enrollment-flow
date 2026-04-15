@@ -330,6 +330,17 @@ export function CreditsTab() {
     onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const addNoteMutation = useMutation({
+    mutationFn: async ({ credit_id, note }: { credit_id: string; note: string }) =>
+      callEdgeFunction({ action: "add_note", credit_id, note }),
+    onSuccess: () => {
+      toast({ title: "Note Added" });
+      setNoteInputs({});
+      queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
+    },
+    onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const handleSync = async () => {
     setSyncing(true);
     try {
