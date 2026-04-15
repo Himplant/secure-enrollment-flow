@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -7,7 +6,6 @@ import {
   ResponsiveContainer, Legend,
 } from "recharts";
 import { format, eachMonthOfInterval, eachWeekOfInterval, eachDayOfInterval, differenceInDays, startOfDay, startOfWeek, startOfMonth } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
 
 const COLORS = [
   "#3b82f6", "#22c55e", "#f59e0b", "#a855f7",
@@ -15,31 +13,17 @@ const COLORS = [
 ];
 
 interface ConsultantTrendChartProps {
+  enrollments: any[];
+  isLoading: boolean;
   dateFrom?: Date;
   dateTo?: Date;
 }
 
-export function ConsultantTrendChart({ dateFrom, dateTo }: ConsultantTrendChartProps) {
-  const { data: rawData, isLoading } = useQuery({
-    queryKey: ["consultant-trend", dateFrom?.toISOString(), dateTo?.toISOString()],
-    queryFn: async () => {
-      let query = supabase
-        .from("enrollments")
-        .select("created_at, owner_name");
-
-      if (dateFrom) query = query.gte("created_at", dateFrom.toISOString());
-      if (dateTo) query = query.lte("created_at", dateTo.toISOString());
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
+export function ConsultantTrendChart({ enrollments, isLoading, dateFrom, dateTo }: ConsultantTrendChartProps) {
   const { chartData, consultantNames } = useMemo(() => {
-    if (!rawData?.length) return { chartData: [], consultantNames: [] };
+    if (!enrollments?.length) return { chartData: [], consultantNames: [] };
 
-    const from = dateFrom || new Date(Math.min(...rawData.map((e: any) => new Date(e.created_at).getTime())));
+    const from = dateFrom || new Date(Math.min(...enrollments.map((e: any) => new Date(e.created_at).getTime())));
     const to = dateTo || new Date();
     const daysDiff = differenceInDays(to, from);
 
@@ -69,7 +53,7 @@ export function ConsultantTrendChart({ dateFrom, dateTo }: ConsultantTrendChartP
       buckets.set(key, {});
     });
 
-    rawData.forEach((e: any) => {
+    enrollments.forEach((e: any) => {
       const name = e.owner_name || "Unassigned";
       nameSet.add(name);
       const key = bucketFn(new Date(e.created_at));
@@ -87,7 +71,7 @@ export function ConsultantTrendChart({ dateFrom, dateTo }: ConsultantTrendChartP
     }));
 
     return { chartData: data, consultantNames: names };
-  }, [rawData, dateFrom, dateTo]);
+  }, [enrollments, dateFrom, dateTo]);
 
   if (isLoading) {
     return (
@@ -117,14 +101,7 @@ export function ConsultantTrendChart({ dateFrom, dateTo }: ConsultantTrendChartP
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-              />
+              <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px" }} />
               {consultantNames.map((name, i) => (
                 <Bar key={name} dataKey={name} stackId="a" fill={COLORS[i % COLORS.length]} />
