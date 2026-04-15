@@ -152,6 +152,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Handle add_note action
+    if (body.action === "add_note") {
+      const { credit_id, note } = body;
+      if (!credit_id || !note) {
+        return new Response(JSON.stringify({ error: "Missing credit_id or note" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: credit } = await supabaseAdmin
+        .from("surgeon_credits")
+        .select("id, notes, patient_name")
+        .eq("id", credit_id)
+        .maybeSingle();
+
+      if (!credit) {
+        return new Response(JSON.stringify({ error: "Credit not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const existingNotes = credit.notes || "";
+      const timestamp = new Date().toISOString();
+      const noteEntry = `[${timestamp}] ${adminUser.email} — ${note}`;
+      const updatedNotes = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry;
+
+      await supabaseAdmin
+        .from("surgeon_credits")
+        .update({ notes: updatedNotes })
+        .eq("id", credit_id);
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Handle mark-as-issued (existing logic)
     const payments: { id: string; amount: number }[] = [];
 
