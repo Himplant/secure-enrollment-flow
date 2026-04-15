@@ -387,6 +387,90 @@ export type Database = {
         }
         Relationships: []
       }
+      surgeon_credits: {
+        Row: {
+          consultant_email: string | null
+          created_at: string
+          credit_500_expires: string | null
+          credit_750_expires: string | null
+          credit_amount: number
+          credit_status: Database["public"]["Enums"]["credit_status"]
+          enrollment_date: string | null
+          enrollment_id: string | null
+          id: string
+          issued_at: string | null
+          issued_by: string | null
+          patient_email: string | null
+          patient_name: string
+          source: Database["public"]["Enums"]["credit_source"]
+          stage: string | null
+          surgeon_id: string | null
+          surgeon_name: string
+          surgery_date: string | null
+          updated_at: string
+          zoho_deal_id: string | null
+        }
+        Insert: {
+          consultant_email?: string | null
+          created_at?: string
+          credit_500_expires?: string | null
+          credit_750_expires?: string | null
+          credit_amount?: number
+          credit_status?: Database["public"]["Enums"]["credit_status"]
+          enrollment_date?: string | null
+          enrollment_id?: string | null
+          id?: string
+          issued_at?: string | null
+          issued_by?: string | null
+          patient_email?: string | null
+          patient_name: string
+          source?: Database["public"]["Enums"]["credit_source"]
+          stage?: string | null
+          surgeon_id?: string | null
+          surgeon_name: string
+          surgery_date?: string | null
+          updated_at?: string
+          zoho_deal_id?: string | null
+        }
+        Update: {
+          consultant_email?: string | null
+          created_at?: string
+          credit_500_expires?: string | null
+          credit_750_expires?: string | null
+          credit_amount?: number
+          credit_status?: Database["public"]["Enums"]["credit_status"]
+          enrollment_date?: string | null
+          enrollment_id?: string | null
+          id?: string
+          issued_at?: string | null
+          issued_by?: string | null
+          patient_email?: string | null
+          patient_name?: string
+          source?: Database["public"]["Enums"]["credit_source"]
+          stage?: string | null
+          surgeon_id?: string | null
+          surgeon_name?: string
+          surgery_date?: string | null
+          updated_at?: string
+          zoho_deal_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "surgeon_credits_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "surgeon_credits_surgeon_id_fkey"
+            columns: ["surgeon_id"]
+            isOneToOne: false
+            referencedRelation: "surgeons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       surgeons: {
         Row: {
           created_at: string
@@ -442,6 +526,8 @@ export type Database = {
     }
     Enums: {
       admin_role: "admin" | "viewer" | "super_admin"
+      credit_source: "zoho" | "import"
+      credit_status: "pending" | "earned" | "forfeited" | "issued"
       enrollment_status:
         | "created"
         | "sent"
@@ -581,6 +667,8 @@ export const Constants = {
   public: {
     Enums: {
       admin_role: ["admin", "viewer", "super_admin"],
+      credit_source: ["zoho", "import"],
+      credit_status: ["pending", "earned", "forfeited", "issued"],
       enrollment_status: [
         "created",
         "sent",
