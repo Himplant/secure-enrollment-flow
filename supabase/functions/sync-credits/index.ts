@@ -87,7 +87,7 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
   const deals: ZohoDeal[] = [];
   let page = 1;
   let hasMore = true;
-  const fields = "Deal_Name,Stage,Surgery_Date,$750_Credit_Applies_Until,$500_Credit_Applies_Until,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name,Email,Contact_Name";
+  const fields = "Deal_Name,Stage,Surgery_Date,$750_Credit_Applies_Until,$500_Credit_Applies_Until,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name,Surgeon,Email,Contact_Name";
 
   while (hasMore) {
     const url = `https://www.zohoapis.com/crm/v6/Deals?fields=${fields}&criteria=(Enrollment_Status:equals:Paid)&page=${page}&per_page=200`;
