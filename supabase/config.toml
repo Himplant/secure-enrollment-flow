@@ -23,3 +23,9 @@ verify_jwt = false
 
 [functions.mark-refunded]
 verify_jwt = false
+
+[functions.sync-credits]
+verify_jwt = false
+
+[functions.mark-credit-issued]
+verify_jwt = false
