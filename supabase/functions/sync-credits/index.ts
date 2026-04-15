@@ -134,8 +134,19 @@ Deno.serve(async (req) => {
 
     // Fetch deals from Zoho
     const accessToken = await getZohoAccessToken();
-    const deals = await fetchDealsFromZoho(accessToken);
-    console.log(`Fetched ${deals.length} paid deals from Zoho`);
+    const allDeals = await fetchDealsFromZoho(accessToken);
+    console.log(`Fetched ${allDeals.length} paid deals from Zoho`);
+
+    // Load all known patient emails to filter relevant deals only
+    const { data: allPatients } = await supabaseAdmin.from("patients").select("email").not("email", "is", null);
+    const knownEmails = new Set<string>();
+    for (const p of allPatients || []) {
+      if (p.email) knownEmails.add(p.email.toLowerCase().trim());
+    }
+
+    // Filter: only process deals for patients that exist in our system
+    const deals = allDeals.filter(d => d.Email && knownEmails.has(d.Email.toLowerCase().trim()));
+    console.log(`Filtered to ${deals.length} deals matching known patients (out of ${allDeals.length})`);
 
     // Load surgeons by id
     const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name");
