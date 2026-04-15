@@ -62,15 +62,21 @@ Deno.serve(async (req) => {
       for (const id of credit_ids) {
         const { data: credit } = await supabaseAdmin
           .from("surgeon_credits")
-          .select("id, credit_status, credit_amount, patient_name")
+          .select("id, credit_status, credit_amount, patient_name, notes")
           .eq("id", id)
           .maybeSingle();
 
         if (!credit) continue;
 
+        // Build notes with timestamp
+        const existingNotes = credit.notes || "";
+        const timestamp = new Date().toISOString();
+        const noteEntry = `[${timestamp}] ${adminUser.email} — DISPUTED: ${reason || "No reason provided"}`;
+        const updatedNotes = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry;
+
         await supabaseAdmin
           .from("surgeon_credits")
-          .update({ credit_status: "disputed" })
+          .update({ credit_status: "disputed", notes: updatedNotes })
           .eq("id", id);
 
         await supabaseAdmin.from("admin_audit_log").insert({
@@ -115,9 +121,14 @@ Deno.serve(async (req) => {
 
         if (!credit || credit.credit_status !== "disputed") continue;
 
+        const existingNotes = credit.notes || "";
+        const timestamp = new Date().toISOString();
+        const noteEntry = `[${timestamp}] ${adminUser.email} — RESOLVED`;
+        const updatedNotes = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry;
+
         await supabaseAdmin
           .from("surgeon_credits")
-          .update({ credit_status: "earned" })
+          .update({ credit_status: "earned", notes: updatedNotes })
           .eq("id", id);
 
         await supabaseAdmin.from("admin_audit_log").insert({
