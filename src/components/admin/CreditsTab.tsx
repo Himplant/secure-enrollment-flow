@@ -2,12 +2,13 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign, Download, RefreshCw, CheckCircle2, Clock, XCircle, BadgeCheck,
-  ChevronDown, ChevronRight
+  ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -55,6 +56,23 @@ interface SurgeonSummary {
   records: CreditRecord[];
 }
 
+type SortField = "patient_name" | "enrollment_date" | "surgery_date" | "stage" | "credit_amount" | "credit_status" | "issued_amount";
+type SortDir = "asc" | "desc";
+
+function formatDateUS(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return dateStr;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+function formatDateTimeUS(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
 export function CreditsTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -63,6 +81,10 @@ export function CreditsTab() {
   const [expandedSurgeons, setExpandedSurgeons] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
+  const [sortField, setSortField] = useState<SortField>("patient_name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAmount, setBulkAmount] = useState<string>("");
 
   const { data: credits = [], isLoading } = useQuery({
     queryKey: ["surgeon-credits"],
@@ -82,6 +104,36 @@ export function CreditsTab() {
     if (surgeonFilter !== "all") result = result.filter(c => c.surgeon_name === surgeonFilter);
     return result;
   }, [credits, statusFilter, surgeonFilter]);
+
+  const sortRecords = (records: CreditRecord[]): CreditRecord[] => {
+    return [...records].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "patient_name": cmp = a.patient_name.localeCompare(b.patient_name); break;
+        case "enrollment_date": cmp = (a.enrollment_date || "").localeCompare(b.enrollment_date || ""); break;
+        case "surgery_date": cmp = (a.surgery_date || "").localeCompare(b.surgery_date || ""); break;
+        case "stage": cmp = (a.stage || "").localeCompare(b.stage || ""); break;
+        case "credit_amount": cmp = a.credit_amount - b.credit_amount; break;
+        case "credit_status": cmp = a.credit_status.localeCompare(b.credit_status); break;
+        case "issued_amount": cmp = (a.issued_amount || 0) - (b.issued_amount || 0); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
 
   const surgeonSummaries = useMemo(() => {
     const map = new Map<string, SurgeonSummary>();
@@ -119,6 +171,29 @@ export function CreditsTab() {
     return [...new Set(credits.map(c => c.surgeon_name))].sort();
   }, [credits]);
 
+  // Get all selectable (earned) record IDs
+  const selectableIds = useMemo(() => {
+    return new Set(filtered.filter(c => c.credit_status === "earned").map(c => c.id));
+  }, [filtered]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllForSurgeon = (records: CreditRecord[]) => {
+    const earnedIds = records.filter(c => c.credit_status === "earned").map(c => c.id);
+    const allSelected = earnedIds.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      earnedIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
   const markIssuedMutation = useMutation({
     mutationFn: async (payments: { id: string; amount: number }[]) => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -140,6 +215,8 @@ export function CreditsTab() {
     onSuccess: (data) => {
       toast({ title: "Credits Issued", description: `${data.updated} credit(s) marked as issued` });
       setPaymentAmounts({});
+      setSelectedIds(new Set());
+      setBulkAmount("");
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     },
     onError: (err) => {
@@ -183,6 +260,25 @@ export function CreditsTab() {
     markIssuedMutation.mutate([{ id: creditId, amount }]);
   };
 
+  const handleBulkMarkIssued = () => {
+    if (selectedIds.size === 0) {
+      toast({ title: "No records selected", variant: "destructive" });
+      return;
+    }
+    const payments = Array.from(selectedIds).map(id => {
+      const record = credits.find(c => c.id === id);
+      const customAmount = paymentAmounts[id];
+      const amount = customAmount ? parseFloat(customAmount) : (record?.credit_amount || 0);
+      return { id, amount };
+    }).filter(p => p.amount > 0);
+
+    if (payments.length === 0) {
+      toast({ title: "No valid amounts", variant: "destructive" });
+      return;
+    }
+    markIssuedMutation.mutate(payments);
+  };
+
   const handleExportCSV = (surgeonName?: string) => {
     const data = surgeonName
       ? filtered.filter(c => c.surgeon_name === surgeonName)
@@ -191,10 +287,10 @@ export function CreditsTab() {
     const headers = ["Surgeon", "Patient", "Email", "Enrollment Date", "Surgery Date", "Stage", "$750 Expires", "$500 Expires", "Credit Amount", "Status", "Issued Amount", "Issued At", "Issued By", "Source"];
     const rows = data.map(c => [
       c.surgeon_name, c.patient_name, c.patient_email || "",
-      c.enrollment_date || "", c.surgery_date || "", c.stage || "",
-      c.credit_750_expires || "", c.credit_500_expires || "",
+      formatDateUS(c.enrollment_date), formatDateUS(c.surgery_date), c.stage || "",
+      formatDateUS(c.credit_750_expires), formatDateUS(c.credit_500_expires),
       c.credit_amount, c.credit_status, c.issued_amount || "",
-      c.issued_at || "", c.issued_by || "", c.source,
+      c.issued_at ? formatDateTimeUS(c.issued_at) : "", c.issued_by || "", c.source,
     ]);
 
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
@@ -245,6 +341,32 @@ export function CreditsTab() {
         <Button onClick={() => handleExportCSV()} variant="outline" size="sm">
           <Download className="h-4 w-4 mr-2" />Export All CSV
         </Button>
+
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 ml-2 px-3 py-1 bg-muted rounded-md">
+            <span className="text-xs font-medium">{selectedIds.size} selected</span>
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 text-xs"
+              disabled={markIssuedMutation.isPending}
+              onClick={handleBulkMarkIssued}
+            >
+              <BadgeCheck className="h-3 w-3 mr-1" />
+              Mark All as Paid
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
+
         <div className="ml-auto flex items-center gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[140px] h-8 text-xs">
@@ -308,108 +430,144 @@ export function CreditsTab() {
 
       {/* Per-surgeon accordion */}
       <div className="space-y-2">
-        {surgeonSummaries.map(surgeon => (
-          <Collapsible
-            key={surgeon.surgeon_name}
-            open={expandedSurgeons.has(surgeon.surgeon_name)}
-            onOpenChange={() => toggleExpand(surgeon.surgeon_name)}
-          >
-            <Card>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {expandedSurgeons.has(surgeon.surgeon_name)
-                        ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                      <CardTitle className="text-base">{surgeon.surgeon_name}</CardTitle>
-                      <span className="text-xs text-muted-foreground">({surgeon.records.length} patients)</span>
+        {surgeonSummaries.map(surgeon => {
+          const sorted = sortRecords(surgeon.records);
+          const surgeonEarnedIds = surgeon.records.filter(c => c.credit_status === "earned").map(c => c.id);
+          const allSurgeonSelected = surgeonEarnedIds.length > 0 && surgeonEarnedIds.every(id => selectedIds.has(id));
+
+          return (
+            <Collapsible
+              key={surgeon.surgeon_name}
+              open={expandedSurgeons.has(surgeon.surgeon_name)}
+              onOpenChange={() => toggleExpand(surgeon.surgeon_name)}
+            >
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {expandedSurgeons.has(surgeon.surgeon_name)
+                          ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                        <CardTitle className="text-base">{surgeon.surgeon_name}</CardTitle>
+                        <span className="text-xs text-muted-foreground">({surgeon.records.length} patients)</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs">
+                        <span className="text-emerald-600 font-medium">${surgeon.earned.toLocaleString()} earned</span>
+                        <span className="text-blue-600 font-medium">${surgeon.issued.toLocaleString()} issued</span>
+                        <span className="text-amber-600 font-medium">${surgeon.pending.toLocaleString()} pending</span>
+                        <span className="text-red-600 font-medium">${surgeon.forfeited.toLocaleString()} forfeited</span>
+                        <Button
+                          variant="ghost" size="sm"
+                          onClick={(e) => { e.stopPropagation(); handleExportCSV(surgeon.surgeon_name); }}
+                        >
+                          <Download className="h-3 w-3 mr-1" />CSV
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 text-xs">
-                      <span className="text-emerald-600 font-medium">${surgeon.earned.toLocaleString()} earned</span>
-                      <span className="text-blue-600 font-medium">${surgeon.issued.toLocaleString()} issued</span>
-                      <span className="text-amber-600 font-medium">${surgeon.pending.toLocaleString()} pending</span>
-                      <span className="text-red-600 font-medium">${surgeon.forfeited.toLocaleString()} forfeited</span>
-                      <Button
-                        variant="ghost" size="sm"
-                        onClick={(e) => { e.stopPropagation(); handleExportCSV(surgeon.surgeon_name); }}
-                      >
-                        <Download className="h-3 w-3 mr-1" />CSV
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="pt-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Patient</TableHead>
-                        <TableHead>Enrollment</TableHead>
-                        <TableHead>Surgery</TableHead>
-                        <TableHead>Stage</TableHead>
-                        <TableHead>Credit Due</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Paid Amount</TableHead>
-                        <TableHead>Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {surgeon.records.map(c => (
-                        <TableRow key={c.id}>
-                          <TableCell>
-                            <div className="font-medium">{c.patient_name}</div>
-                            {c.patient_email && <div className="text-xs text-muted-foreground">{c.patient_email}</div>}
-                          </TableCell>
-                          <TableCell className="text-sm">{c.enrollment_date || "—"}</TableCell>
-                          <TableCell className="text-sm">{c.surgery_date || "—"}</TableCell>
-                          <TableCell className="text-sm">{c.stage || "—"}</TableCell>
-                          <TableCell className="font-medium">${c.credit_amount}</TableCell>
-                          <TableCell>{statusBadge(c.credit_status)}</TableCell>
-                          <TableCell>
-                            {c.credit_status === "issued" ? (
-                              <span className="font-medium text-blue-600">${c.issued_amount || c.credit_amount}</span>
-                            ) : c.credit_status === "earned" ? (
-                              <Input
-                                type="number"
-                                className="w-20 h-7 text-xs"
-                                placeholder={`${c.credit_amount}`}
-                                value={paymentAmounts[c.id] || ""}
-                                onChange={(e) => setPaymentAmounts(prev => ({ ...prev, [c.id]: e.target.value }))}
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-8">
+                            {surgeonEarnedIds.length > 0 && (
+                              <Checkbox
+                                checked={allSurgeonSelected}
+                                onCheckedChange={() => toggleSelectAllForSurgeon(surgeon.records)}
                               />
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            {c.credit_status === "earned" && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                disabled={markIssuedMutation.isPending}
-                                onClick={() => handleMarkIssued(c.id, c.credit_amount)}
-                              >
-                                <BadgeCheck className="h-3 w-3 mr-1" />
-                                Pay
-                              </Button>
-                            )}
-                            {c.credit_status === "issued" && c.issued_at && (
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(c.issued_at).toLocaleDateString()}
-                              </span>
-                            )}
-                          </TableCell>
+                          </TableHead>
+                          <TableHead className="cursor-pointer select-none" onClick={() => handleSort("patient_name")}>
+                            <div className="flex items-center">Patient<SortIcon field="patient_name" /></div>
+                          </TableHead>
+                          <TableHead className="cursor-pointer select-none" onClick={() => handleSort("enrollment_date")}>
+                            <div className="flex items-center">Enrollment<SortIcon field="enrollment_date" /></div>
+                          </TableHead>
+                          <TableHead className="cursor-pointer select-none" onClick={() => handleSort("surgery_date")}>
+                            <div className="flex items-center">Surgery<SortIcon field="surgery_date" /></div>
+                          </TableHead>
+                          <TableHead className="cursor-pointer select-none" onClick={() => handleSort("stage")}>
+                            <div className="flex items-center">Stage<SortIcon field="stage" /></div>
+                          </TableHead>
+                          <TableHead className="cursor-pointer select-none" onClick={() => handleSort("credit_amount")}>
+                            <div className="flex items-center">Credit Due<SortIcon field="credit_amount" /></div>
+                          </TableHead>
+                          <TableHead className="cursor-pointer select-none" onClick={() => handleSort("credit_status")}>
+                            <div className="flex items-center">Status<SortIcon field="credit_status" /></div>
+                          </TableHead>
+                          <TableHead className="cursor-pointer select-none" onClick={() => handleSort("issued_amount")}>
+                            <div className="flex items-center">Paid Amount<SortIcon field="issued_amount" /></div>
+                          </TableHead>
+                          <TableHead>Action</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </CollapsibleContent>
-            </Card>
-          </Collapsible>
-        ))}
+                      </TableHeader>
+                      <TableBody>
+                        {sorted.map(c => (
+                          <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-muted/30" : ""}>
+                            <TableCell>
+                              {c.credit_status === "earned" && (
+                                <Checkbox
+                                  checked={selectedIds.has(c.id)}
+                                  onCheckedChange={() => toggleSelect(c.id)}
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{c.patient_name}</div>
+                              {c.patient_email && <div className="text-xs text-muted-foreground">{c.patient_email}</div>}
+                            </TableCell>
+                            <TableCell className="text-sm">{formatDateUS(c.enrollment_date)}</TableCell>
+                            <TableCell className="text-sm">{formatDateUS(c.surgery_date)}</TableCell>
+                            <TableCell className="text-sm">{c.stage || "—"}</TableCell>
+                            <TableCell className="font-medium">${c.credit_amount}</TableCell>
+                            <TableCell>{statusBadge(c.credit_status)}</TableCell>
+                            <TableCell>
+                              {c.credit_status === "issued" ? (
+                                <span className="font-medium text-blue-600">${c.issued_amount || c.credit_amount}</span>
+                              ) : c.credit_status === "earned" ? (
+                                <Input
+                                  type="number"
+                                  className="w-20 h-7 text-xs"
+                                  placeholder={`${c.credit_amount}`}
+                                  value={paymentAmounts[c.id] || ""}
+                                  onChange={(e) => setPaymentAmounts(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                />
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {c.credit_status === "earned" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  disabled={markIssuedMutation.isPending}
+                                  onClick={() => handleMarkIssued(c.id, c.credit_amount)}
+                                >
+                                  <BadgeCheck className="h-3 w-3 mr-1" />
+                                  Pay
+                                </Button>
+                              )}
+                              {c.credit_status === "issued" && c.issued_at && (
+                                <span className="text-xs text-muted-foreground">
+                                  {formatDateTimeUS(c.issued_at)}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          );
+        })}
         {surgeonSummaries.length === 0 && (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
