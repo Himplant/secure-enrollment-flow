@@ -162,9 +162,14 @@ Deno.serve(async (req) => {
 
     // Fetch surgeons for matching
     const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name");
-    const surgeonMap = new Map<string, string>();
+    // Build surgeon map with multiple key variations for matching
+    const surgeonMap = new Map<string, { id: string; name: string }>();
     for (const s of surgeons || []) {
-      surgeonMap.set(s.name.toLowerCase(), s.id);
+      const lower = s.name.toLowerCase();
+      surgeonMap.set(lower, { id: s.id, name: s.name });
+      // Also map without "Dr." prefix
+      const noDr = lower.replace(/^dr\.?\s*/i, "").trim();
+      if (noDr !== lower) surgeonMap.set(noDr, { id: s.id, name: s.name });
     }
 
     // Fetch existing import records by email for dedup
