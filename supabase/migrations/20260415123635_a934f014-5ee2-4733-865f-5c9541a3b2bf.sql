@@ -1,0 +1,1 @@
+ALTER TABLE public.surgeon_credits ADD COLUMN notes text;

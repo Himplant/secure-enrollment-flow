@@ -401,6 +401,7 @@ export type Database = {
           issued_amount: number
           issued_at: string | null
           issued_by: string | null
+          notes: string | null
           patient_email: string | null
           patient_name: string
           source: Database["public"]["Enums"]["credit_source"]
@@ -424,6 +425,7 @@ export type Database = {
           issued_amount?: number
           issued_at?: string | null
           issued_by?: string | null
+          notes?: string | null
           patient_email?: string | null
           patient_name: string
           source?: Database["public"]["Enums"]["credit_source"]
@@ -447,6 +449,7 @@ export type Database = {
           issued_amount?: number
           issued_at?: string | null
           issued_by?: string | null
+          notes?: string | null
           patient_email?: string | null
           patient_name?: string
           source?: Database["public"]["Enums"]["credit_source"]
