@@ -187,13 +187,11 @@ Deno.serve(async (req) => {
     let skippedImport = 0;
 
     for (const deal of deals) {
-      const surgeonName = deal.Surgeon_Name || deal.Deal_Name?.split(" - ")?.[0] || "Unknown";
+      const rawSurgeonName = deal.Surgeon_Name || deal.Surgeon?.name || null;
       const surgeryDate = parseZohoDate(deal.Surgery_Date);
       const credit750Expires = parseZohoDate(deal.$750_Credit_Applies_Until);
       const credit500Expires = parseZohoDate(deal.$500_Credit_Applies_Until);
       const enrollmentDate = parseZohoDate(deal.Enrollment_Date);
-
-      // Get patient email from deal - use Email field or Contact_Name lookup
       const patientEmail = deal.Email || null;
 
       // Skip if this patient already exists in imported records (by email)
@@ -206,12 +204,20 @@ Deno.serve(async (req) => {
         deal.Stage, surgeryDate, credit750Expires, credit500Expires
       );
 
-      // Match surgeon
-      const surgeonId = surgeonMap.get(surgeonName.toLowerCase().replace(/^dr\.?\s*/i, "").trim()) ||
-                         surgeonMap.get(surgeonName.toLowerCase()) || null;
+      // Match surgeon by name (try exact, then without "Dr." prefix)
+      let surgeonId: string | null = null;
+      let surgeonName = rawSurgeonName || "Unknown";
+      if (rawSurgeonName) {
+        const key = rawSurgeonName.toLowerCase().trim();
+        const match = surgeonMap.get(key) || surgeonMap.get(key.replace(/^dr\.?\s*/i, "").trim());
+        if (match) {
+          surgeonId = match.id;
+          surgeonName = match.name; // Use canonical name from DB
+        }
+      }
 
       const consultantEmail = deal.Owner?.email || null;
-      const patientName = deal.Deal_Name || "Unknown";
+      const patientName = deal.Contact_Name?.name || deal.Deal_Name || "Unknown";
 
       // Check if already exists by zoho_deal_id — don't overwrite issued
       const { data: existing } = await supabaseAdmin
