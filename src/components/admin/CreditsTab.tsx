@@ -49,10 +49,12 @@ interface SurgeonSummary {
   issued: number;
   pending: number;
   forfeited: number;
+  disputed: number;
   earnedCount: number;
   issuedCount: number;
   pendingCount: number;
   forfeitedCount: number;
+  disputedCount: number;
   records: CreditRecord[];
 }
 
