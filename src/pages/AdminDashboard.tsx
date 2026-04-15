@@ -173,6 +173,7 @@ export default function AdminDashboard() {
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
+    queryClient.invalidateQueries({ queryKey: ["analytics-imported-credits"] });
     queryClient.invalidateQueries({ queryKey: ["audit-log"] });
     queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     queryClient.invalidateQueries({ queryKey: ["policies"] });
