@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -35,6 +35,7 @@ interface CreditRecord {
   credit_500_expires: string | null;
   credit_amount: number;
   credit_status: string;
+  issued_amount: number;
   issued_at: string | null;
   issued_by: string | null;
   source: string;
@@ -59,9 +60,9 @@ export function CreditsTab() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [surgeonFilter, setSurgeonFilter] = useState<string>("all");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedSurgeons, setExpandedSurgeons] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
 
   const { data: credits = [], isLoading } = useQuery({
     queryKey: ["surgeon-credits"],
@@ -75,7 +76,6 @@ export function CreditsTab() {
     },
   });
 
-  // Filter
   const filtered = useMemo(() => {
     let result = credits;
     if (statusFilter !== "all") result = result.filter(c => c.credit_status === statusFilter);
@@ -83,7 +83,6 @@ export function CreditsTab() {
     return result;
   }, [credits, statusFilter, surgeonFilter]);
 
-  // Group by surgeon
   const surgeonSummaries = useMemo(() => {
     const map = new Map<string, SurgeonSummary>();
     for (const c of filtered) {
@@ -98,19 +97,18 @@ export function CreditsTab() {
       const s = map.get(c.surgeon_name)!;
       s.records.push(c);
       if (c.credit_status === "earned") { s.earned += c.credit_amount; s.earnedCount++; }
-      else if (c.credit_status === "issued") { s.issued += c.credit_amount; s.issuedCount++; }
+      else if (c.credit_status === "issued") { s.issued += c.issued_amount || c.credit_amount; s.issuedCount++; }
       else if (c.credit_status === "pending") { s.pending += c.credit_amount; s.pendingCount++; }
       else if (c.credit_status === "forfeited") { s.forfeited += c.credit_amount; s.forfeitedCount++; }
     }
     return Array.from(map.values()).sort((a, b) => a.surgeon_name.localeCompare(b.surgeon_name));
   }, [filtered]);
 
-  // KPIs
   const kpis = useMemo(() => {
     let earned = 0, issued = 0, pending = 0, forfeited = 0;
     for (const c of filtered) {
       if (c.credit_status === "earned") earned += c.credit_amount;
-      else if (c.credit_status === "issued") issued += c.credit_amount;
+      else if (c.credit_status === "issued") issued += c.issued_amount || c.credit_amount;
       else if (c.credit_status === "pending") pending += c.credit_amount;
       else if (c.credit_status === "forfeited") forfeited += c.credit_amount;
     }
@@ -121,9 +119,8 @@ export function CreditsTab() {
     return [...new Set(credits.map(c => c.surgeon_name))].sort();
   }, [credits]);
 
-  // Mark as issued mutation
   const markIssuedMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
+    mutationFn: async (payments: { id: string; amount: number }[]) => {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-credit-issued`,
@@ -134,7 +131,7 @@ export function CreditsTab() {
             Authorization: `Bearer ${session?.access_token}`,
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
-          body: JSON.stringify({ credit_ids: ids }),
+          body: JSON.stringify({ payments }),
         }
       );
       if (!res.ok) throw new Error(await res.text());
@@ -142,7 +139,7 @@ export function CreditsTab() {
     },
     onSuccess: (data) => {
       toast({ title: "Credits Issued", description: `${data.updated} credit(s) marked as issued` });
-      setSelectedIds(new Set());
+      setPaymentAmounts({});
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     },
     onError: (err) => {
@@ -176,17 +173,27 @@ export function CreditsTab() {
     }
   };
 
+  const handleMarkIssued = (creditId: string, creditAmount: number) => {
+    const amountStr = paymentAmounts[creditId];
+    const amount = amountStr ? parseFloat(amountStr) : creditAmount;
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: "Invalid amount", variant: "destructive" });
+      return;
+    }
+    markIssuedMutation.mutate([{ id: creditId, amount }]);
+  };
+
   const handleExportCSV = (surgeonName?: string) => {
     const data = surgeonName
       ? filtered.filter(c => c.surgeon_name === surgeonName)
       : filtered;
 
-    const headers = ["Surgeon", "Patient", "Email", "Enrollment Date", "Surgery Date", "Stage", "$750 Expires", "$500 Expires", "Credit Amount", "Status", "Issued At", "Issued By", "Source"];
+    const headers = ["Surgeon", "Patient", "Email", "Enrollment Date", "Surgery Date", "Stage", "$750 Expires", "$500 Expires", "Credit Amount", "Status", "Issued Amount", "Issued At", "Issued By", "Source"];
     const rows = data.map(c => [
       c.surgeon_name, c.patient_name, c.patient_email || "",
       c.enrollment_date || "", c.surgery_date || "", c.stage || "",
       c.credit_750_expires || "", c.credit_500_expires || "",
-      c.credit_amount, c.credit_status,
+      c.credit_amount, c.credit_status, c.issued_amount || "",
       c.issued_at || "", c.issued_by || "", c.source,
     ]);
 
@@ -200,14 +207,6 @@ export function CreditsTab() {
     URL.revokeObjectURL(url);
   };
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
   const toggleExpand = (name: string) => {
     setExpandedSurgeons(prev => {
       const next = new Set(prev);
@@ -215,11 +214,6 @@ export function CreditsTab() {
       return next;
     });
   };
-
-  const earnableSelected = [...selectedIds].filter(id => {
-    const c = credits.find(cr => cr.id === id);
-    return c?.credit_status === "earned";
-  });
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -251,16 +245,6 @@ export function CreditsTab() {
         <Button onClick={() => handleExportCSV()} variant="outline" size="sm">
           <Download className="h-4 w-4 mr-2" />Export All CSV
         </Button>
-        {earnableSelected.length > 0 && (
-          <Button
-            onClick={() => markIssuedMutation.mutate(earnableSelected)}
-            disabled={markIssuedMutation.isPending}
-            size="sm"
-          >
-            <BadgeCheck className="h-4 w-4 mr-2" />
-            Mark {earnableSelected.length} as Issued
-          </Button>
-        )}
         <div className="ml-auto flex items-center gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[140px] h-8 text-xs">
@@ -339,12 +323,13 @@ export function CreditsTab() {
                         ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
                         : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                       <CardTitle className="text-base">{surgeon.surgeon_name}</CardTitle>
+                      <span className="text-xs text-muted-foreground">({surgeon.records.length} patients)</span>
                     </div>
                     <div className="flex items-center gap-4 text-xs">
-                      <span className="text-emerald-600 font-medium">${surgeon.earned.toLocaleString()} earned ({surgeon.earnedCount})</span>
-                      <span className="text-blue-600 font-medium">${surgeon.issued.toLocaleString()} issued ({surgeon.issuedCount})</span>
-                      <span className="text-amber-600 font-medium">${surgeon.pending.toLocaleString()} pending ({surgeon.pendingCount})</span>
-                      <span className="text-red-600 font-medium">${surgeon.forfeited.toLocaleString()} forfeited ({surgeon.forfeitedCount})</span>
+                      <span className="text-emerald-600 font-medium">${surgeon.earned.toLocaleString()} earned</span>
+                      <span className="text-blue-600 font-medium">${surgeon.issued.toLocaleString()} issued</span>
+                      <span className="text-amber-600 font-medium">${surgeon.pending.toLocaleString()} pending</span>
+                      <span className="text-red-600 font-medium">${surgeon.forfeited.toLocaleString()} forfeited</span>
                       <Button
                         variant="ghost" size="sm"
                         onClick={(e) => { e.stopPropagation(); handleExportCSV(surgeon.surgeon_name); }}
@@ -360,27 +345,19 @@ export function CreditsTab() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-8"></TableHead>
                         <TableHead>Patient</TableHead>
                         <TableHead>Enrollment</TableHead>
                         <TableHead>Surgery</TableHead>
                         <TableHead>Stage</TableHead>
-                        <TableHead>Credit</TableHead>
+                        <TableHead>Credit Due</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>Source</TableHead>
+                        <TableHead>Paid Amount</TableHead>
+                        <TableHead>Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {surgeon.records.map(c => (
                         <TableRow key={c.id}>
-                          <TableCell>
-                            {c.credit_status === "earned" && (
-                              <Checkbox
-                                checked={selectedIds.has(c.id)}
-                                onCheckedChange={() => toggleSelect(c.id)}
-                              />
-                            )}
-                          </TableCell>
                           <TableCell>
                             <div className="font-medium">{c.patient_name}</div>
                             {c.patient_email && <div className="text-xs text-muted-foreground">{c.patient_email}</div>}
@@ -391,9 +368,38 @@ export function CreditsTab() {
                           <TableCell className="font-medium">${c.credit_amount}</TableCell>
                           <TableCell>{statusBadge(c.credit_status)}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {c.source === "import" ? "Import" : "CRM"}
-                            </Badge>
+                            {c.credit_status === "issued" ? (
+                              <span className="font-medium text-blue-600">${c.issued_amount || c.credit_amount}</span>
+                            ) : c.credit_status === "earned" ? (
+                              <Input
+                                type="number"
+                                className="w-20 h-7 text-xs"
+                                placeholder={`${c.credit_amount}`}
+                                value={paymentAmounts[c.id] || ""}
+                                onChange={(e) => setPaymentAmounts(prev => ({ ...prev, [c.id]: e.target.value }))}
+                              />
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {c.credit_status === "earned" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                disabled={markIssuedMutation.isPending}
+                                onClick={() => handleMarkIssued(c.id, c.credit_amount)}
+                              >
+                                <BadgeCheck className="h-3 w-3 mr-1" />
+                                Pay
+                              </Button>
+                            )}
+                            {c.credit_status === "issued" && c.issued_at && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(c.issued_at).toLocaleDateString()}
+                              </span>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

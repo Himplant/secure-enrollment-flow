@@ -31,7 +31,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: adminUser } = await supabase
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: adminUser } = await supabaseAdmin
       .from("admin_users")
       .select("id, role, email")
       .eq("user_id", user.id)
@@ -45,46 +48,58 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const creditIds: string[] = body.credit_ids;
+    const payments: { id: string; amount: number }[] = [];
 
-    if (!creditIds || !Array.isArray(creditIds) || creditIds.length === 0) {
-      return new Response(JSON.stringify({ error: "credit_ids array is required" }), {
+    if (body.payments && Array.isArray(body.payments)) {
+      payments.push(...body.payments);
+    } else if (body.credit_ids && Array.isArray(body.credit_ids)) {
+      for (const id of body.credit_ids) {
+        payments.push({ id, amount: -1 });
+      }
+    } else {
+      return new Response(JSON.stringify({ error: "Missing payments or credit_ids" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    let updated = 0;
+    for (const payment of payments) {
+      const { data: credit } = await supabaseAdmin
+        .from("surgeon_credits")
+        .select("id, credit_amount, credit_status")
+        .eq("id", payment.id)
+        .maybeSingle();
 
-    const now = new Date().toISOString();
+      if (!credit || credit.credit_status === "pending" || credit.credit_status === "forfeited") {
+        continue;
+      }
 
-    const { data, error } = await supabaseAdmin
-      .from("surgeon_credits")
-      .update({
-        credit_status: "issued",
-        issued_at: now,
-        issued_by: adminUser.email,
-      })
-      .in("id", creditIds)
-      .eq("credit_status", "earned")
-      .select("id");
+      const issuedAmount = payment.amount === -1 ? credit.credit_amount : payment.amount;
 
-    if (error) throw error;
+      await supabaseAdmin
+        .from("surgeon_credits")
+        .update({
+          credit_status: "issued",
+          issued_amount: issuedAmount,
+          issued_at: new Date().toISOString(),
+          issued_by: adminUser.email,
+        })
+        .eq("id", payment.id);
 
-    // Log to audit
-    for (const credit of data || []) {
       await supabaseAdmin.from("admin_audit_log").insert({
         admin_user_id: user.id,
         admin_email: adminUser.email,
-        action: "mark_credit_issued",
+        action: "credit_issued",
         resource_type: "surgeon_credit",
-        resource_id: credit.id,
-        resource_summary: { marked_by: adminUser.email },
+        resource_id: payment.id,
+        resource_summary: { issued_amount: issuedAmount, credit_amount: credit.credit_amount },
       });
+
+      updated++;
     }
 
     return new Response(
-      JSON.stringify({ success: true, updated: data?.length || 0 }),
+      JSON.stringify({ success: true, updated }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
