@@ -121,7 +121,7 @@ export default function AdminDashboard() {
     // Convert imported credits to enrollment-like objects
     const imported = importedCredits.map((c: any) => ({
       status: "paid" as const,
-      amount_cents: (c.credit_amount || 0) * 100, // credit_amount is already in dollars
+      amount_cents: 50000, // Each enrollment is $500 flat
       created_at: c.enrollment_date ? `${c.enrollment_date}T00:00:00Z` : c.created_at,
       paid_at: c.enrollment_date ? `${c.enrollment_date}T00:00:00Z` : null,
       owner_name: c.consultant_email ? c.consultant_email.split("@")[0] : null,
