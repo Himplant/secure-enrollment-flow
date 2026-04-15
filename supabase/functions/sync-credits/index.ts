@@ -119,40 +119,46 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    // Allow cron calls (anon key with no user) OR authenticated admin calls
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    let isCronCall = false;
+
+    if (authHeader) {
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (user) {
+        // Authenticated user — verify admin access
+        const supabaseAdminCheck = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: adminUser } = await supabaseAdminCheck
+          .from("admin_users")
+          .select("id")
+          .eq("user_id", user.id)
+          .not("accepted_at", "is", null)
+          .maybeSingle();
+
+        if (!adminUser) {
+          return new Response(JSON.stringify({ error: "Admin access required" }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } else {
+        // No user resolved — treat as cron/service call
+        isCronCall = true;
+      }
+    } else {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { data: adminUser } = await supabaseAdmin
-      .from("admin_users")
-      .select("id, role, email")
-      .eq("user_id", user.id)
-      .not("accepted_at", "is", null)
-      .maybeSingle();
-
-    if (!adminUser) {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     // Fetch deals from Zoho
