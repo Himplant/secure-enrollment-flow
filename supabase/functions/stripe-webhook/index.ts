@@ -390,6 +390,8 @@ serve(async (req) => {
             pdfBytes: pdfBytes,
             enrollmentId: enrollment.id,
           });
+          // Auto-create credit record for the surgeon
+          await createCreditRecord(supabase, enrollment);
         }
 
         console.log(`Enrollment ${enrollmentId} updated to ${newStatus}`);
