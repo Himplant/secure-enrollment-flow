@@ -63,7 +63,7 @@ export default function AdminDashboard() {
   });
 
   // Single query for analytics enrollments (includes owner_name + patient surgeon)
-  const { data: rawEnrollments = [], isLoading: statsLoading } = useQuery({
+  const { data: rawPlatformEnrollments = [], isLoading: statsLoading } = useQuery({
     queryKey: ["analytics-enrollments", dateRange.from?.toISOString(), dateRange.to?.toISOString()],
     queryFn: async () => {
       let query = supabase
@@ -92,6 +92,44 @@ export default function AdminDashboard() {
       }));
     },
   });
+
+  // Query imported credits to merge into analytics
+  const { data: importedCredits = [] } = useQuery({
+    queryKey: ["analytics-imported-credits", dateRange.from?.toISOString(), dateRange.to?.toISOString()],
+    queryFn: async () => {
+      let query = supabase
+        .from("surgeon_credits")
+        .select("id, surgeon_name, surgeon_id, patient_name, consultant_email, enrollment_date, credit_amount, credit_status")
+        .eq("source", "import");
+
+      if (dateRange.from) {
+        query = query.gte("enrollment_date", dateRange.from.toISOString().split("T")[0]);
+      }
+      if (dateRange.to) {
+        query = query.lte("enrollment_date", dateRange.to.toISOString().split("T")[0]);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Merge platform enrollments with imported credits for analytics
+  const rawEnrollments = useMemo(() => {
+    const platform = rawPlatformEnrollments;
+    // Convert imported credits to enrollment-like objects
+    const imported = importedCredits.map((c: any) => ({
+      status: "paid" as const,
+      amount_cents: (c.credit_amount || 0) * 100, // credit_amount is already in dollars
+      created_at: c.enrollment_date ? `${c.enrollment_date}T00:00:00Z` : c.created_at,
+      paid_at: c.enrollment_date ? `${c.enrollment_date}T00:00:00Z` : null,
+      owner_name: c.consultant_email ? c.consultant_email.split("@")[0] : null,
+      surgeon_name: c.surgeon_name || null,
+      surgeon_id: c.surgeon_id || null,
+    }));
+    return [...platform, ...imported];
+  }, [rawPlatformEnrollments, importedCredits]);
 
   // Extract unique consultant names for filter
   const consultantNames = useMemo(() => {
