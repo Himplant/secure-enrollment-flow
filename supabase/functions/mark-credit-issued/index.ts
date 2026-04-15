@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
       for (const id of credit_ids) {
         const { data: credit } = await supabaseAdmin
           .from("surgeon_credits")
-          .select("id, credit_status, credit_amount, patient_name")
+          .select("id, credit_status, credit_amount, patient_name, notes")
           .eq("id", id)
           .maybeSingle();
 
