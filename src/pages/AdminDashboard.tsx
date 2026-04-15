@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield
+  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,7 @@ import { SurgeonManagement } from "@/components/admin/SurgeonManagement";
 import { ConsultantDistributionCard } from "@/components/admin/ConsultantDistributionCard";
 import { ConsultantTrendChart } from "@/components/admin/ConsultantTrendChart";
 import { AuditLogTab } from "@/components/admin/AuditLogTab";
+import { CreditsTab } from "@/components/admin/CreditsTab";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -270,6 +271,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="transactions" className="gap-2"><Receipt className="h-4 w-4" />Transactions</TabsTrigger>
             <TabsTrigger value="policies" className="gap-2"><FileText className="h-4 w-4" />Policies</TabsTrigger>
             <TabsTrigger value="surgeons" className="gap-2"><UserCog className="h-4 w-4" />Surgeons</TabsTrigger>
+            <TabsTrigger value="credits" className="gap-2"><DollarSign className="h-4 w-4" />Credits</TabsTrigger>
             <TabsTrigger value="audit" className="gap-2"><Shield className="h-4 w-4" />Audit Log</TabsTrigger>
             {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2"><Settings className="h-4 w-4" />User Management</TabsTrigger>
@@ -279,6 +281,7 @@ export default function AdminDashboard() {
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
           <TabsContent value="policies"><PoliciesTab /></TabsContent>
           <TabsContent value="surgeons"><SurgeonManagement /></TabsContent>
+          <TabsContent value="credits"><CreditsTab /></TabsContent>
           <TabsContent value="audit"><AuditLogTab /></TabsContent>
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
