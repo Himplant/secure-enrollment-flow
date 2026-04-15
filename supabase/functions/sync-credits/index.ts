@@ -70,7 +70,7 @@ function calculateCredit(
   return { credit_amount: 0, credit_status: "pending" };
 }
 
-async function fetchDealsFromZoho(accessToken: string, debugMode = false): Promise<ZohoDeal[]> {
+async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
   const deals: ZohoDeal[] = [];
   let page = 1;
   let hasMore = true;
@@ -88,22 +88,7 @@ async function fetchDealsFromZoho(accessToken: string, debugMode = false): Promi
       throw new Error(`Zoho API error: ${errText}`);
     }
     const data = await res.json();
-    if (data.data && Array.isArray(data.data)) {
-      // Debug: log first deal's raw fields on first page
-      if (page === 1 && data.data.length > 0) {
-        const sample = data.data[0];
-        console.log("DEBUG SAMPLE DEAL KEYS:", Object.keys(sample));
-        console.log("DEBUG SAMPLE DEAL Surgeon_Name:", sample.Surgeon_Name);
-        console.log("DEBUG SAMPLE DEAL Surgeon:", JSON.stringify(sample.Surgeon));
-        // Log all fields that contain "surgeon" (case insensitive)
-        for (const [k, v] of Object.entries(sample)) {
-          if (k.toLowerCase().includes("surgeon") || k.toLowerCase().includes("doctor")) {
-            console.log(`DEBUG field ${k}:`, JSON.stringify(v));
-          }
-        }
-      }
-      deals.push(...data.data);
-    }
+    if (data.data && Array.isArray(data.data)) deals.push(...data.data);
     hasMore = data.info?.more_records ?? false;
     page++;
   }
