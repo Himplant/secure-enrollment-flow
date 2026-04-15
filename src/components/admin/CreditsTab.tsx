@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -18,6 +19,9 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,7 +90,9 @@ export function CreditsTab() {
   const [sortField, setSortField] = useState<SortField>("patient_name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [disputeReason, setDisputeReason] = useState<string>("");
+  const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeTargetIds, setDisputeTargetIds] = useState<string[]>([]);
 
   const { data: credits = [], isLoading } = useQuery({
     queryKey: ["surgeon-credits"],
@@ -143,8 +149,8 @@ export function CreditsTab() {
       if (!map.has(c.surgeon_name)) {
         map.set(c.surgeon_name, {
           surgeon_name: c.surgeon_name,
-          earned: 0, issued: 0, pending: 0, forfeited: 0,
-          earnedCount: 0, issuedCount: 0, pendingCount: 0, forfeitedCount: 0,
+          earned: 0, issued: 0, pending: 0, forfeited: 0, disputed: 0,
+          earnedCount: 0, issuedCount: 0, pendingCount: 0, forfeitedCount: 0, disputedCount: 0,
           records: [],
         });
       }
@@ -154,26 +160,27 @@ export function CreditsTab() {
       else if (c.credit_status === "issued") { s.issued += c.issued_amount || c.credit_amount; s.issuedCount++; }
       else if (c.credit_status === "pending") { s.pending += c.credit_amount; s.pendingCount++; }
       else if (c.credit_status === "forfeited") { s.forfeited += c.credit_amount; s.forfeitedCount++; }
+      else if (c.credit_status === "disputed") { s.disputed += c.credit_amount; s.disputedCount++; }
     }
     return Array.from(map.values()).sort((a, b) => a.surgeon_name.localeCompare(b.surgeon_name));
   }, [filtered]);
 
   const kpis = useMemo(() => {
-    let earned = 0, issued = 0, pending = 0, forfeited = 0;
+    let earned = 0, issued = 0, pending = 0, forfeited = 0, disputed = 0;
     for (const c of filtered) {
       if (c.credit_status === "earned") earned += c.credit_amount;
       else if (c.credit_status === "issued") issued += c.issued_amount || c.credit_amount;
       else if (c.credit_status === "pending") pending += c.credit_amount;
       else if (c.credit_status === "forfeited") forfeited += c.credit_amount;
+      else if (c.credit_status === "disputed") disputed += c.credit_amount;
     }
-    return { earned, issued, pending, forfeited };
+    return { earned, issued, pending, forfeited, disputed };
   }, [filtered]);
 
   const surgeonNames = useMemo(() => {
     return [...new Set(credits.map(c => c.surgeon_name))].sort();
   }, [credits]);
 
-  // Get all selectable (earned) record IDs
   const selectableIds = useMemo(() => {
     return new Set(filtered.filter(c => c.credit_status === "earned").map(c => c.id));
   }, [filtered]);
@@ -196,29 +203,58 @@ export function CreditsTab() {
     });
   };
 
+  const callEdgeFunction = async (body: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-credit-issued`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  };
+
   const markIssuedMutation = useMutation({
-    mutationFn: async (payments: { id: string; amount: number }[]) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-credit-issued`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
-          body: JSON.stringify({ payments }),
-        }
-      );
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
+    mutationFn: async (payments: { id: string; amount: number }[]) => callEdgeFunction({ payments }),
     onSuccess: (data) => {
       toast({ title: "Credits Issued", description: `${data.updated} credit(s) marked as issued` });
       setPaymentAmounts({});
       setSelectedIds(new Set());
-      setBulkAmount("");
+      queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const disputeMutation = useMutation({
+    mutationFn: async ({ credit_ids, reason }: { credit_ids: string[]; reason: string }) =>
+      callEdgeFunction({ action: "dispute", credit_ids, reason }),
+    onSuccess: (data) => {
+      toast({ title: "Credits Disputed", description: `${data.updated} credit(s) flagged as disputed` });
+      setDisputeDialogOpen(false);
+      setDisputeReason("");
+      setDisputeTargetIds([]);
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: async (credit_ids: string[]) =>
+      callEdgeFunction({ action: "resolve", credit_ids }),
+    onSuccess: (data) => {
+      toast({ title: "Disputes Resolved", description: `${data.updated} credit(s) moved back to earned` });
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     },
     onError: (err) => {
@@ -281,6 +317,20 @@ export function CreditsTab() {
     markIssuedMutation.mutate(payments);
   };
 
+  const openDisputeDialog = (ids: string[]) => {
+    setDisputeTargetIds(ids);
+    setDisputeReason("");
+    setDisputeDialogOpen(true);
+  };
+
+  const handleConfirmDispute = () => {
+    if (!disputeReason.trim()) {
+      toast({ title: "Please provide a reason", variant: "destructive" });
+      return;
+    }
+    disputeMutation.mutate({ credit_ids: disputeTargetIds, reason: disputeReason });
+  };
+
   const handleExportCSV = (surgeonName?: string) => {
     const data = surgeonName
       ? filtered.filter(c => c.surgeon_name === surgeonName)
@@ -319,6 +369,7 @@ export function CreditsTab() {
       case "issued": return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"><BadgeCheck className="h-3 w-3 mr-1" />Issued</Badge>;
       case "pending": return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
       case "forfeited": return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"><XCircle className="h-3 w-3 mr-1" />Forfeited</Badge>;
+      case "disputed": return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400"><AlertTriangle className="h-3 w-3 mr-1" />Disputed</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
   };
@@ -360,6 +411,15 @@ export function CreditsTab() {
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+              onClick={() => openDisputeDialog(Array.from(selectedIds))}
+            >
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              Flag as Disputed
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               className="h-7 text-xs"
               onClick={() => setSelectedIds(new Set())}
@@ -380,6 +440,7 @@ export function CreditsTab() {
               <SelectItem value="issued">Issued</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="forfeited">Forfeited</SelectItem>
+              <SelectItem value="disputed">Disputed</SelectItem>
             </SelectContent>
           </Select>
           <Select value={surgeonFilter} onValueChange={setSurgeonFilter}>
@@ -395,7 +456,7 @@ export function CreditsTab() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Earned (Unpaid)</CardTitle>
@@ -418,6 +479,14 @@ export function CreditsTab() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-amber-600">${kpis.pending.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Disputed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">${kpis.disputed.toLocaleString()}</div>
           </CardContent>
         </Card>
         <Card>
@@ -458,6 +527,9 @@ export function CreditsTab() {
                         <span className="text-emerald-600 font-medium">${surgeon.earned.toLocaleString()} earned</span>
                         <span className="text-blue-600 font-medium">${surgeon.issued.toLocaleString()} issued</span>
                         <span className="text-amber-600 font-medium">${surgeon.pending.toLocaleString()} pending</span>
+                        {surgeon.disputed > 0 && (
+                          <span className="text-orange-600 font-medium">${surgeon.disputed.toLocaleString()} disputed</span>
+                        )}
                         <span className="text-red-600 font-medium">${surgeon.forfeited.toLocaleString()} forfeited</span>
                         <Button
                           variant="ghost" size="sm"
@@ -542,23 +614,47 @@ export function CreditsTab() {
                               )}
                             </TableCell>
                             <TableCell>
-                              {c.credit_status === "earned" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs"
-                                  disabled={markIssuedMutation.isPending}
-                                  onClick={() => handleMarkIssued(c.id, c.credit_amount)}
-                                >
-                                  <BadgeCheck className="h-3 w-3 mr-1" />
-                                  Pay
-                                </Button>
-                              )}
-                              {c.credit_status === "issued" && c.issued_at && (
-                                <span className="text-xs text-muted-foreground">
-                                  {formatDateTimeUS(c.issued_at)}
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1">
+                                {c.credit_status === "earned" && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      disabled={markIssuedMutation.isPending}
+                                      onClick={() => handleMarkIssued(c.id, c.credit_amount)}
+                                    >
+                                      <BadgeCheck className="h-3 w-3 mr-1" />
+                                      Pay
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                      onClick={() => openDisputeDialog([c.id])}
+                                    >
+                                      <AlertTriangle className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )}
+                                {c.credit_status === "disputed" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                                    disabled={resolveMutation.isPending}
+                                    onClick={() => resolveMutation.mutate([c.id])}
+                                  >
+                                    <ShieldCheck className="h-3 w-3 mr-1" />
+                                    Resolve
+                                  </Button>
+                                )}
+                                {c.credit_status === "issued" && c.issued_at && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {formatDateTimeUS(c.issued_at)}
+                                  </span>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -578,6 +674,36 @@ export function CreditsTab() {
           </Card>
         )}
       </div>
+
+      {/* Dispute reason dialog */}
+      <Dialog open={disputeDialogOpen} onOpenChange={setDisputeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Flag Credit as Disputed</DialogTitle>
+            <DialogDescription>
+              Please describe the issue. This will be logged in the audit trail for tracking.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="e.g., Patient was charged full pricing. Working with clinic to confirm credit was extended before we can issue it."
+            value={disputeReason}
+            onChange={(e) => setDisputeReason(e.target.value)}
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDisputeDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="default"
+              className="bg-orange-600 hover:bg-orange-700"
+              disabled={disputeMutation.isPending || !disputeReason.trim()}
+              onClick={handleConfirmDispute}
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              {disputeMutation.isPending ? "Flagging..." : `Flag ${disputeTargetIds.length} Credit(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
