@@ -86,7 +86,7 @@ export function CreditsTab() {
   const [sortField, setSortField] = useState<SortField>("patient_name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAmount, setBulkAmount] = useState<string>("");
+  const [disputeReason, setDisputeReason] = useState<string>("");
 
   const { data: credits = [], isLoading } = useQuery({
     queryKey: ["surgeon-credits"],
