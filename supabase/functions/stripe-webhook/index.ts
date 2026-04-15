@@ -461,6 +461,9 @@ serve(async (req) => {
             enrollmentId: enrollment.id,
           });
 
+          // Auto-create credit record for the surgeon
+          await createCreditRecord(supabase, enrollment);
+
           console.log(`Enrollment ${enrollmentId} payment confirmed`);
         }
         break;
