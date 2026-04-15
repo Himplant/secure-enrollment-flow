@@ -137,14 +137,25 @@ Deno.serve(async (req) => {
     const deals = await fetchDealsFromZoho(accessToken);
     console.log(`Fetched ${deals.length} paid deals from Zoho`);
 
-    // Load surgeons
+    // Load surgeons by id
     const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name");
-    const surgeonMap = new Map<string, { id: string; name: string }>();
+    const surgeonById = new Map<string, string>();
+    const surgeonNameMap = new Map<string, { id: string; name: string }>();
     for (const s of surgeons || []) {
+      surgeonById.set(s.id, s.name);
       const lower = s.name.toLowerCase();
-      surgeonMap.set(lower, { id: s.id, name: s.name });
+      surgeonNameMap.set(lower, { id: s.id, name: s.name });
       const noDr = lower.replace(/^dr\.?\s*/i, "").trim();
-      if (noDr !== lower) surgeonMap.set(noDr, { id: s.id, name: s.name });
+      if (noDr !== lower) surgeonNameMap.set(noDr, { id: s.id, name: s.name });
+    }
+
+    // Load patients with surgeon_id to resolve surgeon by email
+    const { data: patients } = await supabaseAdmin.from("patients").select("email, surgeon_id").not("email", "is", null).not("surgeon_id", "is", null);
+    const patientSurgeonMap = new Map<string, string>();
+    for (const p of patients || []) {
+      if (p.email && p.surgeon_id) {
+        patientSurgeonMap.set(p.email.toLowerCase().trim(), p.surgeon_id);
+      }
     }
 
     // Load existing credits — only fields needed for diffing
@@ -173,7 +184,6 @@ Deno.serve(async (req) => {
     const toUpdateById: { id: string; record: any }[] = [];
 
     for (const deal of deals) {
-      const rawSurgeonName = deal.Surgeon_Name || deal.Surgeon?.name || null;
       const surgeryDate = parseZohoDate(deal.Surgery_Date);
       const credit750Expires = parseZohoDate(deal.$750_Credit_Applies_Until);
       const credit500Expires = parseZohoDate(deal.$500_Credit_Applies_Until);
@@ -186,12 +196,28 @@ Deno.serve(async (req) => {
         deal.Stage, surgeryDate, credit750Expires, credit500Expires
       );
 
+      // Resolve surgeon: 1) from patients table via email, 2) from Zoho fields, 3) fallback
       let surgeonId: string | null = null;
-      let surgeonName = rawSurgeonName || "Unknown";
-      if (rawSurgeonName) {
-        const key = rawSurgeonName.toLowerCase().trim();
-        const match = surgeonMap.get(key) || surgeonMap.get(key.replace(/^dr\.?\s*/i, "").trim());
-        if (match) { surgeonId = match.id; surgeonName = match.name; }
+      let surgeonName = "Unknown";
+
+      // Primary: look up patient's surgeon from the patients table
+      if (patientEmail) {
+        const sid = patientSurgeonMap.get(patientEmail.toLowerCase().trim());
+        if (sid) {
+          surgeonId = sid;
+          surgeonName = surgeonById.get(sid) || "Unknown";
+        }
+      }
+
+      // Fallback: try Zoho deal fields
+      if (!surgeonId) {
+        const rawSurgeonName = deal.Surgeon_Name || deal.Surgeon?.name || null;
+        if (rawSurgeonName) {
+          const key = rawSurgeonName.toLowerCase().trim();
+          const match = surgeonNameMap.get(key) || surgeonNameMap.get(key.replace(/^dr\.?\s*/i, "").trim());
+          if (match) { surgeonId = match.id; surgeonName = match.name; }
+          else { surgeonName = rawSurgeonName; }
+        }
       }
 
       // Find existing record
