@@ -1,108 +1,45 @@
 
 
-# Surgeon Credit Tracking and Reporting System
+## Problem
 
-## Summary
+The `sync-credits` function pulls **all 1,151 "Paid" deals from Zoho CRM** and creates credit records for every one of them — even patients who never enrolled through the platform or the Excel import. This results in ~1,029 irrelevant "Unknown surgeon" records cluttering the Credits tab.
 
-Build a full credit tracking system that:
-1. Pulls deal data from Zoho CRM to calculate credits per surgeon
-2. Imports historical enrollment data from the uploaded Excel file (pre-Lovable patients)
-3. Tracks which credits have been issued vs. pending vs. forfeited
-4. Allows admins to mark credits as "issued" for accounting
-5. Generates per-surgeon credit reports
+The user wants credits **only** for the ~163 patients who exist in the `patients` table (from the Excel import or platform enrollments).
 
-## What Gets Built
+## Plan
 
-### 1. New Database Tables
+### Step 1: Clean up the database — delete non-matching credit records
 
-**`surgeon_credits`** — stores each enrollment's credit eligibility and issuance status:
-- `id`, `surgeon_id` (FK to surgeons), `surgeon_name`, `patient_name`, `patient_email`
-- `enrollment_date`, `surgery_date`, `stage` (from Zoho)
-- `credit_750_expires`, `credit_500_expires` (the two deadline dates)
-- `credit_amount` (computed: 750, 500, or 0)
-- `credit_status` (enum: `pending`, `earned`, `forfeited`, `issued`)
-- `issued_at`, `issued_by` (admin email who marked it issued)
-- `zoho_deal_id` (for dedup), `source` (enum: `zoho`, `import` — to distinguish CRM-synced vs Excel-imported)
-- `consultant_email` (the owner field)
-- `enrollment_id` (nullable FK to local enrollments table, for platform-enrolled patients)
+Run a data operation to delete the ~1,029 surgeon_credits records whose `patient_email` does NOT match any patient in the `patients` table. This removes all the irrelevant Zoho deals.
 
-### 2. Edge Function: `sync-credits`
+```sql
+DELETE FROM surgeon_credits
+WHERE id NOT IN (
+  SELECT sc.id FROM surgeon_credits sc
+  JOIN patients p ON LOWER(TRIM(p.email)) = LOWER(TRIM(sc.patient_email))
+  WHERE p.email IS NOT NULL
+)
+AND source = 'zoho';
+```
 
-Fetches deals from Zoho CRM Deals module where `Enrollment_Status = "Paid"` or stage is "Surgery Completed". For each deal, pulls:
-- `Deal_Name`, `Stage`, `Surgery_Date`, `$750_Credit_Applies_Until` (mapped from your field `$750 Expiry Date`), `$500_Credit_Applies_Until`, `Owner`, surgeon lookup
+### Step 2: Update `sync-credits` Edge Function — filter by known patients
 
-Credit calculation logic:
-- Stage = "Surgery Completed" AND Surgery_Date is not empty:
-  - If Surgery_Date <= $750 expiry → credit = $750, status = `earned`
-  - Else if Surgery_Date <= $500 expiry → credit = $500, status = `earned`
-  - Else → credit = $0, status = `forfeited`
-- Stage != "Surgery Completed" → status = `pending`, credit = potential max based on current date vs expiry windows
+Modify the sync logic so that after fetching deals from Zoho, it **only processes deals whose email matches a patient** in the `patients` table. Specifically:
 
-Upserts results into `surgeon_credits` table (dedup by `zoho_deal_id`). Does NOT overwrite records marked as `issued`.
+1. Load all patient emails into a `Set` upfront
+2. After fetching Zoho deals, filter: `deals.filter(d => d.Email && patientEmails.has(d.Email.toLowerCase().trim()))`
+3. Only upsert/update records for these matched deals
+4. This also makes the sync faster since it processes ~124 records instead of 1,151
 
-### 3. Edge Function: `mark-credit-issued`
+The rest of the sync logic (surgeon resolution, credit calculation, email-match for imports, batch upsert) stays the same.
 
-Allows admins to mark one or more credit records as "issued" (meaning the credit has been paid out to the surgeon). Updates `credit_status = 'issued'`, `issued_at`, `issued_by`.
+### Step 3: Verify imported records are preserved
 
-### 4. Excel Import (One-Time)
+The 2 existing `source = 'import'` records and any future Excel imports will remain untouched since they're not `source = 'zoho'`. The sync will update them when a matching Zoho deal is found (linking the `zoho_deal_id`), keeping surgery dates, stages, and credit calculations current.
 
-A script or edge function to import the "Enrollments Data Captured" sheet. Maps columns:
-- **Surgeon** → `surgeon_name` (matched to `surgeons` table)
-- **Patient Name** → `patient_name`
-- **Email** → `patient_email`
-- **Enrollment PAID** → determines if the record qualifies
-- **Surgery Date** → `surgery_date`
-- **Enrollment Date** → `enrollment_date`
-- **$750 Expiry Date** → `credit_750_expires`
-- **$500 Expiry Date** → `credit_500_expires`
-- **Surgery Credit Status** → maps to `credit_status`
-- **Surgery Stage Status** → `stage`
-- **Surgery Owner** → `consultant_email`
-- `source = 'import'`
+### Technical Details
 
-Records where "Enrollment PAID" is set get imported. Credit amount is calculated using the same logic as the Zoho sync.
-
-### 5. Dashboard UI: Credits Tab
-
-New tab in the admin dashboard: **"Credits"** with a dollar-sign icon.
-
-**Top-level KPIs:**
-- Total Credits Earned (not yet issued)
-- Total Credits Issued (paid out)
-- Total Pending (surgery not yet completed)
-- Total Forfeited
-
-**Per-Surgeon Accordion/Table:**
-- Surgeon name, total earned, total issued, total pending, total forfeited
-- Expandable to see individual patient records with: patient name, enrollment date, surgery date, credit amount, status
-- "Mark as Issued" button on earned credits (single or bulk select)
-- Filter by surgeon, by status, by date range
-
-**Report Generation:**
-- "Generate Report" button per surgeon → downloads a formatted summary (CSV or PDF) showing all enrollments, credit amounts, issued vs. outstanding
-
-### 6. Dashboard Integration
-
-Add the Credits tab to `AdminDashboard.tsx` alongside Patients, Transactions, etc. Add a "Sync Credits from CRM" button that calls the `sync-credits` edge function.
-
-## Technical Details
-
-- Database migration creates `surgeon_credits` table with RLS (admin-only access)
-- `sync-credits` edge function uses existing Zoho OAuth pattern with pagination
-- Excel import runs once via a script in the edge function or admin action
-- `mark-credit-issued` validates admin auth, updates status, logs to `admin_audit_log`
-- Credit reports use React Query to fetch from `surgeon_credits` table with surgeon joins
-- CSV export handled client-side from the queried data
-
-## Files to Create/Modify
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create `surgeon_credits` table + enum |
-| `supabase/functions/sync-credits/index.ts` | New — Zoho deal fetch + credit calc |
-| `supabase/functions/mark-credit-issued/index.ts` | New — mark credits as issued |
-| `src/components/admin/CreditsTab.tsx` | New — credits management UI |
-| `src/pages/AdminDashboard.tsx` | Add Credits tab |
-| `supabase/config.toml` | Register new functions |
-| Import script | One-time Excel data import into `surgeon_credits` |
+- **Edge Function**: `supabase/functions/sync-credits/index.ts` — add patient email filter after Zoho fetch
+- **Database cleanup**: Delete ~1,029 rows from `surgeon_credits` where patient is not in `patients` table
+- **No UI changes needed** — the Credits tab already groups by surgeon and shows the right data structure
 
