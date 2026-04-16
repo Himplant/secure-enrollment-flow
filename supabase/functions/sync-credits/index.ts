@@ -299,12 +299,13 @@ Deno.serve(async (req) => {
         deal.Stage, finalSurgeryDate, finalCredit750, finalCredit500
       );
 
-      // Skip if nothing meaningful changed
+      // Skip if nothing meaningful changed (including surgeon)
       if (existing && !isEmailMatch &&
           existing.credit_status === credit_status &&
           existing.credit_amount === credit_amount &&
           existing.stage === (deal.Stage || null) &&
-          existing.surgery_date === finalSurgeryDate) {
+          existing.surgery_date === finalSurgeryDate &&
+          (existing as any).surgeon_id === surgeonId) {
         unchanged++;
         continue;
       }
