@@ -217,16 +217,17 @@ Deno.serve(async (req) => {
       const consultantEmail = deal.Owner?.email || null;
       const patientName = deal.Contact_Name?.name || deal.Deal_Name || "Unknown";
 
-      // Resolve surgeon: 1) from patients table via email, 2) from Zoho fields, 3) fallback
+      // Resolve surgeon — Zoho is the source of truth:
+      // 1) Zoho Surgeon.id → surgeons.zoho_id (most reliable, exact ID match)
+      // 2) Zoho Surgeon_Name_Lookup or Surgeon.name → surgeons.name (fuzzy)
+      // 3) patients.surgeon_id (last resort only when Zoho has no surgeon)
       let surgeonId: string | null = null;
       let surgeonName = "Unknown";
 
-      if (patientEmail) {
-        const sid = patientSurgeonMap.get(patientEmail.toLowerCase().trim());
-        if (sid) {
-          surgeonId = sid;
-          surgeonName = surgeonById.get(sid) || "Unknown";
-        }
+      const zohoSurgeonId = deal.Surgeon?.id || null;
+      if (zohoSurgeonId) {
+        const match = surgeonByZohoId.get(zohoSurgeonId);
+        if (match) { surgeonId = match.id; surgeonName = match.name; }
       }
 
       if (!surgeonId) {
@@ -236,6 +237,25 @@ Deno.serve(async (req) => {
           const match = surgeonNameMap.get(key) || surgeonNameMap.get(key.replace(/^dr\.?\s*/i, "").trim());
           if (match) { surgeonId = match.id; surgeonName = match.name; }
           else { surgeonName = rawSurgeonName; }
+        }
+      }
+
+      if (!surgeonId && patientEmail) {
+        const sid = patientSurgeonMap.get(patientEmail.toLowerCase().trim());
+        if (sid) {
+          surgeonId = sid;
+          surgeonName = surgeonById.get(sid) || "Unknown";
+        }
+      }
+
+      // If resolved surgeon differs from patient's current surgeon_id, queue a patient update
+      if (surgeonId && patientEmail) {
+        const emailKey = patientEmail.toLowerCase().trim();
+        const currentPatientSurgeon = patientSurgeonMap.get(emailKey);
+        const patientId = patientIdByEmail.get(emailKey);
+        if (patientId && currentPatientSurgeon !== surgeonId) {
+          patientSurgeonUpdates.push({ patient_id: patientId, surgeon_id: surgeonId });
+          patientSurgeonMap.set(emailKey, surgeonId); // avoid duplicate queueing
         }
       }
 
