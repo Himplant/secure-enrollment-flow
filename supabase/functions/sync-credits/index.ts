@@ -154,26 +154,34 @@ Deno.serve(async (req) => {
     const deals = allDeals.filter(d => d.Email && knownEmails.has(d.Email.toLowerCase().trim()));
     console.log(`Filtered to ${deals.length} deals matching known patients (out of ${allDeals.length})`);
 
-    // Load surgeons by id
-    const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name");
+    // Load surgeons by id, name, AND zoho_id (zoho_id is the most reliable match)
+    const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name, zoho_id");
     const surgeonById = new Map<string, string>();
+    const surgeonByZohoId = new Map<string, { id: string; name: string }>();
     const surgeonNameMap = new Map<string, { id: string; name: string }>();
     for (const s of surgeons || []) {
       surgeonById.set(s.id, s.name);
+      if (s.zoho_id) surgeonByZohoId.set(s.zoho_id, { id: s.id, name: s.name });
       const lower = s.name.toLowerCase();
       surgeonNameMap.set(lower, { id: s.id, name: s.name });
       const noDr = lower.replace(/^dr\.?\s*/i, "").trim();
       if (noDr !== lower) surgeonNameMap.set(noDr, { id: s.id, name: s.name });
     }
 
-    // Load patients with surgeon_id to resolve surgeon by email
-    const { data: patients } = await supabaseAdmin.from("patients").select("email, surgeon_id").not("email", "is", null).not("surgeon_id", "is", null);
+    // Load ALL patients (id, email, surgeon_id) — used as last-resort fallback AND for patient updates
+    const { data: patients } = await supabaseAdmin.from("patients").select("id, email, surgeon_id").not("email", "is", null);
     const patientSurgeonMap = new Map<string, string>();
+    const patientIdByEmail = new Map<string, string>();
     for (const p of patients || []) {
-      if (p.email && p.surgeon_id) {
-        patientSurgeonMap.set(p.email.toLowerCase().trim(), p.surgeon_id);
+      if (p.email) {
+        const key = p.email.toLowerCase().trim();
+        patientIdByEmail.set(key, p.id);
+        if (p.surgeon_id) patientSurgeonMap.set(key, p.surgeon_id);
       }
     }
+
+    // Track patient surgeon updates needed (email -> new surgeon_id)
+    const patientSurgeonUpdates: { patient_id: string; surgeon_id: string }[] = [];
 
     // Load existing credits — only fields needed for diffing
     const { data: allCredits } = await supabaseAdmin
