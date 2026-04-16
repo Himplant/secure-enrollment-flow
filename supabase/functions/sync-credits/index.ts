@@ -44,9 +44,13 @@ interface ZohoDeal {
 
 function parseZohoDate(val: string | undefined | null): string | null {
   if (!val) return null;
+  // Use regex to extract YYYY-MM-DD directly to avoid timezone shifts
+  const match = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  // Fallback for other formats
   const d = new Date(val);
   if (isNaN(d.getTime())) return null;
-  return d.toISOString().split("T")[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function calculateCredit(

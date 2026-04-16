@@ -49,6 +49,71 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
+    // Handle refund action (issued → earned)
+    if (body.action === "refund") {
+      // Only super_admin can refund
+      if (adminUser.role !== "super_admin") {
+        return new Response(JSON.stringify({ error: "Only super admins can refund credits" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { credit_ids, reason } = body;
+      if (!credit_ids || !Array.isArray(credit_ids) || credit_ids.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing credit_ids" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let updated = 0;
+      for (const id of credit_ids) {
+        const { data: credit } = await supabaseAdmin
+          .from("surgeon_credits")
+          .select("id, credit_status, credit_amount, issued_amount, patient_name, notes")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (!credit || credit.credit_status !== "issued") continue;
+
+        const existingNotes = credit.notes || "";
+        const timestamp = new Date().toISOString();
+        const noteEntry = `[${timestamp}] ${adminUser.email} — REFUNDED: ${reason || "No reason provided"}`;
+        const updatedNotes = existingNotes ? `${existingNotes}\n${noteEntry}` : noteEntry;
+
+        await supabaseAdmin
+          .from("surgeon_credits")
+          .update({
+            credit_status: "earned",
+            issued_amount: 0,
+            issued_at: null,
+            issued_by: null,
+            notes: updatedNotes,
+          })
+          .eq("id", id);
+
+        await supabaseAdmin.from("admin_audit_log").insert({
+          admin_user_id: user.id,
+          admin_email: adminUser.email,
+          action: "credit_refunded",
+          resource_type: "surgeon_credit",
+          resource_id: id,
+          resource_summary: {
+            patient_name: credit.patient_name,
+            previous_issued_amount: credit.issued_amount,
+            credit_amount: credit.credit_amount,
+            reason: reason || "No reason provided",
+          },
+        });
+
+        updated++;
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, updated }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Handle dispute action
     if (body.action === "dispute") {
       const { credit_ids, reason } = body;
@@ -189,7 +254,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Handle mark-as-issued (existing logic)
+    // Handle mark-as-issued — SUPER ADMIN ONLY
+    if (adminUser.role !== "super_admin") {
+      return new Response(JSON.stringify({ error: "Only super admins can approve credit payments" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const payments: { id: string; amount: number }[] = [];
 
     if (body.payments && Array.isArray(body.payments)) {

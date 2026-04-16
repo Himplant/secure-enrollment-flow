@@ -93,64 +93,41 @@ export default function AdminDashboard() {
     },
   });
 
-  // Query imported credits to merge into analytics
-  const { data: importedCredits = [] } = useQuery({
-    queryKey: ["analytics-imported-credits", dateRange.from?.toISOString(), dateRange.to?.toISOString()],
-    queryFn: async () => {
-      let query = supabase
-        .from("surgeon_credits")
-        .select("id, surgeon_name, surgeon_id, patient_name, consultant_email, enrollment_date, credit_amount, credit_status")
-        .eq("source", "import");
+  // Canonical consultant name map — used to deduplicate consultant names
+  const CONSULTANT_EMAIL_MAP: Record<string, string> = {
+    "justin@himplant.com": "Justin Goddard",
+    "kyle@himplant.com": "Kyle Himplant",
+    "ray@himplant.com": "Ray Himplant",
+  };
 
-      if (dateRange.from) {
-        query = query.gte("enrollment_date", dateRange.from.toISOString().split("T")[0]);
+  // Build consultant name from owner_name or consultant email
+  const resolveConsultantName = (ownerName: string | null, consultantEmail: string | null): string | null => {
+    // First check canonical map by email
+    if (consultantEmail) {
+      const canonical = CONSULTANT_EMAIL_MAP[consultantEmail.toLowerCase().trim()];
+      if (canonical) return canonical;
+    }
+    // Fall back to owner_name from platform enrollment
+    if (ownerName) return ownerName;
+    // Last resort: use email prefix
+    if (consultantEmail) {
+      const prefix = consultantEmail.split("@")[0].toLowerCase();
+      // Try to match prefix to a canonical name
+      for (const [email, name] of Object.entries(CONSULTANT_EMAIL_MAP)) {
+        if (email.startsWith(prefix + "@")) return name;
       }
-      if (dateRange.to) {
-        query = query.lte("enrollment_date", dateRange.to.toISOString().split("T")[0]);
-      }
+      return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    }
+    return null;
+  };
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Build a map of email prefix → full owner_name from platform enrollments
-  const consultantNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    rawPlatformEnrollments.forEach((e: any) => {
-      if (e.owner_name) {
-        // Map lowercase first name to full owner_name (e.g., "kyle" → "Kyle Forrest")
-        const firstName = e.owner_name.split(" ")[0].toLowerCase();
-        if (!map.has(firstName)) map.set(firstName, e.owner_name);
-      }
-    });
-    return map;
-  }, [rawPlatformEnrollments]);
-
-  // Merge platform enrollments with imported credits for analytics
+  // Since all paid patients now have enrollment records, use enrollments directly
   const rawEnrollments = useMemo(() => {
-    const platform = rawPlatformEnrollments;
-    // Convert imported credits to enrollment-like objects
-    const imported = importedCredits.map((c: any) => {
-      // Resolve consultant email prefix to full name using platform data
-      let ownerName: string | null = null;
-      if (c.consultant_email) {
-        const prefix = c.consultant_email.split("@")[0].toLowerCase();
-        ownerName = consultantNameMap.get(prefix) || c.consultant_email.split("@")[0];
-      }
-      return {
-        status: "paid" as const,
-        amount_cents: 50000, // Each enrollment is $500 flat
-        created_at: c.enrollment_date ? `${c.enrollment_date}T00:00:00Z` : c.created_at,
-        paid_at: c.enrollment_date ? `${c.enrollment_date}T00:00:00Z` : null,
-        owner_name: ownerName,
-        surgeon_name: c.surgeon_name || null,
-        surgeon_id: c.surgeon_id || null,
-      };
-    });
-    return [...platform, ...imported];
-  }, [rawPlatformEnrollments, importedCredits, consultantNameMap]);
+    return rawPlatformEnrollments.map((e: any) => ({
+      ...e,
+      owner_name: resolveConsultantName(e.owner_name, null),
+    }));
+  }, [rawPlatformEnrollments]);
 
   // Extract unique consultant names for filter
   const consultantNames = useMemo(() => {
@@ -194,7 +171,7 @@ export default function AdminDashboard() {
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
-    queryClient.invalidateQueries({ queryKey: ["analytics-imported-credits"] });
+    queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
     queryClient.invalidateQueries({ queryKey: ["audit-log"] });
     queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     queryClient.invalidateQueries({ queryKey: ["policies"] });
@@ -342,7 +319,7 @@ export default function AdminDashboard() {
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
           <TabsContent value="policies"><PoliciesTab /></TabsContent>
           <TabsContent value="surgeons"><SurgeonManagement /></TabsContent>
-          <TabsContent value="credits"><CreditsTab /></TabsContent>
+          <TabsContent value="credits"><CreditsTab adminRole={adminUser?.role || "viewer"} /></TabsContent>
           <TabsContent value="audit"><AuditLogTab /></TabsContent>
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
