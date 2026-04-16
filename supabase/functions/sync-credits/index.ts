@@ -355,10 +355,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched`);
+    // Update patients.surgeon_id where Zoho resolved a different surgeon than what's stored
+    const dedupedPatientUpdates = Array.from(
+      new Map(patientSurgeonUpdates.map(u => [u.patient_id, u])).values()
+    );
+    let patientsUpdated = 0;
+    for (let i = 0; i < dedupedPatientUpdates.length; i += 20) {
+      const chunk = dedupedPatientUpdates.slice(i, i + 20);
+      const results = await Promise.all(
+        chunk.map(({ patient_id, surgeon_id }) =>
+          supabaseAdmin.from("patients").update({ surgeon_id }).eq("id", patient_id)
+        )
+      );
+      for (const r of results) {
+        if (r.error) console.error(`Patient surgeon update error:`, r.error.message);
+        else patientsUpdated++;
+      }
+    }
+
+    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched, ${patientsUpdated} patient surgeon assignments updated`);
 
     return new Response(
-      JSON.stringify({ success: true, total: deals.length, upserted, skipped, unchanged }),
+      JSON.stringify({ success: true, total: deals.length, upserted, skipped, unchanged, patientsUpdated }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
