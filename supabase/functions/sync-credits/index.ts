@@ -151,8 +151,9 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch deals from Zoho
+    // Fetch field names and deals from Zoho
     const accessToken = await getZohoAccessToken();
+    await fetchDealFieldNames(accessToken);
     const allDeals = await fetchDealsFromZoho(accessToken);
     console.log(`Fetched ${allDeals.length} paid deals from Zoho`);
 
