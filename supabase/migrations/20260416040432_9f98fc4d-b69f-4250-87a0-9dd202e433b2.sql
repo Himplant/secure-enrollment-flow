@@ -1,0 +1,1 @@
+ALTER TABLE public.surgeon_credits ADD CONSTRAINT surgeon_credits_zoho_deal_id_key UNIQUE (zoho_deal_id);

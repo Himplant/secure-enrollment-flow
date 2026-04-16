@@ -30,13 +30,13 @@ interface ZohoDeal {
   id: string;
   Deal_Name?: string;
   Stage?: string;
-  Surgery_Date?: string;
-  $750_Credit_Applies_Until?: string;
-  $500_Credit_Applies_Until?: string;
+  Active_Surgery_Date?: string;
+  Credit_Applies_Until?: string;   // display: "$750 Credit Applies Until"
+  Credit_Applies_From?: string;    // display: "$500 Credit Applies Until"
   Enrollment_Status?: string;
   Enrollment_Date?: string;
   Owner?: { name?: string; email?: string };
-  Surgeon_Name?: string;
+  Surgeon_Name_Lookup?: string;
   Surgeon?: { name?: string; id?: string };
   Contact_Name?: { name?: string; id?: string };
   Email?: string;
@@ -74,7 +74,7 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
   const deals: ZohoDeal[] = [];
   let page = 1;
   let hasMore = true;
-  const fields = "Deal_Name,Stage,Surgery_Date,$750_Credit_Applies_Until,$500_Credit_Applies_Until,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name,Surgeon,Email,Contact_Name";
+  const fields = "Deal_Name,Stage,Active_Surgery_Date,Credit_Applies_Until,Credit_Applies_From,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name_Lookup,Surgeon,Email,Contact_Name";
 
   while (hasMore) {
     const url = `https://www.zohoapis.com/crm/v6/Deals?fields=${fields}&criteria=(Enrollment_Status:equals:Paid)&page=${page}&per_page=200`;
@@ -88,7 +88,9 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
       throw new Error(`Zoho API error: ${errText}`);
     }
     const data = await res.json();
-    if (data.data && Array.isArray(data.data)) deals.push(...data.data);
+    if (data.data && Array.isArray(data.data)) {
+      deals.push(...data.data);
+    }
     hasMore = data.info?.more_records ?? false;
     page++;
   }
@@ -172,7 +174,7 @@ Deno.serve(async (req) => {
     // Load existing credits — only fields needed for diffing
     const { data: allCredits } = await supabaseAdmin
       .from("surgeon_credits")
-      .select("id, zoho_deal_id, patient_email, credit_status, credit_amount, stage, surgery_date, source");
+      .select("id, zoho_deal_id, patient_email, credit_status, credit_amount, stage, surgery_date, source, enrollment_id, credit_750_expires, credit_500_expires");
 
     const creditsByZohoId = new Map<string, typeof allCredits extends (infer T)[] | null ? T : never>();
     const creditsByEmail = new Map<string, typeof allCredits extends (infer T)[] | null ? T : never>();
@@ -195,23 +197,18 @@ Deno.serve(async (req) => {
     const toUpdateById: { id: string; record: any }[] = [];
 
     for (const deal of deals) {
-      const surgeryDate = parseZohoDate(deal.Surgery_Date);
-      const credit750Expires = parseZohoDate(deal.$750_Credit_Applies_Until);
-      const credit500Expires = parseZohoDate(deal.$500_Credit_Applies_Until);
+      const surgeryDate = parseZohoDate(deal.Active_Surgery_Date);
+      const credit750Expires = parseZohoDate(deal.Credit_Applies_Until);
+      const credit500Expires = parseZohoDate(deal.Credit_Applies_From);
       const enrollmentDate = parseZohoDate(deal.Enrollment_Date);
       const patientEmail = deal.Email || null;
       const consultantEmail = deal.Owner?.email || null;
       const patientName = deal.Contact_Name?.name || deal.Deal_Name || "Unknown";
 
-      const { credit_amount, credit_status } = calculateCredit(
-        deal.Stage, surgeryDate, credit750Expires, credit500Expires
-      );
-
       // Resolve surgeon: 1) from patients table via email, 2) from Zoho fields, 3) fallback
       let surgeonId: string | null = null;
       let surgeonName = "Unknown";
 
-      // Primary: look up patient's surgeon from the patients table
       if (patientEmail) {
         const sid = patientSurgeonMap.get(patientEmail.toLowerCase().trim());
         if (sid) {
@@ -220,9 +217,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Fallback: try Zoho deal fields
       if (!surgeonId) {
-        const rawSurgeonName = deal.Surgeon_Name || deal.Surgeon?.name || null;
+        const rawSurgeonName = deal.Surgeon_Name_Lookup || deal.Surgeon?.name || null;
         if (rawSurgeonName) {
           const key = rawSurgeonName.toLowerCase().trim();
           const match = surgeonNameMap.get(key) || surgeonNameMap.get(key.replace(/^dr\.?\s*/i, "").trim());
@@ -245,12 +241,35 @@ Deno.serve(async (req) => {
       // Skip issued records
       if (existing?.credit_status === "issued") { skipped++; continue; }
 
+      // HYBRID RULE: For platform records (has enrollment_id), preserve credit dates
+      // For CRM-native/import records, use CRM dates (never overwrite non-null with null)
+      let finalCredit750 = credit750Expires;
+      let finalCredit500 = credit500Expires;
+      let finalSurgeryDate = surgeryDate;
+
+      if (existing) {
+        if (existing.enrollment_id) {
+          // Platform record: only update stage & surgery_date from CRM, preserve credit dates
+          finalCredit750 = existing.credit_750_expires || credit750Expires;
+          finalCredit500 = existing.credit_500_expires || credit500Expires;
+        } else {
+          // CRM-native/import: use CRM dates, but never overwrite non-null with null
+          finalCredit750 = credit750Expires || existing.credit_750_expires;
+          finalCredit500 = credit500Expires || existing.credit_500_expires;
+        }
+        finalSurgeryDate = surgeryDate || existing.surgery_date;
+      }
+
+      const { credit_amount, credit_status } = calculateCredit(
+        deal.Stage, finalSurgeryDate, finalCredit750, finalCredit500
+      );
+
       // Skip if nothing meaningful changed
       if (existing && !isEmailMatch &&
           existing.credit_status === credit_status &&
           existing.credit_amount === credit_amount &&
           existing.stage === (deal.Stage || null) &&
-          existing.surgery_date === surgeryDate) {
+          existing.surgery_date === finalSurgeryDate) {
         unchanged++;
         continue;
       }
@@ -263,17 +282,16 @@ Deno.serve(async (req) => {
         patient_email: patientEmail,
         consultant_email: consultantEmail,
         enrollment_date: enrollmentDate,
-        surgery_date: surgeryDate,
+        surgery_date: finalSurgeryDate,
         stage: deal.Stage || null,
-        credit_750_expires: credit750Expires,
-        credit_500_expires: credit500Expires,
+        credit_750_expires: finalCredit750,
+        credit_500_expires: finalCredit500,
         credit_amount,
         credit_status,
         source: "zoho",
       };
 
       if (isEmailMatch && existing) {
-        // Must update by primary key since there's no zoho_deal_id to conflict on
         toUpdateById.push({ id: existing.id, record });
       } else {
         toUpsert.push(record);
