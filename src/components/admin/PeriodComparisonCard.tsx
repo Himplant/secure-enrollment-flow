@@ -56,7 +56,7 @@ export function PeriodComparisonCard({ dateFrom, dateTo, currentStats, isLoading
       return ((curr - prev) / prev) * 100;
     };
     return [
-      { label: "Enrollments", current: currentStats.total, prev: prevStats.total, change: delta(currentStats.total, prevStats.total), format: (v: number) => String(v) },
+      { label: "All Records", current: currentStats.total, prev: prevStats.total, change: delta(currentStats.total, prevStats.total), format: (v: number) => String(v) },
       { label: "Paid", current: currentStats.paid, prev: prevStats.paid, change: delta(currentStats.paid, prevStats.paid), format: (v: number) => String(v) },
       { label: "Revenue", current: currentStats.totalPaidAmount, prev: prevStats.totalPaidAmount, change: delta(currentStats.totalPaidAmount, prevStats.totalPaidAmount), format: (v: number) => fmt(v) },
       { label: "Conversion", current: currentStats.conversionRate, prev: prevStats.conversionRate, change: currentStats.conversionRate - prevStats.conversionRate, format: (v: number) => `${v.toFixed(1)}%`, isDiff: true as const },

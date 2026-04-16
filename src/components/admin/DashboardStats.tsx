@@ -69,9 +69,9 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
 
   const statCards = [
     {
-      title: "Total Enrollments",
+      title: "All Enrollment Records",
       value: stats?.total ?? 0,
-      subtitle: `${stats?.pending ?? 0} pending`,
+      subtitle: `${stats?.paid ?? 0} paid, ${stats?.pending ?? 0} pending`,
       icon: Users,
       color: "text-primary",
       bgColor: "bg-primary/10",
@@ -111,7 +111,7 @@ export function DashboardStats({ stats, isLoading }: DashboardStatsProps) {
     {
       title: "Conversion Rate",
       value: `${(stats?.conversionRate ?? 0).toFixed(1)}%`,
-      subtitle: `${stats?.paid ?? 0} of ${stats?.total ?? 0} created`,
+      subtitle: `${stats?.paid ?? 0} paid of ${stats?.total ?? 0} total records`,
       icon: TrendingUp,
       color: "text-primary",
       bgColor: "bg-primary/10",
