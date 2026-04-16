@@ -154,31 +154,39 @@ Deno.serve(async (req) => {
     const deals = allDeals.filter(d => d.Email && knownEmails.has(d.Email.toLowerCase().trim()));
     console.log(`Filtered to ${deals.length} deals matching known patients (out of ${allDeals.length})`);
 
-    // Load surgeons by id
-    const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name");
+    // Load surgeons by id, name, AND zoho_id (zoho_id is the most reliable match)
+    const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name, zoho_id");
     const surgeonById = new Map<string, string>();
+    const surgeonByZohoId = new Map<string, { id: string; name: string }>();
     const surgeonNameMap = new Map<string, { id: string; name: string }>();
     for (const s of surgeons || []) {
       surgeonById.set(s.id, s.name);
+      if (s.zoho_id) surgeonByZohoId.set(s.zoho_id, { id: s.id, name: s.name });
       const lower = s.name.toLowerCase();
       surgeonNameMap.set(lower, { id: s.id, name: s.name });
       const noDr = lower.replace(/^dr\.?\s*/i, "").trim();
       if (noDr !== lower) surgeonNameMap.set(noDr, { id: s.id, name: s.name });
     }
 
-    // Load patients with surgeon_id to resolve surgeon by email
-    const { data: patients } = await supabaseAdmin.from("patients").select("email, surgeon_id").not("email", "is", null).not("surgeon_id", "is", null);
+    // Load ALL patients (id, email, surgeon_id) — used as last-resort fallback AND for patient updates
+    const { data: patients } = await supabaseAdmin.from("patients").select("id, email, surgeon_id").not("email", "is", null);
     const patientSurgeonMap = new Map<string, string>();
+    const patientIdByEmail = new Map<string, string>();
     for (const p of patients || []) {
-      if (p.email && p.surgeon_id) {
-        patientSurgeonMap.set(p.email.toLowerCase().trim(), p.surgeon_id);
+      if (p.email) {
+        const key = p.email.toLowerCase().trim();
+        patientIdByEmail.set(key, p.id);
+        if (p.surgeon_id) patientSurgeonMap.set(key, p.surgeon_id);
       }
     }
+
+    // Track patient surgeon updates needed (email -> new surgeon_id)
+    const patientSurgeonUpdates: { patient_id: string; surgeon_id: string }[] = [];
 
     // Load existing credits — only fields needed for diffing
     const { data: allCredits } = await supabaseAdmin
       .from("surgeon_credits")
-      .select("id, zoho_deal_id, patient_email, credit_status, credit_amount, stage, surgery_date, source, enrollment_id, credit_750_expires, credit_500_expires");
+      .select("id, zoho_deal_id, patient_email, credit_status, credit_amount, stage, surgery_date, source, enrollment_id, credit_750_expires, credit_500_expires, surgeon_id");
 
     const creditsByZohoId = new Map<string, typeof allCredits extends (infer T)[] | null ? T : never>();
     const creditsByEmail = new Map<string, typeof allCredits extends (infer T)[] | null ? T : never>();
@@ -209,11 +217,33 @@ Deno.serve(async (req) => {
       const consultantEmail = deal.Owner?.email || null;
       const patientName = deal.Contact_Name?.name || deal.Deal_Name || "Unknown";
 
-      // Resolve surgeon: 1) from patients table via email, 2) from Zoho fields, 3) fallback
+      // Resolve surgeon — Zoho is the source of truth:
+      // 1) Zoho Surgeon.id → surgeons.zoho_id (most reliable, exact ID match)
+      // 2) Zoho Surgeon_Name_Lookup or Surgeon.name → surgeons.name (fuzzy)
+      // 3) patients.surgeon_id (last resort only when Zoho has no surgeon)
       let surgeonId: string | null = null;
       let surgeonName = "Unknown";
 
-      if (patientEmail) {
+      const zohoSurgeonId = deal.Surgeon?.id || null;
+      if (zohoSurgeonId) {
+        const match = surgeonByZohoId.get(zohoSurgeonId);
+        if (match) { surgeonId = match.id; surgeonName = match.name; }
+      }
+
+      if (!surgeonId) {
+        // Surgeon_Name_Lookup may be a string OR a lookup object {name, id}
+        const rawLookup = deal.Surgeon_Name_Lookup as any;
+        const lookupName = typeof rawLookup === "string" ? rawLookup : (rawLookup?.name || null);
+        const rawSurgeonName = lookupName || deal.Surgeon?.name || null;
+        if (rawSurgeonName && typeof rawSurgeonName === "string") {
+          const key = rawSurgeonName.toLowerCase().trim();
+          const match = surgeonNameMap.get(key) || surgeonNameMap.get(key.replace(/^dr\.?\s*/i, "").trim());
+          if (match) { surgeonId = match.id; surgeonName = match.name; }
+          else { surgeonName = rawSurgeonName; }
+        }
+      }
+
+      if (!surgeonId && patientEmail) {
         const sid = patientSurgeonMap.get(patientEmail.toLowerCase().trim());
         if (sid) {
           surgeonId = sid;
@@ -221,13 +251,14 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (!surgeonId) {
-        const rawSurgeonName = deal.Surgeon_Name_Lookup || deal.Surgeon?.name || null;
-        if (rawSurgeonName) {
-          const key = rawSurgeonName.toLowerCase().trim();
-          const match = surgeonNameMap.get(key) || surgeonNameMap.get(key.replace(/^dr\.?\s*/i, "").trim());
-          if (match) { surgeonId = match.id; surgeonName = match.name; }
-          else { surgeonName = rawSurgeonName; }
+      // If resolved surgeon differs from patient's current surgeon_id, queue a patient update
+      if (surgeonId && patientEmail) {
+        const emailKey = patientEmail.toLowerCase().trim();
+        const currentPatientSurgeon = patientSurgeonMap.get(emailKey);
+        const patientId = patientIdByEmail.get(emailKey);
+        if (patientId && currentPatientSurgeon !== surgeonId) {
+          patientSurgeonUpdates.push({ patient_id: patientId, surgeon_id: surgeonId });
+          patientSurgeonMap.set(emailKey, surgeonId); // avoid duplicate queueing
         }
       }
 
@@ -268,12 +299,13 @@ Deno.serve(async (req) => {
         deal.Stage, finalSurgeryDate, finalCredit750, finalCredit500
       );
 
-      // Skip if nothing meaningful changed
+      // Skip if nothing meaningful changed (including surgeon)
       if (existing && !isEmailMatch &&
           existing.credit_status === credit_status &&
           existing.credit_amount === credit_amount &&
           existing.stage === (deal.Stage || null) &&
-          existing.surgery_date === finalSurgeryDate) {
+          existing.surgery_date === finalSurgeryDate &&
+          (existing as any).surgeon_id === surgeonId) {
         unchanged++;
         continue;
       }
@@ -327,10 +359,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched`);
+    // Update patients.surgeon_id where Zoho resolved a different surgeon than what's stored
+    const dedupedPatientUpdates = Array.from(
+      new Map(patientSurgeonUpdates.map(u => [u.patient_id, u])).values()
+    );
+    let patientsUpdated = 0;
+    for (let i = 0; i < dedupedPatientUpdates.length; i += 20) {
+      const chunk = dedupedPatientUpdates.slice(i, i + 20);
+      const results = await Promise.all(
+        chunk.map(({ patient_id, surgeon_id }) =>
+          supabaseAdmin.from("patients").update({ surgeon_id }).eq("id", patient_id)
+        )
+      );
+      for (const r of results) {
+        if (r.error) console.error(`Patient surgeon update error:`, r.error.message);
+        else patientsUpdated++;
+      }
+    }
+
+    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched, ${patientsUpdated} patient surgeon assignments updated`);
 
     return new Response(
-      JSON.stringify({ success: true, total: deals.length, upserted, skipped, unchanged }),
+      JSON.stringify({ success: true, total: deals.length, upserted, skipped, unchanged, patientsUpdated }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
