@@ -90,19 +90,10 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
     const data = await res.json();
     if (data.data && Array.isArray(data.data)) {
       if (page === 1 && data.data.length > 0) {
-        console.log("DIAGNOSTIC: First 3 deals raw keys and credit fields:");
-        for (const d of data.data.slice(0, 3)) {
-          console.log(JSON.stringify({
-            keys: Object.keys(d),
-            Deal_Name: d.Deal_Name,
-            Stage: d.Stage,
-            Surgery_Date: d.Surgery_Date,
-            "$750_Credit_Applies_Until": d["$750_Credit_Applies_Until"],
-            "$500_Credit_Applies_Until": d["$500_Credit_Applies_Until"],
-            Enrollment_Date: d.Enrollment_Date,
-            Email: d.Email,
-          }));
-        }
+        // Find a Surgery Completed deal for full field inspection
+        const surgeryDeal = data.data.find((d: any) => d.Stage === "Surgery Completed") || data.data[0];
+        console.log("DIAGNOSTIC: ALL keys for a deal:", JSON.stringify(Object.keys(surgeryDeal)));
+        console.log("DIAGNOSTIC: Full deal data:", JSON.stringify(surgeryDeal));
       }
       deals.push(...data.data);
     }
