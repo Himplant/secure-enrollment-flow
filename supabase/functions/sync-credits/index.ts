@@ -231,8 +231,11 @@ Deno.serve(async (req) => {
       }
 
       if (!surgeonId) {
-        const rawSurgeonName = deal.Surgeon_Name_Lookup || deal.Surgeon?.name || null;
-        if (rawSurgeonName) {
+        // Surgeon_Name_Lookup may be a string OR a lookup object {name, id}
+        const rawLookup = deal.Surgeon_Name_Lookup as any;
+        const lookupName = typeof rawLookup === "string" ? rawLookup : (rawLookup?.name || null);
+        const rawSurgeonName = lookupName || deal.Surgeon?.name || null;
+        if (rawSurgeonName && typeof rawSurgeonName === "string") {
           const key = rawSurgeonName.toLowerCase().trim();
           const match = surgeonNameMap.get(key) || surgeonNameMap.get(key.replace(/^dr\.?\s*/i, "").trim());
           if (match) { surgeonId = match.id; surgeonName = match.name; }
