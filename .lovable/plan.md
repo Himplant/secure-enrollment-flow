@@ -1,32 +1,76 @@
 
 
-## Problem
+## Problems Identified
 
-**All 122 Zoho-synced credit records have NULL values for `credit_750_expires`, `credit_500_expires`, and `surgery_date`**, even though you updated these fields in the CRM. This causes `calculateCredit()` to always return `$0 / pending` — even for "Surgery Completed" patients.
+1. **Analytics data incomplete**: The analytics merges platform enrollments with `source='import'` credits, but all 125 credits are `source='zoho'` — so imported credits query returns 0. The 31 Zoho-only patients (who paid $500 but have no `enrollments` record) are missing from analytics entirely. Total paid should be 98, not 67.
 
-The root cause is likely that the Zoho API field names with `$` prefix (`$750_Credit_Applies_Until`, `$500_Credit_Applies_Until`) are not being correctly read from the JSON response. JavaScript object destructuring with `$` prefixed keys can behave unexpectedly, or Zoho may be returning these under different property names.
+2. **Consultant duplicates (Justin & Kyle)**: The `consultantNameMap` maps by first name prefix from platform enrollments. When Zoho credits with `consultant_email` like `kyle@himplant.com` don't match the map, they fall back to just "kyle" as a string. This creates two entries: "Kyle Himplant" (platform) and "kyle" (fallback). Same for Justin.
+
+3. **Credits tab missing features**: Dispute and note features exist individually, but there's no refund option, no per-record audit trail view, and the multi-select bar only has "Mark All as Paid" and "Flag as Disputed" — missing bulk note, bulk resolve, and bulk refund.
+
+4. **Super admin restriction for credit payments**: Currently any admin can mark credits as issued. The edge function checks `admin_users` but doesn't verify role = `super_admin`.
+
+5. **Missing enrollment records for 31 Zoho-only patients**: These patients show $0 in profiles because they have no `enrollments` row.
 
 ## Plan
 
-### Step 1: Add diagnostic logging to see actual Zoho response
+### Step 1: Create enrollment records for 31 Zoho-only patients
+Database INSERT (not migration) to create "paid" enrollment records ($500 / 50000 cents) for the 31 patients who have `surgeon_credits` but no `enrollments`. Use data from their `surgeon_credits` records for dates and names.
 
-Add a `console.log` for the first 2-3 deals returned by Zoho to see the actual field names and values in the response. This will reveal whether:
-- The `$` fields are named differently (e.g., `_750_Credit_Applies_Until`)
-- `Surgery_Date` is returned under a different key
-- The values are present but in an unexpected format
+### Step 2: Fix analytics to include all paid enrollments
+Update `AdminDashboard.tsx`:
+- Change the imported credits query to filter by `source='zoho'` instead of `source='import'`, OR simply rely on the now-complete `enrollments` table (after Step 1). Since all 98 paid patients will have enrollment records, the platform query alone will be sufficient.
+- Remove the `importedCredits` merge logic since it's no longer needed.
 
-### Step 2: Fix field mapping based on actual Zoho response
+### Step 3: Fix consultant name deduplication
+Update the consultant name resolution to use a proper canonical name map:
+```
+justin@himplant.com → Justin Goddard
+kyle@himplant.com → Kyle Himplant
+ray@himplant.com → Ray Himplant
+```
+Store this as a static map rather than relying on first-name prefix matching. This eliminates the "kyle" vs "Kyle Himplant" duplicate.
 
-Once we see the real field names, update the `ZohoDeal` interface and the field references in the sync loop to match. The `$` prefix fields may need bracket notation or a different property name.
+### Step 4: Restrict credit payment approval to super_admin
+Update `mark-credit-issued` edge function:
+- For the mark-as-issued action, check `adminUser.role === 'super_admin'` and return 403 if not.
+- Dispute, resolve, and add_note actions remain available to all admins.
+Update the UI in `CreditsTab.tsx` to hide/disable the "Pay" and "Mark All as Paid" buttons unless the logged-in user is `super_admin`.
 
-### Step 3: Re-sync all credits
+### Step 5: Add refund action to Credits tab
+Add a "Refund" button for `issued` credits that:
+- Changes `credit_status` back to `earned` (or a new `refunded` status)
+- Logs the action in audit trail
+- Only available to `super_admin`
 
-After fixing the field mapping, trigger a sync that will correctly populate `credit_750_expires`, `credit_500_expires`, and `surgery_date` for all records. The `calculateCredit()` function already handles the logic correctly — it just needs non-null inputs.
+Add a new `action: "refund"` handler in the edge function.
+
+### Step 6: Add per-record audit trail view
+Add a button on each credit row to view its full history from `admin_audit_log` filtered by `resource_id = credit.id`. Show as an expandable section or dialog with timestamped entries.
+
+### Step 7: Add bulk actions for multi-select
+Expand the bulk action bar to include:
+- **Bulk Dispute** (already exists)
+- **Bulk Mark as Paid** (already exists)
+- **Bulk Resolve** (for disputed credits)
+- **Bulk Refund** (for issued credits)
+- **Bulk Add Note**
+
+### Step 8: Fix date parsing in sync function
+Update `parseZohoDate` in `sync-credits/index.ts` to use regex extraction instead of `new Date()` to prevent timezone shifts on December dates.
 
 ### Technical Details
 
-- **File**: `supabase/functions/sync-credits/index.ts`
-- **Diagnosis**: Deploy with diagnostic logging, call the function, check logs
-- **Fix**: Update Zoho field name mapping based on actual API response
-- **No database migration needed** — the columns exist, they're just not being populated
+**Files to modify:**
+- `supabase/functions/sync-credits/index.ts` — fix `parseZohoDate`
+- `supabase/functions/mark-credit-issued/index.ts` — add super_admin check for payment, add refund action
+- `src/components/admin/CreditsTab.tsx` — add refund button, audit trail view, bulk actions, super_admin gating
+- `src/pages/AdminDashboard.tsx` — fix consultant dedup, simplify analytics after enrollment backfill
+- `src/components/admin/ConsultantDistributionCard.tsx` — no changes needed (fed correct data from parent)
+
+**Database operations (INSERT tool, not migration):**
+- Insert ~31 enrollment records for Zoho-only patients
+
+**Props change:**
+- `CreditsTab` needs to receive `adminRole` prop from `AdminDashboard` to gate super_admin actions
 
