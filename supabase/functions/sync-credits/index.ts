@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
     // Load existing credits — only fields needed for diffing
     const { data: allCredits } = await supabaseAdmin
       .from("surgeon_credits")
-      .select("id, zoho_deal_id, patient_email, credit_status, credit_amount, stage, surgery_date, source");
+      .select("id, zoho_deal_id, patient_email, credit_status, credit_amount, stage, surgery_date, source, enrollment_id, credit_750_expires, credit_500_expires");
 
     const creditsByZohoId = new Map<string, typeof allCredits extends (infer T)[] | null ? T : never>();
     const creditsByEmail = new Map<string, typeof allCredits extends (infer T)[] | null ? T : never>();
