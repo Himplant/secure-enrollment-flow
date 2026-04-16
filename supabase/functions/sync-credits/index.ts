@@ -70,6 +70,23 @@ function calculateCredit(
   return { credit_amount: 0, credit_status: "pending" };
 }
 
+async function fetchDealFieldNames(accessToken: string): Promise<void> {
+  const url = "https://www.zohoapis.com/crm/v6/settings/fields?module=Deals";
+  const res = await fetch(url, {
+    headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+  });
+  if (!res.ok) {
+    console.error("Failed to fetch field names:", await res.text());
+    return;
+  }
+  const data = await res.json();
+  const fields = (data.fields || []).map((f: any) => ({ api_name: f.api_name, display_label: f.display_label }));
+  const interesting = fields.filter((f: any) => 
+    /credit|750|500|surgery|surgeon/i.test(f.api_name) || /credit|750|500|surgery|surgeon/i.test(f.display_label)
+  );
+  console.log("DIAGNOSTIC: Interesting Zoho Deal fields:", JSON.stringify(interesting));
+}
+
 async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
   const deals: ZohoDeal[] = [];
   let page = 1;
@@ -77,7 +94,7 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
   const fields = "Deal_Name,Stage,Surgery_Date,$750_Credit_Applies_Until,$500_Credit_Applies_Until,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name,Surgeon,Email,Contact_Name";
 
   while (hasMore) {
-    const url = `https://www.zohoapis.com/crm/v6/Deals?criteria=(Enrollment_Status:equals:Paid)&page=${page}&per_page=200`;
+    const url = `https://www.zohoapis.com/crm/v6/Deals?fields=${fields}&criteria=(Enrollment_Status:equals:Paid)&page=${page}&per_page=200`;
     const res = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
@@ -89,12 +106,6 @@ async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
     }
     const data = await res.json();
     if (data.data && Array.isArray(data.data)) {
-      if (page === 1 && data.data.length > 0) {
-        // Find a Surgery Completed deal for full field inspection
-        const surgeryDeal = data.data.find((d: any) => d.Stage === "Surgery Completed") || data.data[0];
-        console.log("DIAGNOSTIC: ALL keys for a deal:", JSON.stringify(Object.keys(surgeryDeal)));
-        console.log("DIAGNOSTIC: Full deal data:", JSON.stringify(surgeryDeal));
-      }
       deals.push(...data.data);
     }
     hasMore = data.info?.more_records ?? false;
