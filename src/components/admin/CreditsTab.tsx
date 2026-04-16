@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign, Download, RefreshCw, CheckCircle2, Clock, XCircle, BadgeCheck,
   ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, ShieldCheck,
-  Calendar
+  Calendar, Undo2, History, StickyNote
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -62,11 +62,23 @@ interface SurgeonSummary {
   records: CreditRecord[];
 }
 
+interface AuditEntry {
+  id: string;
+  action: string;
+  admin_email: string | null;
+  created_at: string;
+  resource_summary: any;
+}
+
 type SortField = "patient_name" | "enrollment_date" | "surgery_date" | "stage" | "credit_amount" | "credit_status" | "issued_amount";
 type SortDir = "asc" | "desc";
 type DatePreset = "7d" | "30d" | "90d" | "this-month" | "last-month" | "ytd" | "all" | "custom";
 
 interface DateRange { from?: Date; to?: Date; }
+
+interface CreditsTabProps {
+  adminRole: "admin" | "viewer" | "super_admin";
+}
 
 // ── Helpers ──
 function formatDateUS(dateStr: string | null): string {
@@ -116,9 +128,11 @@ const presets: { value: DatePreset; label: string }[] = [
 ];
 
 // ── Main Component ──
-export function CreditsTab() {
+export function CreditsTab({ adminRole }: CreditsTabProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isSuperAdmin = adminRole === "super_admin";
+
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [surgeonFilter, setSurgeonFilter] = useState<string>("all");
   const [expandedSurgeons, setExpandedSurgeons] = useState<Set<string>>(new Set());
@@ -132,6 +146,14 @@ export function CreditsTab() {
   const [disputeTargetIds, setDisputeTargetIds] = useState<string[]>([]);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  const [auditDialogOpen, setAuditDialogOpen] = useState(false);
+  const [auditCreditId, setAuditCreditId] = useState<string | null>(null);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundTargetIds, setRefundTargetIds] = useState<string[]>([]);
+  const [bulkNoteDialogOpen, setBulkNoteDialogOpen] = useState(false);
+  const [bulkNoteText, setBulkNoteText] = useState("");
+
   // Date filter state
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const [dateRange, setDateRange] = useState<DateRange>({});
@@ -154,11 +176,26 @@ export function CreditsTab() {
     },
   });
 
+  // Audit trail query for a specific credit
+  const { data: auditEntries = [], isLoading: auditLoading } = useQuery({
+    queryKey: ["credit-audit", auditCreditId],
+    queryFn: async () => {
+      if (!auditCreditId) return [];
+      const { data, error } = await supabase
+        .from("admin_audit_log")
+        .select("id, action, admin_email, created_at, resource_summary")
+        .eq("resource_type", "surgeon_credit")
+        .eq("resource_id", auditCreditId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as AuditEntry[];
+    },
+    enabled: !!auditCreditId,
+  });
+
   // Apply date range, status, surgeon filters
   const filtered = useMemo(() => {
     let result = credits;
-
-    // Date filter on enrollment_date
     if (dateRange.from) {
       const fromStr = format(dateRange.from, "yyyy-MM-dd");
       result = result.filter(c => !c.enrollment_date || c.enrollment_date >= fromStr);
@@ -167,7 +204,6 @@ export function CreditsTab() {
       const toStr = format(dateRange.to, "yyyy-MM-dd");
       result = result.filter(c => !c.enrollment_date || c.enrollment_date <= toStr);
     }
-
     if (statusFilter !== "all") result = result.filter(c => c.credit_status === statusFilter);
     if (surgeonFilter !== "all") result = result.filter(c => c.surgeon_name === surgeonFilter);
     return result;
@@ -237,11 +273,7 @@ export function CreditsTab() {
   const surgeonBarData = useMemo(() => {
     return surgeonSummaries.map(s => ({
       name: s.surgeon_name.replace(/^Dr\.\s*/i, ""),
-      Earned: s.earned,
-      Issued: s.issued,
-      Pending: s.pending,
-      Disputed: s.disputed,
-      Forfeited: s.forfeited,
+      Earned: s.earned, Issued: s.issued, Pending: s.pending, Disputed: s.disputed, Forfeited: s.forfeited,
     }));
   }, [surgeonSummaries]);
 
@@ -255,14 +287,9 @@ export function CreditsTab() {
     ].filter(d => d.value > 0);
   }, [kpis]);
 
-  const surgeonNames = useMemo(() => {
-    return [...new Set(credits.map(c => c.surgeon_name))].sort();
-  }, [credits]);
+  const surgeonNames = useMemo(() => [...new Set(credits.map(c => c.surgeon_name))].sort(), [credits]);
 
-  const selectableIds = useMemo(() => {
-    return new Set(filtered.filter(c => c.credit_status === "earned").map(c => c.id));
-  }, [filtered]);
-
+  // Multi-select: allow selecting earned, disputed, and issued records
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -272,11 +299,11 @@ export function CreditsTab() {
   };
 
   const toggleSelectAllForSurgeon = (records: CreditRecord[]) => {
-    const earnedIds = records.filter(c => c.credit_status === "earned").map(c => c.id);
-    const allSelected = earnedIds.every(id => selectedIds.has(id));
+    const selectableIds = records.filter(c => ["earned", "disputed", "issued"].includes(c.credit_status)).map(c => c.id);
+    const allSelected = selectableIds.every(id => selectedIds.has(id));
     setSelectedIds(prev => {
       const next = new Set(prev);
-      earnedIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      selectableIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
       return next;
     });
   };
@@ -295,7 +322,12 @@ export function CreditsTab() {
         body: JSON.stringify(body),
       }
     );
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const errText = await res.text();
+      let errMsg = errText;
+      try { errMsg = JSON.parse(errText).error || errText; } catch {}
+      throw new Error(errMsg);
+    }
     return res.json();
   };
 
@@ -303,8 +335,7 @@ export function CreditsTab() {
     mutationFn: async (payments: { id: string; amount: number }[]) => callEdgeFunction({ payments }),
     onSuccess: (data) => {
       toast({ title: "Credits Issued", description: `${data.updated} credit(s) marked as issued` });
-      setPaymentAmounts({});
-      setSelectedIds(new Set());
+      setPaymentAmounts({}); setSelectedIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     },
     onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -325,6 +356,18 @@ export function CreditsTab() {
     mutationFn: async (credit_ids: string[]) => callEdgeFunction({ action: "resolve", credit_ids }),
     onSuccess: (data) => {
       toast({ title: "Disputes Resolved", description: `${data.updated} credit(s) moved back to earned` });
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
+    },
+    onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const refundMutation = useMutation({
+    mutationFn: async ({ credit_ids, reason }: { credit_ids: string[]; reason: string }) =>
+      callEdgeFunction({ action: "refund", credit_ids, reason }),
+    onSuccess: (data) => {
+      toast({ title: "Credits Refunded", description: `${data.updated} credit(s) reverted to earned` });
+      setRefundDialogOpen(false); setRefundReason(""); setRefundTargetIds([]); setSelectedIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     },
     onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -336,6 +379,22 @@ export function CreditsTab() {
     onSuccess: () => {
       toast({ title: "Note Added" });
       setNoteInputs({});
+      queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
+    },
+    onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const bulkAddNoteMutation = useMutation({
+    mutationFn: async ({ credit_ids, note }: { credit_ids: string[]; note: string }) => {
+      // Add note to each credit sequentially
+      for (const id of credit_ids) {
+        await callEdgeFunction({ action: "add_note", credit_id: id, note });
+      }
+      return { updated: credit_ids.length };
+    },
+    onSuccess: (data) => {
+      toast({ title: "Notes Added", description: `Note added to ${data.updated} credit(s)` });
+      setBulkNoteDialogOpen(false); setBulkNoteText(""); setSelectedIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
     },
     onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -373,8 +432,9 @@ export function CreditsTab() {
   };
 
   const handleBulkMarkIssued = () => {
-    if (selectedIds.size === 0) { toast({ title: "No records selected", variant: "destructive" }); return; }
-    const payments = Array.from(selectedIds).map(id => {
+    const earnedIds = Array.from(selectedIds).filter(id => credits.find(c => c.id === id)?.credit_status === "earned");
+    if (earnedIds.length === 0) { toast({ title: "No earned records selected", variant: "destructive" }); return; }
+    const payments = earnedIds.map(id => {
       const record = credits.find(c => c.id === id);
       const customAmount = paymentAmounts[id];
       const amount = customAmount ? parseFloat(customAmount) : (record?.credit_amount || 0);
@@ -384,6 +444,20 @@ export function CreditsTab() {
     markIssuedMutation.mutate(payments);
   };
 
+  const handleBulkResolve = () => {
+    const disputedIds = Array.from(selectedIds).filter(id => credits.find(c => c.id === id)?.credit_status === "disputed");
+    if (disputedIds.length === 0) { toast({ title: "No disputed records selected", variant: "destructive" }); return; }
+    resolveMutation.mutate(disputedIds);
+  };
+
+  const handleBulkRefund = () => {
+    const issuedIds = Array.from(selectedIds).filter(id => credits.find(c => c.id === id)?.credit_status === "issued");
+    if (issuedIds.length === 0) { toast({ title: "No issued records selected", variant: "destructive" }); return; }
+    setRefundTargetIds(issuedIds);
+    setRefundReason("");
+    setRefundDialogOpen(true);
+  };
+
   const openDisputeDialog = (ids: string[]) => {
     setDisputeTargetIds(ids); setDisputeReason(""); setDisputeDialogOpen(true);
   };
@@ -391,6 +465,16 @@ export function CreditsTab() {
   const handleConfirmDispute = () => {
     if (!disputeReason.trim()) { toast({ title: "Please provide a reason", variant: "destructive" }); return; }
     disputeMutation.mutate({ credit_ids: disputeTargetIds, reason: disputeReason });
+  };
+
+  const handleConfirmRefund = () => {
+    if (!refundReason.trim()) { toast({ title: "Please provide a reason", variant: "destructive" }); return; }
+    refundMutation.mutate({ credit_ids: refundTargetIds, reason: refundReason });
+  };
+
+  const openAuditTrail = (creditId: string) => {
+    setAuditCreditId(creditId);
+    setAuditDialogOpen(true);
   };
 
   const handleExportCSV = (surgeonName?: string) => {
@@ -436,6 +520,15 @@ export function CreditsTab() {
     ? `${format(dateRange.from, "MMM d")} – ${format(dateRange.to, "MMM d, yyyy")}`
     : "All Time";
 
+  // Compute what bulk actions are available based on selected records
+  const selectedRecords = useMemo(() => {
+    return Array.from(selectedIds).map(id => credits.find(c => c.id === id)).filter(Boolean) as CreditRecord[];
+  }, [selectedIds, credits]);
+
+  const selectedEarnedCount = selectedRecords.filter(c => c.credit_status === "earned").length;
+  const selectedDisputedCount = selectedRecords.filter(c => c.credit_status === "disputed").length;
+  const selectedIssuedCount = selectedRecords.filter(c => c.credit_status === "issued").length;
+
   if (isLoading) {
     return <div className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /></div>;
   }
@@ -453,14 +546,43 @@ export function CreditsTab() {
         </Button>
 
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 ml-2 px-3 py-1 bg-muted rounded-md">
+          <div className="flex items-center gap-2 ml-2 px-3 py-1.5 bg-muted rounded-md border border-border">
             <span className="text-xs font-medium">{selectedIds.size} selected</span>
-            <Button size="sm" variant="default" className="h-7 text-xs" disabled={markIssuedMutation.isPending} onClick={handleBulkMarkIssued}>
-              <BadgeCheck className="h-3 w-3 mr-1" />Mark All as Paid
+            <div className="h-4 w-px bg-border" />
+
+            {/* Bulk Mark as Paid — super_admin only, for earned records */}
+            {isSuperAdmin && selectedEarnedCount > 0 && (
+              <Button size="sm" variant="default" className="h-7 text-xs" disabled={markIssuedMutation.isPending} onClick={handleBulkMarkIssued}>
+                <BadgeCheck className="h-3 w-3 mr-1" />Pay ({selectedEarnedCount})
+              </Button>
+            )}
+
+            {/* Bulk Dispute — for earned records */}
+            {selectedEarnedCount > 0 && (
+              <Button size="sm" variant="outline" className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50" onClick={() => openDisputeDialog(selectedRecords.filter(c => c.credit_status === "earned").map(c => c.id))}>
+                <AlertTriangle className="h-3 w-3 mr-1" />Dispute ({selectedEarnedCount})
+              </Button>
+            )}
+
+            {/* Bulk Resolve — for disputed records */}
+            {selectedDisputedCount > 0 && (
+              <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50" disabled={resolveMutation.isPending} onClick={handleBulkResolve}>
+                <ShieldCheck className="h-3 w-3 mr-1" />Resolve ({selectedDisputedCount})
+              </Button>
+            )}
+
+            {/* Bulk Refund — super_admin only, for issued records */}
+            {isSuperAdmin && selectedIssuedCount > 0 && (
+              <Button size="sm" variant="outline" className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-50" onClick={handleBulkRefund}>
+                <Undo2 className="h-3 w-3 mr-1" />Refund ({selectedIssuedCount})
+              </Button>
+            )}
+
+            {/* Bulk Add Note */}
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setBulkNoteText(""); setBulkNoteDialogOpen(true); }}>
+              <StickyNote className="h-3 w-3 mr-1" />Add Note ({selectedIds.size})
             </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50" onClick={() => openDisputeDialog(Array.from(selectedIds))}>
-              <AlertTriangle className="h-3 w-3 mr-1" />Flag as Disputed
-            </Button>
+
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedIds(new Set())}>Clear</Button>
           </div>
         )}
@@ -525,11 +647,8 @@ export function CreditsTab() {
 
       {/* Visual Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Surgeon credit bar chart */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Credits by Surgeon</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Credits by Surgeon</CardTitle></CardHeader>
           <CardContent>
             {surgeonBarData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -550,29 +669,14 @@ export function CreditsTab() {
             )}
           </CardContent>
         </Card>
-
-        {/* Status distribution pie chart */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Credit Status Distribution</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Credit Status Distribution</CardTitle></CardHeader>
           <CardContent>
             {statusPieData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
-                  <Pie
-                    data={statusPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={3}
-                    dataKey="value"
-                    label={({ name, value }) => `${name}: $${value.toLocaleString()}`}
-                  >
-                    {statusPieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
+                  <Pie data={statusPieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3} dataKey="value" label={({ name, value }) => `${name}: $${value.toLocaleString()}`}>
+                    {statusPieData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                   </Pie>
                   <Tooltip formatter={(v: number) => `$${v.toLocaleString()}`} />
                   <Legend />
@@ -589,8 +693,8 @@ export function CreditsTab() {
       <div className="space-y-2">
         {surgeonSummaries.map(surgeon => {
           const sorted = sortRecords(surgeon.records);
-          const surgeonEarnedIds = surgeon.records.filter(c => c.credit_status === "earned").map(c => c.id);
-          const allSurgeonSelected = surgeonEarnedIds.length > 0 && surgeonEarnedIds.every(id => selectedIds.has(id));
+          const selectableIds = surgeon.records.filter(c => ["earned", "disputed", "issued"].includes(c.credit_status)).map(c => c.id);
+          const allSurgeonSelected = selectableIds.length > 0 && selectableIds.every(id => selectedIds.has(id));
 
           return (
             <Collapsible key={surgeon.surgeon_name} open={expandedSurgeons.has(surgeon.surgeon_name)} onOpenChange={() => toggleExpand(surgeon.surgeon_name)}>
@@ -622,7 +726,7 @@ export function CreditsTab() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-8">
-                            {surgeonEarnedIds.length > 0 && (
+                            {selectableIds.length > 0 && (
                               <Checkbox checked={allSurgeonSelected} onCheckedChange={() => toggleSelectAllForSurgeon(surgeon.records)} />
                             )}
                           </TableHead>
@@ -641,7 +745,9 @@ export function CreditsTab() {
                           <React.Fragment key={c.id}>
                             <TableRow className={selectedIds.has(c.id) ? "bg-muted/30" : ""}>
                               <TableCell>
-                                {c.credit_status === "earned" && <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} />}
+                                {["earned", "disputed", "issued"].includes(c.credit_status) && (
+                                  <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} />
+                                )}
                               </TableCell>
                               <TableCell>
                                 <div className="font-medium">{c.patient_name}</div>
@@ -663,9 +769,11 @@ export function CreditsTab() {
                                 <div className="flex items-center gap-1">
                                   {c.credit_status === "earned" && (
                                     <>
-                                      <Button size="sm" variant="outline" className="h-7 text-xs" disabled={markIssuedMutation.isPending} onClick={() => handleMarkIssued(c.id, c.credit_amount)}>
-                                        <BadgeCheck className="h-3 w-3 mr-1" />Pay
-                                      </Button>
+                                      {isSuperAdmin && (
+                                        <Button size="sm" variant="outline" className="h-7 text-xs" disabled={markIssuedMutation.isPending} onClick={() => handleMarkIssued(c.id, c.credit_amount)}>
+                                          <BadgeCheck className="h-3 w-3 mr-1" />Pay
+                                        </Button>
+                                      )}
                                       <Button size="sm" variant="ghost" className="h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => openDisputeDialog([c.id])}>
                                         <AlertTriangle className="h-3 w-3" />
                                       </Button>
@@ -676,18 +784,28 @@ export function CreditsTab() {
                                       <ShieldCheck className="h-3 w-3 mr-1" />Resolve
                                     </Button>
                                   )}
-                                  {c.credit_status === "issued" && c.issued_at && (
-                                    <span className="text-xs text-muted-foreground">{formatDateTimeUS(c.issued_at)}</span>
+                                  {c.credit_status === "issued" && (
+                                    <>
+                                      {c.issued_at && <span className="text-xs text-muted-foreground">{formatDateTimeUS(c.issued_at)}</span>}
+                                      {isSuperAdmin && (
+                                        <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => { setRefundTargetIds([c.id]); setRefundReason(""); setRefundDialogOpen(true); }}>
+                                          <Undo2 className="h-3 w-3 mr-1" />Refund
+                                        </Button>
+                                      )}
+                                    </>
                                   )}
-                                  {(c.credit_status === "disputed" || c.notes) && (
-                                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setExpandedNotes(prev => {
-                                      const next = new Set(prev);
-                                      next.has(c.id) ? next.delete(c.id) : next.add(c.id);
-                                      return next;
-                                    })}>
-                                      💬 {c.notes ? c.notes.split("\n").length : 0}
-                                    </Button>
-                                  )}
+                                  {/* Audit trail button */}
+                                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openAuditTrail(c.id)}>
+                                    <History className="h-3 w-3" />
+                                  </Button>
+                                  {/* Notes toggle */}
+                                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setExpandedNotes(prev => {
+                                    const next = new Set(prev);
+                                    next.has(c.id) ? next.delete(c.id) : next.add(c.id);
+                                    return next;
+                                  })}>
+                                    💬 {c.notes ? c.notes.split("\n").length : 0}
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -716,9 +834,7 @@ export function CreditsTab() {
                                         size="sm"
                                         className="h-8 text-xs"
                                         disabled={addNoteMutation.isPending || !noteInputs[c.id]?.trim()}
-                                        onClick={() => {
-                                          addNoteMutation.mutate({ credit_id: c.id, note: noteInputs[c.id].trim() });
-                                        }}
+                                        onClick={() => addNoteMutation.mutate({ credit_id: c.id, note: noteInputs[c.id].trim() })}
                                       >
                                         Add Note
                                       </Button>
@@ -756,6 +872,76 @@ export function CreditsTab() {
               <AlertTriangle className="h-4 w-4 mr-2" />{disputeMutation.isPending ? "Flagging..." : `Flag ${disputeTargetIds.length} Credit(s)`}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Refund reason dialog */}
+      <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Refund Credit Payment</DialogTitle>
+            <DialogDescription>This will revert the credit status from "issued" back to "earned". Please provide a reason.</DialogDescription>
+          </DialogHeader>
+          <Textarea placeholder="e.g., Payment was issued in error. Surgeon credit needs to be recalculated." value={refundReason} onChange={(e) => setRefundReason(e.target.value)} rows={4} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRefundDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={refundMutation.isPending || !refundReason.trim()} onClick={handleConfirmRefund}>
+              <Undo2 className="h-4 w-4 mr-2" />{refundMutation.isPending ? "Refunding..." : `Refund ${refundTargetIds.length} Credit(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Add Note dialog */}
+      <Dialog open={bulkNoteDialogOpen} onOpenChange={setBulkNoteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Note to {selectedIds.size} Credit(s)</DialogTitle>
+            <DialogDescription>This note will be added to all selected credit records.</DialogDescription>
+          </DialogHeader>
+          <Textarea placeholder="Enter your note..." value={bulkNoteText} onChange={(e) => setBulkNoteText(e.target.value)} rows={4} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBulkNoteDialogOpen(false)}>Cancel</Button>
+            <Button disabled={bulkAddNoteMutation.isPending || !bulkNoteText.trim()} onClick={() => bulkAddNoteMutation.mutate({ credit_ids: Array.from(selectedIds), note: bulkNoteText.trim() })}>
+              <StickyNote className="h-4 w-4 mr-2" />{bulkAddNoteMutation.isPending ? "Adding..." : `Add Note to ${selectedIds.size} Credit(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Audit trail dialog */}
+      <Dialog open={auditDialogOpen} onOpenChange={(open) => { setAuditDialogOpen(open); if (!open) setAuditCreditId(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Audit Trail</DialogTitle>
+            <DialogDescription>History of all actions taken on this credit record.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[400px] overflow-y-auto space-y-3">
+            {auditLoading ? (
+              <div className="space-y-2"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
+            ) : auditEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No audit history found for this credit.</p>
+            ) : (
+              auditEntries.map(entry => (
+                <div key={entry.id} className="border border-border rounded-lg p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">
+                      {entry.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{formatDateTimeUS(entry.created_at)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">By: {entry.admin_email || "System"}</p>
+                  {entry.resource_summary && (
+                    <div className="text-xs font-mono bg-muted rounded p-2 space-y-0.5">
+                      {Object.entries(entry.resource_summary as Record<string, any>).map(([key, val]) => (
+                        <div key={key}><span className="text-muted-foreground">{key}:</span> {String(val)}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
