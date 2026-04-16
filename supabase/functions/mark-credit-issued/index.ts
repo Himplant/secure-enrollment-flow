@@ -254,7 +254,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Handle mark-as-issued (existing logic)
+    // Handle mark-as-issued — SUPER ADMIN ONLY
+    if (adminUser.role !== "super_admin") {
+      return new Response(JSON.stringify({ error: "Only super admins can approve credit payments" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const payments: { id: string; amount: number }[] = [];
 
     if (body.payments && Array.isArray(body.payments)) {
