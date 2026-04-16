@@ -2,44 +2,31 @@
 
 ## Problem
 
-The `sync-credits` function pulls **all 1,151 "Paid" deals from Zoho CRM** and creates credit records for every one of them — even patients who never enrolled through the platform or the Excel import. This results in ~1,029 irrelevant "Unknown surgeon" records cluttering the Credits tab.
+**All 122 Zoho-synced credit records have NULL values for `credit_750_expires`, `credit_500_expires`, and `surgery_date`**, even though you updated these fields in the CRM. This causes `calculateCredit()` to always return `$0 / pending` — even for "Surgery Completed" patients.
 
-The user wants credits **only** for the ~163 patients who exist in the `patients` table (from the Excel import or platform enrollments).
+The root cause is likely that the Zoho API field names with `$` prefix (`$750_Credit_Applies_Until`, `$500_Credit_Applies_Until`) are not being correctly read from the JSON response. JavaScript object destructuring with `$` prefixed keys can behave unexpectedly, or Zoho may be returning these under different property names.
 
 ## Plan
 
-### Step 1: Clean up the database — delete non-matching credit records
+### Step 1: Add diagnostic logging to see actual Zoho response
 
-Run a data operation to delete the ~1,029 surgeon_credits records whose `patient_email` does NOT match any patient in the `patients` table. This removes all the irrelevant Zoho deals.
+Add a `console.log` for the first 2-3 deals returned by Zoho to see the actual field names and values in the response. This will reveal whether:
+- The `$` fields are named differently (e.g., `_750_Credit_Applies_Until`)
+- `Surgery_Date` is returned under a different key
+- The values are present but in an unexpected format
 
-```sql
-DELETE FROM surgeon_credits
-WHERE id NOT IN (
-  SELECT sc.id FROM surgeon_credits sc
-  JOIN patients p ON LOWER(TRIM(p.email)) = LOWER(TRIM(sc.patient_email))
-  WHERE p.email IS NOT NULL
-)
-AND source = 'zoho';
-```
+### Step 2: Fix field mapping based on actual Zoho response
 
-### Step 2: Update `sync-credits` Edge Function — filter by known patients
+Once we see the real field names, update the `ZohoDeal` interface and the field references in the sync loop to match. The `$` prefix fields may need bracket notation or a different property name.
 
-Modify the sync logic so that after fetching deals from Zoho, it **only processes deals whose email matches a patient** in the `patients` table. Specifically:
+### Step 3: Re-sync all credits
 
-1. Load all patient emails into a `Set` upfront
-2. After fetching Zoho deals, filter: `deals.filter(d => d.Email && patientEmails.has(d.Email.toLowerCase().trim()))`
-3. Only upsert/update records for these matched deals
-4. This also makes the sync faster since it processes ~124 records instead of 1,151
-
-The rest of the sync logic (surgeon resolution, credit calculation, email-match for imports, batch upsert) stays the same.
-
-### Step 3: Verify imported records are preserved
-
-The 2 existing `source = 'import'` records and any future Excel imports will remain untouched since they're not `source = 'zoho'`. The sync will update them when a matching Zoho deal is found (linking the `zoho_deal_id`), keeping surgery dates, stages, and credit calculations current.
+After fixing the field mapping, trigger a sync that will correctly populate `credit_750_expires`, `credit_500_expires`, and `surgery_date` for all records. The `calculateCredit()` function already handles the logic correctly — it just needs non-null inputs.
 
 ### Technical Details
 
-- **Edge Function**: `supabase/functions/sync-credits/index.ts` — add patient email filter after Zoho fetch
-- **Database cleanup**: Delete ~1,029 rows from `surgeon_credits` where patient is not in `patients` table
-- **No UI changes needed** — the Credits tab already groups by surgeon and shows the right data structure
+- **File**: `supabase/functions/sync-credits/index.ts`
+- **Diagnosis**: Deploy with diagnostic logging, call the function, check logs
+- **Fix**: Update Zoho field name mapping based on actual API response
+- **No database migration needed** — the columns exist, they're just not being populated
 
