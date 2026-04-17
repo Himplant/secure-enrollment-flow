@@ -1,52 +1,67 @@
 
 
-## Problem
+## Updated Understanding
 
-The `sync-credits` function treats `patients.surgeon_id` as the source of truth for surgeon assignment, only falling back to Zoho's surgeon field when the patient has no surgeon assigned. This means:
+The user confirms Zoho Deal `2082094000401078644` (Antwin Morris) was **never marked as Paid in Zoho** — it has always been Cancelled. This means my earlier hypothesis (Zoho-said-paid backfill) is wrong. The fake `paid` enrollment row in our DB came from somewhere else.
 
-- Evan Leigh's surgeon was set to Dr. Elist when his patient record was first created
-- Zoho was later corrected to Dr. Tajkarimi
-- Sync runs, sees `patients.surgeon_id` is set, ignores Zoho → record stays on Elist forever
+## Revised Investigation Plan
 
-This bug affects **every patient** whose surgeon changes in Zoho.
+I need to re-examine the actual source. Possibilities:
 
-## Fix Plan
+1. **Stripe webhook misfire** — a `checkout.session.completed` event from another patient/test got linked to Antwin's enrollment row.
+2. **Manual admin action** — someone marked it paid via the admin dashboard (would show in `admin_audit_log`).
+3. **Backfill bug** — an earlier backfill script set `status='paid'` on rows that weren't supposed to be (independent of Zoho status).
+4. **`create-enrollment` or `regenerate-enrollment` bug** — initial creation set wrong status.
+5. **`sync-credits` side effect** — even though sync only fetches Paid deals, maybe an old run when the deal had a different status created the row, or the fetch criteria changed historically.
 
-### Step 1: Make Zoho the source of truth for surgeon assignment in sync-credits
+## Step 1 — Forensic deep-dive on Antwin's row (read-only)
 
-In `supabase/functions/sync-credits/index.ts`, reverse the priority:
+Pull every piece of evidence:
+- `enrollments` row `f071c94d-…`: full column dump including `created_at`, `updated_at`, `paid_at`, `status`, all stripe IDs, `zoho_record_id`, `token_hash`, `terms_accepted_at`, `signature_data`, `consent_pdf_path`
+- `enrollment_events` for that enrollment_id — chronological log of every state change
+- `admin_audit_log` filtered to `resource_id = 'f071c94d-…'` OR `resource_summary` containing Antwin's email — see if any admin touched it
+- `surgeon_credits` row(s) for Antwin — check `created_at`, `source`, `enrollment_id` link, `zoho_deal_id`
+- `processed_stripe_events` — search for any event referencing Antwin's email (would need cross-check)
+- `patients` row for Antwin — `created_at`, `surgeon_id`
+- Any other `enrollments` rows for `AMorris19731944@gmail.com` (deleted ones won't show, but live duplicates would)
 
-1. **First** resolve surgeon from Zoho's `Surgeon` lookup (using `Surgeon.id` → match against `surgeons.zoho_id`, which is the most reliable)
-2. **Then** fall back to `Surgeon_Name_Lookup` name match
-3. **Only** fall back to `patients.surgeon_id` if Zoho has no surgeon at all
+## Step 2 — Stripe cross-check
 
-Also: load the `surgeons` table including `zoho_id` so we can map by Zoho ID directly (the most accurate match — names can have typos, IDs cannot).
+- `stripe.customers.list({ email: 'AMorris19731944@gmail.com' })` — does a customer exist?
+- If yes, list `paymentIntents` and `checkout.sessions` — any successful $500 charge?
+- Search Stripe by metadata for `enrollment_id = f071c94d-…` or Zoho deal `2082094000389432496`/`2082094000401078644`
 
-### Step 2: When the surgeon changes, also update `patients.surgeon_id`
+## Step 3 — Check edge function logs
 
-After resolving the correct surgeon from Zoho, if it differs from the patient's current `surgeon_id`, update the patient record so that:
-- The Patients tab also reflects the correct surgeon
-- Future enrollment lookups use the correct surgeon
-- The two stay in sync
+- `function_edge_logs` for `stripe-webhook`, `create-enrollment`, `sync-credits`, `regenerate-enrollment`, `mark-credit-issued` around the timestamps in `enrollment_events`
+- Specifically the timestamp the row was first created and the timestamp `status` flipped to `paid`
 
-### Step 3: One-time corrective sync for Evan + audit
+## Step 4 — Identify the actual mechanism
 
-After deploying the fix:
-- Run sync-credits → Evan automatically moves to Dr. Tajkarimi in `surgeon_credits`
-- Run a query to find all patients where `patients.surgeon_id` differs from their latest `surgeon_credits.surgeon_id` (the corrected value) and report them so we can confirm before the patient table is updated, OR let the sync auto-fix them all
+Based on findings, classify the cause:
+- (A) Stripe webhook with mismatched session → fix webhook patient-matching logic
+- (B) Admin manual action → review who/when, no code fix needed
+- (C) Backfill that set status=paid without Stripe verification → audit other rows from same batch, delete fakes
+- (D) Application bug in create-enrollment → review code path
 
-### Files to modify
+## Step 5 — Present findings + targeted fix
 
-- `supabase/functions/sync-credits/index.ts` — surgeon resolution priority + patient surgeon update
+After diagnosis, return with:
+- Exact root cause (with timestamps + log evidence)
+- List of any other affected rows (same-bug cohort)
+- One-off DB cleanup (delete Antwin's fake row + any siblings)
+- Code/logic fix to prevent recurrence
 
-### Technical detail
+## Step 6 — Add safeguard regardless of root cause
 
-```
-Resolution order (new):
-1. Zoho deal.Surgeon.id → surgeons.zoho_id (exact match)
-2. Zoho deal.Surgeon_Name_Lookup → surgeons.name (fuzzy)
-3. patients.surgeon_id (last resort only)
+Add a database constraint or validation trigger: an enrollment cannot have `status='paid'` unless it has either a `stripe_payment_intent_id` OR an `admin_audit_log` entry explicitly marking it as externally paid. This prevents *any* future path from silently marking rows paid without traceable proof.
 
-Side effect: if resolved surgeon ≠ patients.surgeon_id, update patients.surgeon_id
-```
+## Files involved (read-only investigation now; modifications in default mode after diagnosis)
+
+- Read: `enrollments`, `enrollment_events`, `admin_audit_log`, `surgeon_credits`, `patients`, `processed_stripe_events` (via `supabase--read_query`)
+- Read: Stripe customers/PIs (via `stripe--list_customers`, `stripe--list_payment_intents`)
+- Read: edge function logs (via `supabase--analytics_query` or edge_function_logs)
+- After diagnosis: the offending edge function source (likely `stripe-webhook/index.ts`, `sync-credits/index.ts`, or a backfill script in `supabase/functions/`)
+
+I will NOT propose any guesswork fix until the forensic data is collected. The first action when default mode resumes is queries + Stripe lookups, not edits.
 
