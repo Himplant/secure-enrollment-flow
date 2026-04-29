@@ -229,12 +229,27 @@ export default function AdminDashboard() {
         <div className="mb-8 space-y-6">
           {/* Date filter + global surgeon/consultant filters */}
           <div className="space-y-3">
-            <AnalyticsDateFilter
-              dateRange={dateRange}
-              preset={preset}
-              onPresetChange={setPreset}
-              onDateRangeChange={setDateRange}
-            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <AnalyticsDateFilter
+                dateRange={dateRange}
+                preset={preset}
+                onPresetChange={setPreset}
+                onDateRangeChange={setDateRange}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                onClick={() => {
+                  refetchAnalytics();
+                  queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
+                }}
+                disabled={analyticsFetching}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${analyticsFetching ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs font-medium text-muted-foreground">Filter by:</span>
               <Select value={analyticsSurgeonFilter} onValueChange={setAnalyticsSurgeonFilter}>
