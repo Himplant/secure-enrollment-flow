@@ -228,6 +228,18 @@ Deno.serve(async (req) => {
       if (zohoSurgeonId) {
         const match = surgeonByZohoId.get(zohoSurgeonId);
         if (match) { surgeonId = match.id; surgeonName = match.name; }
+        else {
+          // Surgeon referenced in Zoho but not in our local table — fetch on demand
+          const fetched = await fetchAndUpsertSurgeonFromZoho(supabaseAdmin, zohoSurgeonId, accessToken);
+          if (fetched) {
+            surgeonId = fetched.id;
+            surgeonName = fetched.name;
+            // Update lookup maps so subsequent deals in this run reuse it
+            surgeonByZohoId.set(zohoSurgeonId, fetched);
+            surgeonById.set(fetched.id, fetched.name);
+            surgeonNameMap.set(fetched.name.toLowerCase(), fetched);
+          }
+        }
       }
 
       if (!surgeonId) {
