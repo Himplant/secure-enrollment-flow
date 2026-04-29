@@ -167,7 +167,7 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
       from: "Himplant® <noreply@himplant.com>",
       to: [params.patientEmail],
       cc: ["contact@himplant.com"],
-      bcc: ["ray@himplant.com", "kyle@himplant.com", "justin@himplant.com"],
+      bcc: ["ray@himplant.com", "kyle@himplant.com", "justin@himplant.com", "siam@himplant.com"],
       reply_to: "contact@himplant.com",
       subject: "Your Himplant® Enrollment Confirmation",
       html,
