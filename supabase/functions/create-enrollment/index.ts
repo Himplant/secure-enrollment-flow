@@ -60,6 +60,54 @@ async function getZohoAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+// Fetch a single surgeon from Zoho's Surgeons module by ID and upsert into local table.
+// Used when a Zoho-referenced surgeon isn't found locally (e.g. newly added in Zoho
+// but the periodic sync hasn't run yet).
+async function fetchAndUpsertSurgeonFromZoho(
+  supabase: any,
+  zohoSurgeonId: string
+): Promise<{ id: string; name: string } | null> {
+  try {
+    const accessToken = await getZohoAccessToken();
+    const res = await fetch(
+      `https://www.zohoapis.com/crm/v2/Surgeons/${zohoSurgeonId}`,
+      { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }
+    );
+    if (!res.ok) {
+      console.warn(`Zoho surgeon fetch failed (${res.status}) for ${zohoSurgeonId}`);
+      return null;
+    }
+    const data = await res.json();
+    const s = data?.data?.[0];
+    if (!s) return null;
+
+    const surgeonRow = {
+      zoho_id: s.id,
+      name: s.Full_Name || s.Name || "Unknown",
+      email: s.Email || null,
+      phone: s.Phone || null,
+      specialty: s.Specialty || null,
+      is_active: true,
+    };
+
+    const { data: upserted, error } = await supabase
+      .from("surgeons")
+      .upsert(surgeonRow, { onConflict: "zoho_id" })
+      .select("id, name")
+      .maybeSingle();
+
+    if (error) {
+      console.error(`Failed to upsert surgeon ${zohoSurgeonId}:`, error.message);
+      return null;
+    }
+    console.log(`Auto-synced surgeon from Zoho: ${surgeonRow.name} (${zohoSurgeonId})`);
+    return upserted;
+  } catch (err) {
+    console.error(`Error auto-syncing surgeon ${zohoSurgeonId}:`, err);
+    return null;
+  }
+}
+
 // Update Zoho CRM record with enrollment data
 async function updateZohoRecordWithEnrollment(
   module: string,
@@ -450,7 +498,16 @@ serve(async (req) => {
         resolvedSurgeonName = surgeon.name;
         console.log(`Resolved Zoho surgeon ${zohoSurgeonId} -> ${surgeon.name} (${surgeon.id})`);
       } else {
-        console.warn(`Zoho surgeon ${zohoSurgeonId} not found in local surgeons table`);
+        // Surgeon referenced by Zoho but not in local table — fetch on demand
+        // (handles newly added surgeons in Zoho before the periodic sync runs)
+        console.warn(`Zoho surgeon ${zohoSurgeonId} not in local table, fetching from Zoho...`);
+        const fetched = await fetchAndUpsertSurgeonFromZoho(supabase, zohoSurgeonId);
+        if (fetched) {
+          resolvedSurgeonId = fetched.id;
+          resolvedSurgeonName = fetched.name;
+        } else {
+          console.warn(`Could not auto-sync surgeon ${zohoSurgeonId} from Zoho`);
+        }
       }
     }
 

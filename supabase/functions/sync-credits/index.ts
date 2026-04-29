@@ -26,6 +26,50 @@ async function getZohoAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+// Fetch a single surgeon from Zoho's Surgeons module by ID and upsert into local table.
+// Used when a Zoho deal references a surgeon that hasn't been synced yet.
+async function fetchAndUpsertSurgeonFromZoho(
+  supabase: any,
+  zohoSurgeonId: string,
+  accessToken: string
+): Promise<{ id: string; name: string } | null> {
+  try {
+    const res = await fetch(
+      `https://www.zohoapis.com/crm/v2/Surgeons/${zohoSurgeonId}`,
+      { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }
+    );
+    if (!res.ok) {
+      console.warn(`Zoho surgeon fetch failed (${res.status}) for ${zohoSurgeonId}`);
+      return null;
+    }
+    const data = await res.json();
+    const s = data?.data?.[0];
+    if (!s) return null;
+    const surgeonRow = {
+      zoho_id: s.id,
+      name: s.Full_Name || s.Name || "Unknown",
+      email: s.Email || null,
+      phone: s.Phone || null,
+      specialty: s.Specialty || null,
+      is_active: true,
+    };
+    const { data: upserted, error } = await supabase
+      .from("surgeons")
+      .upsert(surgeonRow, { onConflict: "zoho_id" })
+      .select("id, name")
+      .maybeSingle();
+    if (error) {
+      console.error(`Failed to upsert surgeon ${zohoSurgeonId}:`, error.message);
+      return null;
+    }
+    console.log(`Auto-synced surgeon from Zoho: ${surgeonRow.name} (${zohoSurgeonId})`);
+    return upserted;
+  } catch (err) {
+    console.error(`Error auto-syncing surgeon ${zohoSurgeonId}:`, err);
+    return null;
+  }
+}
+
 interface ZohoDeal {
   id: string;
   Deal_Name?: string;
@@ -224,16 +268,30 @@ Deno.serve(async (req) => {
       let surgeonId: string | null = null;
       let surgeonName = "Unknown";
 
-      const zohoSurgeonId = deal.Surgeon?.id || null;
+      // Collect any Zoho surgeon ID — may come from Surgeon.id OR Surgeon_Name_Lookup.id
+      const rawLookup = deal.Surgeon_Name_Lookup as any;
+      const lookupObj = (rawLookup && typeof rawLookup === "object") ? rawLookup : null;
+      const zohoSurgeonId = deal.Surgeon?.id || lookupObj?.id || null;
+
       if (zohoSurgeonId) {
         const match = surgeonByZohoId.get(zohoSurgeonId);
         if (match) { surgeonId = match.id; surgeonName = match.name; }
+        else {
+          // Surgeon referenced in Zoho but not in our local table — fetch on demand
+          const fetched = await fetchAndUpsertSurgeonFromZoho(supabaseAdmin, zohoSurgeonId, accessToken);
+          if (fetched) {
+            surgeonId = fetched.id;
+            surgeonName = fetched.name;
+            surgeonByZohoId.set(zohoSurgeonId, fetched);
+            surgeonById.set(fetched.id, fetched.name);
+            surgeonNameMap.set(fetched.name.toLowerCase(), fetched);
+          }
+        }
       }
 
       if (!surgeonId) {
-        // Surgeon_Name_Lookup may be a string OR a lookup object {name, id}
-        const rawLookup = deal.Surgeon_Name_Lookup as any;
-        const lookupName = typeof rawLookup === "string" ? rawLookup : (rawLookup?.name || null);
+        // Name-based fallback (Surgeon_Name_Lookup as string OR Surgeon.name)
+        const lookupName = typeof rawLookup === "string" ? rawLookup : (lookupObj?.name || null);
         const rawSurgeonName = lookupName || deal.Surgeon?.name || null;
         if (rawSurgeonName && typeof rawSurgeonName === "string") {
           const key = rawSurgeonName.toLowerCase().trim();
