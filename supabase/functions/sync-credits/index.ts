@@ -26,6 +26,50 @@ async function getZohoAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+// Fetch a single surgeon from Zoho's Surgeons module by ID and upsert into local table.
+// Used when a Zoho deal references a surgeon that hasn't been synced yet.
+async function fetchAndUpsertSurgeonFromZoho(
+  supabase: any,
+  zohoSurgeonId: string,
+  accessToken: string
+): Promise<{ id: string; name: string } | null> {
+  try {
+    const res = await fetch(
+      `https://www.zohoapis.com/crm/v2/Surgeons/${zohoSurgeonId}`,
+      { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }
+    );
+    if (!res.ok) {
+      console.warn(`Zoho surgeon fetch failed (${res.status}) for ${zohoSurgeonId}`);
+      return null;
+    }
+    const data = await res.json();
+    const s = data?.data?.[0];
+    if (!s) return null;
+    const surgeonRow = {
+      zoho_id: s.id,
+      name: s.Full_Name || s.Name || "Unknown",
+      email: s.Email || null,
+      phone: s.Phone || null,
+      specialty: s.Specialty || null,
+      is_active: true,
+    };
+    const { data: upserted, error } = await supabase
+      .from("surgeons")
+      .upsert(surgeonRow, { onConflict: "zoho_id" })
+      .select("id, name")
+      .maybeSingle();
+    if (error) {
+      console.error(`Failed to upsert surgeon ${zohoSurgeonId}:`, error.message);
+      return null;
+    }
+    console.log(`Auto-synced surgeon from Zoho: ${surgeonRow.name} (${zohoSurgeonId})`);
+    return upserted;
+  } catch (err) {
+    console.error(`Error auto-syncing surgeon ${zohoSurgeonId}:`, err);
+    return null;
+  }
+}
+
 interface ZohoDeal {
   id: string;
   Deal_Name?: string;
