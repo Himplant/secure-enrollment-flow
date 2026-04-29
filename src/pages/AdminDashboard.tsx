@@ -63,7 +63,7 @@ export default function AdminDashboard() {
   });
 
   // Single query for analytics enrollments (includes owner_name + patient surgeon)
-  const { data: rawPlatformEnrollments = [], isLoading: statsLoading } = useQuery({
+  const { data: rawPlatformEnrollments = [], isLoading: statsLoading, refetch: refetchAnalytics, isFetching: analyticsFetching } = useQuery({
     queryKey: ["analytics-enrollments", dateRange.from?.toISOString(), dateRange.to?.toISOString()],
     queryFn: async () => {
       let query = supabase
@@ -80,7 +80,10 @@ export default function AdminDashboard() {
         query = query.gte("created_at", dateRange.from.toISOString());
       }
       if (dateRange.to) {
-        query = query.lte("created_at", dateRange.to.toISOString());
+        // Extend "to" through end of day so today's records are included
+        const inclusiveTo = new Date(dateRange.to);
+        inclusiveTo.setHours(23, 59, 59, 999);
+        query = query.lte("created_at", inclusiveTo.toISOString());
       }
 
       const { data, error } = await query;
@@ -91,6 +94,10 @@ export default function AdminDashboard() {
         surgeon_id: e.patients?.surgeon_id || null,
       }));
     },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    refetchInterval: 60_000, // auto-refresh every 60s
   });
 
   // Canonical consultant name map — used to deduplicate consultant names
