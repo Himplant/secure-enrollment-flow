@@ -268,7 +268,11 @@ Deno.serve(async (req) => {
       let surgeonId: string | null = null;
       let surgeonName = "Unknown";
 
-      const zohoSurgeonId = deal.Surgeon?.id || null;
+      // Collect any Zoho surgeon ID — may come from Surgeon.id OR Surgeon_Name_Lookup.id
+      const rawLookup = deal.Surgeon_Name_Lookup as any;
+      const lookupObj = (rawLookup && typeof rawLookup === "object") ? rawLookup : null;
+      const zohoSurgeonId = deal.Surgeon?.id || lookupObj?.id || null;
+
       if (zohoSurgeonId) {
         const match = surgeonByZohoId.get(zohoSurgeonId);
         if (match) { surgeonId = match.id; surgeonName = match.name; }
@@ -278,7 +282,6 @@ Deno.serve(async (req) => {
           if (fetched) {
             surgeonId = fetched.id;
             surgeonName = fetched.name;
-            // Update lookup maps so subsequent deals in this run reuse it
             surgeonByZohoId.set(zohoSurgeonId, fetched);
             surgeonById.set(fetched.id, fetched.name);
             surgeonNameMap.set(fetched.name.toLowerCase(), fetched);
@@ -287,9 +290,8 @@ Deno.serve(async (req) => {
       }
 
       if (!surgeonId) {
-        // Surgeon_Name_Lookup may be a string OR a lookup object {name, id}
-        const rawLookup = deal.Surgeon_Name_Lookup as any;
-        const lookupName = typeof rawLookup === "string" ? rawLookup : (rawLookup?.name || null);
+        // Name-based fallback (Surgeon_Name_Lookup as string OR Surgeon.name)
+        const lookupName = typeof rawLookup === "string" ? rawLookup : (lookupObj?.name || null);
         const rawSurgeonName = lookupName || deal.Surgeon?.name || null;
         if (rawSurgeonName && typeof rawSurgeonName === "string") {
           const key = rawSurgeonName.toLowerCase().trim();
