@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.mark-credit-issued]
 verify_jwt = false
+
+[functions.sync-enrollment-statuses]
+verify_jwt = false

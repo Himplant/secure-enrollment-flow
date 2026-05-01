@@ -404,21 +404,30 @@ export function CreditsTab({ adminRole }: CreditsTabProps) {
     setSyncing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-credits`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
-        }
-      );
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      toast({ title: "Sync Complete", description: `${data.upserted} credits synced from CRM` });
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      };
+      const base = import.meta.env.VITE_SUPABASE_URL;
+
+      // Run credit sync and enrollment-status reverse sync in parallel
+      const [creditsRes, statusRes] = await Promise.all([
+        fetch(`${base}/functions/v1/sync-credits`, { method: "POST", headers }),
+        fetch(`${base}/functions/v1/sync-enrollment-statuses`, { method: "POST", headers }),
+      ]);
+
+      if (!creditsRes.ok) throw new Error(await creditsRes.text());
+      const creditsData = await creditsRes.json();
+      const statusData = statusRes.ok ? await statusRes.json() : { updated: 0 };
+
+      toast({
+        title: "Sync Complete",
+        description: `${creditsData.upserted} credits synced • ${statusData.updated || 0} enrollment status updates from CRM`,
+      });
       queryClient.invalidateQueries({ queryKey: ["surgeon-credits"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics-enrollments"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     } catch (err: any) {
       toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
     } finally { setSyncing(false); }
