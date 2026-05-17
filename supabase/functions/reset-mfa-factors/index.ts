@@ -70,12 +70,22 @@ Deno.serve(async (req) => {
     // Otherwise: delete ALL factors (verified or unverified) so the user can
     // re-enroll cleanly. This handles the stuck state where mfa_method='totp'
     // but only unverified factors exist (preventing both challenge and re-enroll).
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let deleted = 0;
     for (const factor of allFactors) {
-      await supabaseAdmin.auth.admin.mfa.deleteFactor({
+      const fid = (factor as any).id ?? (factor as any).factor_id;
+      if (!fid || !UUID_RE.test(fid)) {
+        console.warn("Skipping factor with invalid id:", factor);
+        continue;
+      }
+      const { error: delErr } = await supabaseAdmin.auth.admin.mfa.deleteFactor({
         userId: user.id,
-        factorId: factor.id,
+        factorId: fid,
       });
+      if (delErr) {
+        console.error("deleteFactor error:", delErr);
+        continue;
+      }
       deleted++;
     }
 
