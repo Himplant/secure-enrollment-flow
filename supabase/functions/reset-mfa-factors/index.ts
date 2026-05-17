@@ -50,28 +50,40 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (adminUser.mfa_method) {
+    // List existing factors
+    const { data: factors } = await supabaseAdmin.auth.admin.mfa.listFactors({
+      userId: user.id,
+    });
+
+    const allFactors = factors?.factors ?? [];
+    const hasVerified = allFactors.some((f: any) => f.status === "verified");
+
+    // If a verified factor already exists AND mfa_method is set, refuse —
+    // user must complete the MFA challenge instead of resetting.
+    if (hasVerified && adminUser.mfa_method) {
       return new Response(JSON.stringify({ error: "MFA already configured" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Use Admin API to force-delete all MFA factors
-    const { data: factors } = await supabaseAdmin.auth.admin.mfa.listFactors({
-      userId: user.id,
-    });
-
+    // Otherwise: delete ALL factors (verified or unverified) so the user can
+    // re-enroll cleanly. This handles the stuck state where mfa_method='totp'
+    // but only unverified factors exist (preventing both challenge and re-enroll).
     let deleted = 0;
-    if (factors?.factors) {
-      for (const factor of factors.factors) {
-        await supabaseAdmin.auth.admin.mfa.deleteFactor({
-          userId: user.id,
-          factorId: factor.id,
-        });
-        deleted++;
-      }
+    for (const factor of allFactors) {
+      await supabaseAdmin.auth.admin.mfa.deleteFactor({
+        userId: user.id,
+        factorId: factor.id,
+      });
+      deleted++;
     }
+
+    // Clear stale mfa_method so the setup flow can run cleanly
+    await supabaseAdmin
+      .from("admin_users")
+      .update({ mfa_method: null })
+      .eq("user_id", user.id);
 
     return new Response(JSON.stringify({ success: true, deleted }), {
       status: 200,
