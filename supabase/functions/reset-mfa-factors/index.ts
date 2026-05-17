@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       }
       const { error: delErr } = await supabaseAdmin.auth.admin.mfa.deleteFactor({
         userId: user.id,
-        factorId: fid,
+        id: fid,
       });
       if (delErr) {
         console.error("deleteFactor error:", delErr);
