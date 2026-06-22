@@ -340,6 +340,22 @@ Deno.serve(async (req) => {
       // Skip issued records
       if (existing?.credit_status === "issued") { skipped++; continue; }
 
+      // Skip deals where the patient has not paid the deposit.
+      // Zoho only sets Credit_Applies_From / Credit_Applies_Until once a deposit
+      // is paid. No credit window = no deposit = no credit applies. Also covers
+      // legacy/expired enrollments that never converted.
+      const hasCreditWindow = !!(credit750Expires || credit500Expires);
+      const hasPlatformEnrollment = !!existing?.enrollment_id;
+      if (!hasCreditWindow && !hasPlatformEnrollment) {
+        // If we previously created a row for this deal, remove it — credit no longer applies.
+        if (existing?.id) {
+          await supabaseAdmin.from("surgeon_credits").delete().eq("id", existing.id);
+        }
+        skipped++;
+        continue;
+      }
+
+
       // HYBRID RULE: For platform records (has enrollment_id), preserve credit dates
       // For CRM-native/import records, use CRM dates (never overwrite non-null with null)
       let finalCredit750 = credit750Expires;
