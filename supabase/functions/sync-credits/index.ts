@@ -239,7 +239,11 @@ Deno.serve(async (req) => {
       if (c.patient_email) {
         const key = c.patient_email.toLowerCase().trim();
         const existing = creditsByEmail.get(key);
-        if (!existing || c.source === "import") creditsByEmail.set(key, c);
+        // Prefer records without zoho_deal_id (platform/import records) so we merge
+        // the incoming Zoho deal into them instead of inserting a duplicate row.
+        if (!existing || (!c.zoho_deal_id && existing.zoho_deal_id)) {
+          creditsByEmail.set(key, c);
+        }
       }
     }
 
@@ -325,7 +329,9 @@ Deno.serve(async (req) => {
       let isEmailMatch = false;
       if (!existing && patientEmail) {
         const byEmail = creditsByEmail.get(patientEmail.toLowerCase().trim());
-        if (byEmail && byEmail.source === "import") {
+        // Match any existing record that hasn't yet been linked to a Zoho deal —
+        // covers both legacy 'import' rows and platform enrollment rows.
+        if (byEmail && !byEmail.zoho_deal_id) {
           existing = byEmail;
           isEmailMatch = true;
         }
