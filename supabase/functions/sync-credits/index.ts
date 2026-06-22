@@ -329,7 +329,9 @@ Deno.serve(async (req) => {
       let isEmailMatch = false;
       if (!existing && patientEmail) {
         const byEmail = creditsByEmail.get(patientEmail.toLowerCase().trim());
-        if (byEmail && byEmail.source === "import") {
+        // Match any existing record that hasn't yet been linked to a Zoho deal —
+        // covers both legacy 'import' rows and platform enrollment rows.
+        if (byEmail && !byEmail.zoho_deal_id) {
           existing = byEmail;
           isEmailMatch = true;
         }
