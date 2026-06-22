@@ -460,7 +460,51 @@ Deno.serve(async (req) => {
       if (!error) orphansFixed++;
     }
 
-    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched, ${patientsUpdated} patient surgeon assignments updated, ${orphansFixed} orphan credits backfilled`);
+    // Auto-dedup: for any patient_email with both a Zoho-deal row AND an orphan
+    // platform row, merge enrollment_id into the Zoho row and delete the orphan.
+    // This keeps a single source of truth (the CRM deal) per patient.
+    const { data: allCredits } = await supabaseAdmin
+      .from("surgeon_credits")
+      .select("id, patient_email, zoho_deal_id, enrollment_id, created_at, updated_at")
+      .not("patient_email", "is", null);
+    const byEmail = new Map<string, any[]>();
+    for (const c of allCredits || []) {
+      const k = (c.patient_email || "").toLowerCase().trim();
+      if (!k) continue;
+      const arr = byEmail.get(k) || [];
+      arr.push(c);
+      byEmail.set(k, arr);
+    }
+    let mergedDupes = 0;
+    for (const [, rows] of byEmail) {
+      if (rows.length < 2) continue;
+      const zohoRows = rows.filter(r => r.zoho_deal_id);
+      const orphanRows = rows.filter(r => !r.zoho_deal_id);
+      if (!zohoRows.length || !orphanRows.length) continue;
+      // Keep the most recently updated Zoho row as canonical
+      const keep = zohoRows.sort((a, b) =>
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      )[0];
+      const enrollmentId = keep.enrollment_id
+        || orphanRows.find(r => r.enrollment_id)?.enrollment_id
+        || null;
+      if (enrollmentId && enrollmentId !== keep.enrollment_id) {
+        await supabaseAdmin
+          .from("surgeon_credits")
+          .update({ enrollment_id: enrollmentId })
+          .eq("id", keep.id);
+      }
+      const orphanIds = orphanRows.map(r => r.id);
+      const { error: delErr } = await supabaseAdmin
+        .from("surgeon_credits")
+        .delete()
+        .in("id", orphanIds);
+      if (!delErr) mergedDupes += orphanIds.length;
+      else console.error("Dedup delete error:", delErr.message);
+    }
+
+    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched, ${patientsUpdated} patient surgeon assignments updated, ${orphansFixed} orphan credits backfilled, ${mergedDupes} duplicate rows merged`);
+
 
     return new Response(
       JSON.stringify({ success: true, total: deals.length, upserted, skipped, unchanged, patientsUpdated }),
