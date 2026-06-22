@@ -441,7 +441,26 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched, ${patientsUpdated} patient surgeon assignments updated`);
+    // Backfill: any surgeon_credits with no surgeon_id but whose patient now has one
+    const { data: orphanCredits } = await supabaseAdmin
+      .from("surgeon_credits")
+      .select("id, patient_email")
+      .is("surgeon_id", null)
+      .not("patient_email", "is", null);
+    let orphansFixed = 0;
+    for (const oc of orphanCredits || []) {
+      const key = (oc.patient_email || "").toLowerCase().trim();
+      const sid = patientSurgeonMap.get(key);
+      if (!sid) continue;
+      const sname = surgeonById.get(sid) || "Unknown";
+      const { error } = await supabaseAdmin
+        .from("surgeon_credits")
+        .update({ surgeon_id: sid, surgeon_name: sname })
+        .eq("id", oc.id);
+      if (!error) orphansFixed++;
+    }
+
+    console.log(`Sync complete: ${upserted} upserted, ${skipped} skipped (issued), ${unchanged} unchanged, ${toUpdateById.length} email-matched, ${patientsUpdated} patient surgeon assignments updated, ${orphansFixed} orphan credits backfilled`);
 
     return new Response(
       JSON.stringify({ success: true, total: deals.length, upserted, skipped, unchanged, patientsUpdated }),

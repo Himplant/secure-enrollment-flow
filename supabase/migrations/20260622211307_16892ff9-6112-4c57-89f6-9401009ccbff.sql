@@ -1,0 +1,1 @@
+UPDATE public.surgeon_credits sc SET surgeon_id = p.surgeon_id, surgeon_name = s.name FROM public.patients p JOIN public.surgeons s ON s.id = p.surgeon_id WHERE sc.surgeon_id IS NULL AND lower(sc.patient_email) = lower(p.email);
