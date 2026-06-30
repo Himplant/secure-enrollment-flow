@@ -507,18 +507,19 @@ Deno.serve(async (req) => {
     // Auto-dedup: for any patient_email with both a Zoho-deal row AND an orphan
     // platform row, merge enrollment_id into the Zoho row and delete the orphan.
     // This keeps a single source of truth (the CRM deal) per patient.
-    const { data: allCredits } = await supabaseAdmin
+    const { data: dedupCredits } = await supabaseAdmin
       .from("surgeon_credits")
       .select("id, patient_email, zoho_deal_id, enrollment_id, created_at, updated_at")
       .not("patient_email", "is", null);
     const byEmail = new Map<string, any[]>();
-    for (const c of allCredits || []) {
+    for (const c of dedupCredits || []) {
       const k = (c.patient_email || "").toLowerCase().trim();
       if (!k) continue;
       const arr = byEmail.get(k) || [];
       arr.push(c);
       byEmail.set(k, arr);
     }
+
     let mergedDupes = 0;
     for (const [, rows] of byEmail) {
       if (rows.length < 2) continue;
