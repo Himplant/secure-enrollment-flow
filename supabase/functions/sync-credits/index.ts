@@ -194,9 +194,37 @@ Deno.serve(async (req) => {
       if (p.email) knownEmails.add(p.email.toLowerCase().trim());
     }
 
-    // Filter: only process deals for patients that exist in our system
-    const deals = allDeals.filter(d => d.Email && knownEmails.has(d.Email.toLowerCase().trim()));
-    console.log(`Filtered to ${deals.length} deals matching known patients (out of ${allDeals.length})`);
+    // Load refunded enrollments — these patients should NOT appear on the credit list
+    const { data: refundedEnrollments } = await supabaseAdmin
+      .from("enrollments")
+      .select("id, patient_email")
+      .not("refunded_at", "is", null);
+    const refundedEmails = new Set<string>();
+    const refundedEnrollmentIds = new Set<string>();
+    for (const e of refundedEnrollments || []) {
+      if (e.patient_email) refundedEmails.add(e.patient_email.toLowerCase().trim());
+      if (e.id) refundedEnrollmentIds.add(e.id);
+    }
+
+    // Delete any existing surgeon_credits rows for refunded patients (cleanup of past state)
+    if (refundedEmails.size > 0) {
+      const emails = Array.from(refundedEmails);
+      const { error: refundDelErr, count } = await supabaseAdmin
+        .from("surgeon_credits")
+        .delete({ count: "exact" })
+        .in("patient_email", emails);
+      if (refundDelErr) console.error("Refund cleanup delete error:", refundDelErr.message);
+      else console.log(`Removed ${count ?? 0} credit rows for refunded patients`);
+    }
+
+    // Filter: only process deals for patients that exist in our system AND are not refunded
+    const deals = allDeals.filter(d => {
+      if (!d.Email) return false;
+      const k = d.Email.toLowerCase().trim();
+      return knownEmails.has(k) && !refundedEmails.has(k);
+    });
+    console.log(`Filtered to ${deals.length} deals matching known non-refunded patients (out of ${allDeals.length})`);
+
 
     // Load surgeons by id, name, AND zoho_id (zoho_id is the most reliable match)
     const { data: surgeons } = await supabaseAdmin.from("surgeons").select("id, name, zoho_id");
@@ -479,18 +507,19 @@ Deno.serve(async (req) => {
     // Auto-dedup: for any patient_email with both a Zoho-deal row AND an orphan
     // platform row, merge enrollment_id into the Zoho row and delete the orphan.
     // This keeps a single source of truth (the CRM deal) per patient.
-    const { data: allCredits } = await supabaseAdmin
+    const { data: dedupCredits } = await supabaseAdmin
       .from("surgeon_credits")
       .select("id, patient_email, zoho_deal_id, enrollment_id, created_at, updated_at")
       .not("patient_email", "is", null);
     const byEmail = new Map<string, any[]>();
-    for (const c of allCredits || []) {
+    for (const c of dedupCredits || []) {
       const k = (c.patient_email || "").toLowerCase().trim();
       if (!k) continue;
       const arr = byEmail.get(k) || [];
       arr.push(c);
       byEmail.set(k, arr);
     }
+
     let mergedDupes = 0;
     for (const [, rows] of byEmail) {
       if (rows.length < 2) continue;
