@@ -149,7 +149,7 @@ serve(async (req) => {
     // Fetch enrollment
     const { data: enrollment, error: fetchError } = await serviceClient
       .from("enrollments")
-      .select("id, zoho_module, zoho_record_id, patient_name, amount_cents, status")
+      .select("id, zoho_module, zoho_record_id, patient_name, patient_email, amount_cents, status, stripe_payment_intent_id, stripe_session_id, paid_at")
       .eq("id", enrollment_id)
       .single();
 
@@ -178,6 +178,36 @@ serve(async (req) => {
 
     if (updateError) throw updateError;
 
+    // Remove any surgeon_credits row(s) tied to this enrollment or patient
+    // so the internal credit list stays consistent with the refund.
+    let removedCredits = 0;
+    try {
+      const { data: creditsByEnroll } = await serviceClient
+        .from("surgeon_credits")
+        .select("id")
+        .eq("enrollment_id", enrollment_id);
+      const idsToDelete = new Set<string>((creditsByEnroll ?? []).map((c: any) => c.id));
+
+      if (enrollment.patient_email) {
+        const { data: creditsByEmail } = await serviceClient
+          .from("surgeon_credits")
+          .select("id")
+          .ilike("patient_email", enrollment.patient_email);
+        for (const c of creditsByEmail ?? []) idsToDelete.add(c.id);
+      }
+
+      if (idsToDelete.size > 0) {
+        const { error: delErr } = await serviceClient
+          .from("surgeon_credits")
+          .delete()
+          .in("id", Array.from(idsToDelete));
+        if (delErr) console.error("Failed to delete surgeon_credits:", delErr.message);
+        else removedCredits = idsToDelete.size;
+      }
+    } catch (creditErr) {
+      console.error("Credit cleanup failed (non-fatal):", creditErr);
+    }
+
     // Audit log
     await serviceClient.from("admin_audit_log").insert({
       admin_user_id: user.id,
@@ -189,14 +219,19 @@ serve(async (req) => {
         patient_name: enrollment.patient_name,
         amount_cents: enrollment.amount_cents,
         previous_status: enrollment.status,
+        removed_surgeon_credits: removedCredits,
       },
     });
 
-    // Update Zoho
+    // Update Zoho — mirror refund into CRM fields and clear the credit window
+    // so the CRM's credit views match our internal credit list.
     try {
       await updateZohoRecord(enrollment.zoho_module, enrollment.zoho_record_id, {
         Enrollment_Status: "Refunded",
         Refund_Date: refundDate,
+        Payment_Status: "Refunded",
+        Credit_Applies_From: null,
+        Credit_Applies_Until: null,
       });
 
       const amountFormatted = (enrollment.amount_cents / 100).toLocaleString("en-US", {
@@ -204,20 +239,31 @@ serve(async (req) => {
         currency: "USD",
       });
 
+      const noteLines = [
+        `Enrollment for ${enrollment.patient_name || "Unknown"} (${amountFormatted}) marked as Refunded on ${refundDate}.`,
+        `Processed by: ${user.email}`,
+        enrollment.stripe_payment_intent_id ? `Stripe PaymentIntent: ${enrollment.stripe_payment_intent_id}` : null,
+        enrollment.stripe_session_id ? `Stripe Session: ${enrollment.stripe_session_id}` : null,
+        enrollment.paid_at ? `Originally paid: ${enrollment.paid_at}` : null,
+        `Internal surgeon credit rows removed: ${removedCredits}`,
+        `CRM fields updated: Enrollment_Status=Refunded, Payment_Status=Refunded, Refund_Date=${refundDate}, Credit_Applies_From/Until cleared.`,
+      ].filter(Boolean).join("\n");
+
       await addZohoNote(
         enrollment.zoho_module,
         enrollment.zoho_record_id,
         "Enrollment Refunded",
-        `Enrollment for ${enrollment.patient_name || "Unknown"} (${amountFormatted}) has been marked as refunded on ${refundDate}. Processed by ${user.email}.`
+        noteLines
       );
     } catch (zohoError) {
       console.error("Zoho sync failed (non-fatal):", zohoError);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, removed_surgeon_credits: removedCredits }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (error) {
     console.error("Error in mark-refunded:", error);
     return new Response(JSON.stringify({ error: error.message }), {
