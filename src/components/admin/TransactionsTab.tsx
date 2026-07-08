@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { buildConsultantLatestNameMap, resolveConsultantName } from "@/lib/consultant";
 import { 
   MoreHorizontal, 
   Eye, 
