@@ -100,47 +100,74 @@ export default function AdminDashboard() {
     refetchInterval: 60_000, // auto-refresh every 60s
   });
 
-  // Canonical consultant name map — used to deduplicate consultant names
-  const CONSULTANT_EMAIL_MAP: Record<string, string> = {
-    "justin@himplant.com": "Justin Goddard",
-    "kyle@himplant.com": "Kyle Himplant",
-    "ray@himplant.com": "Ray Himplant",
+  // Canonical consultant email map — fallback when Zoho owner_email is missing
+  // and only owner_name is stored (older records / stripe-webhook path).
+  const CONSULTANT_NAME_TO_EMAIL: Record<string, string> = {
+    "kyle himplant": "kyle@himplant.com",
+    "kyle kruger": "kyle@himplant.com", // legacy name for same Zoho user
+    "justin goddard": "justin@himplant.com",
+    "ray himplant": "ray@himplant.com",
+    "siam quintero": "siam@himplant.com",
   };
 
-  // Build consultant name from owner_name or consultant email
-  const resolveConsultantName = (ownerName: string | null, consultantEmail: string | null): string | null => {
-    // First check canonical map by email
-    if (consultantEmail) {
-      const canonical = CONSULTANT_EMAIL_MAP[consultantEmail.toLowerCase().trim()];
-      if (canonical) return canonical;
-    }
-    // Fall back to owner_name from platform enrollment
-    if (ownerName) return ownerName;
-    // Last resort: use email prefix
-    if (consultantEmail) {
-      const prefix = consultantEmail.split("@")[0].toLowerCase();
-      // Try to match prefix to a canonical name
-      for (const [email, name] of Object.entries(CONSULTANT_EMAIL_MAP)) {
-        if (email.startsWith(prefix + "@")) return name;
-      }
-      return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+  // Build a stable consultant key per row: Zoho owner ID > owner email > name lookup.
+  const getConsultantKey = (e: any): string | null => {
+    if (e.owner_zoho_id) return `zid:${e.owner_zoho_id}`;
+    if (e.owner_email) return `em:${String(e.owner_email).toLowerCase().trim()}`;
+    if (e.owner_name) {
+      const normalized = String(e.owner_name).toLowerCase().trim();
+      const mappedEmail = CONSULTANT_NAME_TO_EMAIL[normalized];
+      if (mappedEmail) return `em:${mappedEmail}`;
+      return `nm:${normalized}`;
     }
     return null;
   };
 
-  // Since all paid patients now have enrollment records, use enrollments directly
-  const rawEnrollments = useMemo(() => {
-    return rawPlatformEnrollments.map((e: any) => ({
-      ...e,
-      owner_name: resolveConsultantName(e.owner_name, null),
-    }));
+  // For each stable consultant key, pick the most recently seen owner_name so
+  // a name change in the CRM immediately propagates and never creates a duplicate row.
+  const consultantLatestName = useMemo(() => {
+    const latest = new Map<string, { name: string; ts: number }>();
+    for (const e of rawPlatformEnrollments as any[]) {
+      const key = getConsultantKey(e);
+      if (!key || !e.owner_name) continue;
+      const ts = new Date(e.paid_at || e.created_at || 0).getTime();
+      const prev = latest.get(key);
+      if (!prev || ts >= prev.ts) latest.set(key, { name: e.owner_name, ts });
+    }
+    return latest;
   }, [rawPlatformEnrollments]);
 
-  // Extract unique consultant names for filter
+  const resolveConsultantName = (row: any): string | null => {
+    const key = getConsultantKey(row);
+    if (key) {
+      const latest = consultantLatestName.get(key);
+      if (latest) return latest.name;
+      // Key exists (email/id) but no name yet — derive from email prefix.
+      if (key.startsWith("em:")) {
+        const prefix = key.slice(3).split("@")[0];
+        return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+      }
+    }
+    return row.owner_name || null;
+  };
+
+  // Since all paid patients now have enrollment records, use enrollments directly.
+  // Rewrite owner_name to the latest canonical name so downstream grouping dedupes.
+  const rawEnrollments = useMemo(() => {
+    return (rawPlatformEnrollments as any[]).map((e: any) => ({
+      ...e,
+      owner_name: resolveConsultantName(e),
+      _consultantKey: getConsultantKey(e),
+    }));
+  }, [rawPlatformEnrollments, consultantLatestName]);
+
+  // Extract unique consultants for filter — dedupe by stable key, show latest name.
   const consultantNames = useMemo(() => {
-    const names = new Set<string>();
-    rawEnrollments.forEach((e: any) => { if (e.owner_name) names.add(e.owner_name); });
-    return Array.from(names).sort();
+    const byKey = new Map<string, string>();
+    rawEnrollments.forEach((e: any) => {
+      if (e._consultantKey && e.owner_name) byKey.set(e._consultantKey, e.owner_name);
+    });
+    return Array.from(new Set(byKey.values())).sort();
   }, [rawEnrollments]);
 
   // Apply global filters to enrollments
