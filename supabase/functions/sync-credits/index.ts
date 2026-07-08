@@ -290,6 +290,47 @@ Deno.serve(async (req) => {
         }
       }
       console.log(`Enrollment owner sync from Zoho: ${enrollmentOwnersUpdated} of ${enrollmentRows?.length ?? 0} rows updated`);
+
+      // Fallback: any enrollment whose email had no matching Paid deal.
+      // Search Zoho directly for a Deal with that email (any status) so we can
+      // still pull the current Owner. This handles legacy or non-Paid deals.
+      const unmatched = (enrollmentRows || []).filter(
+        (r: any) => r.patient_email && !ownerByEmail.has(r.patient_email.toLowerCase().trim())
+      );
+      let fallbackUpdated = 0;
+      for (const row of unmatched) {
+        try {
+          const email = row.patient_email.trim();
+          const url = `https://www.zohoapis.com/crm/v6/Deals/search?criteria=(Email:equals:${encodeURIComponent(email)})&fields=Email,Owner`;
+          const res = await fetch(url, {
+            headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+          });
+          if (res.status === 204 || !res.ok) continue;
+          const data = await res.json();
+          const deal = data.data?.[0];
+          if (!deal?.Owner) continue;
+          const owner = {
+            name: deal.Owner.name || null,
+            email: deal.Owner.email?.toLowerCase().trim() || null,
+            id: deal.Owner.id || null,
+          };
+          const changed =
+            (row.owner_name || null) !== owner.name ||
+            ((row.owner_email || null)?.toLowerCase() || null) !== owner.email ||
+            (row.owner_zoho_id || null) !== owner.id;
+          if (!changed) continue;
+          const { error } = await supabaseAdmin
+            .from("enrollments")
+            .update({ owner_name: owner.name, owner_email: owner.email, owner_zoho_id: owner.id })
+            .eq("id", row.id);
+          if (!error) fallbackUpdated++;
+        } catch (err) {
+          console.error(`Fallback owner lookup failed for ${row.patient_email}:`, err);
+        }
+      }
+      if (unmatched.length > 0) {
+        console.log(`Fallback owner lookup: ${fallbackUpdated} of ${unmatched.length} unmatched enrollments updated from Zoho`);
+      }
     }
 
 
