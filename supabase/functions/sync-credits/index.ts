@@ -79,7 +79,7 @@ interface ZohoDeal {
   Credit_Applies_From?: string;    // display: "$500 Credit Applies Until"
   Enrollment_Status?: string;
   Enrollment_Date?: string;
-  Owner?: { name?: string; email?: string };
+  Owner?: { id?: string; name?: string; email?: string };
   Surgeon_Name_Lookup?: string;
   Surgeon?: { name?: string; id?: string };
   Contact_Name?: { name?: string; id?: string };
