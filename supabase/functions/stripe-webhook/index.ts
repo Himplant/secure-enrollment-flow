@@ -152,7 +152,7 @@ async function createCreditRecord(supabase: any, enrollment: any): Promise<void>
       surgeon_name: surgeonName,
       patient_name: enrollment.patient_name || "Unknown",
       patient_email: enrollment.patient_email || null,
-      consultant_email: enrollment.owner_name || null,
+      consultant_email: (enrollment as any).owner_email || enrollment.owner_name || null,
       enrollment_date: enrollmentDate,
       credit_750_expires: credit750Date.toISOString().split("T")[0],
       credit_500_expires: credit500Date.toISOString().split("T")[0],
