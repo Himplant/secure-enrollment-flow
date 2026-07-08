@@ -555,6 +555,8 @@ serve(async (req) => {
           terms_version: policy?.version || body.terms_version,
           terms_sha256: policy?.terms_content_sha256 || body.terms_sha256,
            owner_name: body.owner_name || null,
+           owner_zoho_id: body.owner_zoho_id || null,
+           owner_email: body.owner_email ? body.owner_email.toLowerCase().trim() : null,
            token_hash: tokenHash,
            token_last4: tokenLast4,
            expires_at: expiresAt.toISOString(),
