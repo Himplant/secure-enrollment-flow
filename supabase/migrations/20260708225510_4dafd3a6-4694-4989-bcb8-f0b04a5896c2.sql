@@ -1,0 +1,1 @@
+UPDATE public.enrollments SET owner_name = 'Kyle Himplant' WHERE owner_name = 'Kyle Kruger';
