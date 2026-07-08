@@ -69,7 +69,7 @@ export default function AdminDashboard() {
       let query = supabase
         .from("enrollments")
         .select(`
-          status, amount_cents, created_at, paid_at, owner_name,
+          status, amount_cents, created_at, paid_at, owner_name, owner_email, owner_zoho_id,
           patients!enrollments_patient_id_fkey (
             surgeon_id,
             surgeon:surgeons(id, name)
