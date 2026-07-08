@@ -125,7 +125,7 @@ export function TransactionsTab() {
         .from("enrollments")
         .select(`
           id, token_last4, patient_name, patient_email, patient_id, 
-          amount_cents, status, payment_method_type, owner_name,
+          amount_cents, status, payment_method_type, owner_name, owner_email, owner_zoho_id,
           created_at, opened_at, terms_accepted_at, processing_at, 
           paid_at, failed_at, expired_at, expires_at, 
           terms_accept_ip, policy_id,
@@ -144,8 +144,11 @@ export function TransactionsTab() {
       const { data, error } = await query;
       if (error) throw error;
 
-      const processed = (data || []).map((enrollment: any) => ({
+      const rows = (data || []) as any[];
+      const latestNames = buildConsultantLatestNameMap(rows);
+      const processed = rows.map((enrollment: any) => ({
         ...enrollment,
+        owner_name: resolveConsultantName(enrollment, latestNames),
         surgeon_name: enrollment.patients?.surgeon?.name || null,
         surgeon_id: enrollment.patients?.surgeon_id || null,
       }));
