@@ -1,14 +1,8 @@
-// Shared consultant normalization: map legacy/renamed CRM owner names to a stable
-// key (Zoho owner id > owner email > mapped name) and resolve the latest name
-// per key so CRM renames never surface as duplicates in the UI.
-
-export const CONSULTANT_NAME_TO_EMAIL: Record<string, string> = {
-  "kyle himplant": "kyle@himplant.com",
-  "kyle kruger": "kyle@himplant.com", // legacy name for the same Zoho user
-  "justin goddard": "justin@himplant.com",
-  "ray himplant": "ray@himplant.com",
-  "siam quintero": "siam@himplant.com",
-};
+// Shared consultant normalization.
+// Zoho CRM is the source of truth for consultant identity and display name.
+// We build a stable key per row (Zoho owner id > owner email > lowercased name)
+// and resolve the latest name seen for that key so a CRM rename never surfaces
+// as a duplicate. NO hardcoded name mappings — trust whatever Zoho stores.
 
 export type ConsultantSource = {
   owner_name?: string | null;
@@ -21,12 +15,7 @@ export type ConsultantSource = {
 export function getConsultantKey(e: ConsultantSource): string | null {
   if (e.owner_zoho_id) return `zid:${e.owner_zoho_id}`;
   if (e.owner_email) return `em:${String(e.owner_email).toLowerCase().trim()}`;
-  if (e.owner_name) {
-    const normalized = String(e.owner_name).toLowerCase().trim();
-    const mapped = CONSULTANT_NAME_TO_EMAIL[normalized];
-    if (mapped) return `em:${mapped}`;
-    return `nm:${normalized}`;
-  }
+  if (e.owner_name) return `nm:${String(e.owner_name).toLowerCase().trim()}`;
   return null;
 }
 
