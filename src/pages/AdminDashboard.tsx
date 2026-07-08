@@ -100,26 +100,13 @@ export default function AdminDashboard() {
     refetchInterval: 60_000, // auto-refresh every 60s
   });
 
-  // Canonical consultant email map — fallback when Zoho owner_email is missing
-  // and only owner_name is stored (older records / stripe-webhook path).
-  const CONSULTANT_NAME_TO_EMAIL: Record<string, string> = {
-    "kyle himplant": "kyle@himplant.com",
-    "kyle kruger": "kyle@himplant.com", // legacy name for same Zoho user
-    "justin goddard": "justin@himplant.com",
-    "ray himplant": "ray@himplant.com",
-    "siam quintero": "siam@himplant.com",
-  };
-
-  // Build a stable consultant key per row: Zoho owner ID > owner email > name lookup.
+  // Consultant identity: Zoho CRM is the source of truth. Group by stable key
+  // (Zoho owner id > owner email > lowercased name) and use the latest observed
+  // name per key so CRM renames never create a duplicate.
   const getConsultantKey = (e: any): string | null => {
     if (e.owner_zoho_id) return `zid:${e.owner_zoho_id}`;
     if (e.owner_email) return `em:${String(e.owner_email).toLowerCase().trim()}`;
-    if (e.owner_name) {
-      const normalized = String(e.owner_name).toLowerCase().trim();
-      const mappedEmail = CONSULTANT_NAME_TO_EMAIL[normalized];
-      if (mappedEmail) return `em:${mappedEmail}`;
-      return `nm:${normalized}`;
-    }
+    if (e.owner_name) return `nm:${String(e.owner_name).toLowerCase().trim()}`;
     return null;
   };
 
