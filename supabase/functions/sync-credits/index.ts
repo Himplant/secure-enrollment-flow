@@ -244,12 +244,13 @@ Deno.serve(async (req) => {
 
     let enrollmentOwnersUpdated = 0;
     if (ownerByEmail.size > 0) {
-      const emailList = Array.from(ownerByEmail.keys());
-      // Fetch current enrollment owner state so we only write on change
-      const { data: enrollmentRows } = await supabaseAdmin
+      // Fetch ALL enrollments with a patient_email (avoids URL-length limits
+      // from .in() with hundreds of emails). Table is small (~few hundred rows).
+      const { data: enrollmentRows, error: enrErr } = await supabaseAdmin
         .from("enrollments")
         .select("id, patient_email, owner_name, owner_email, owner_zoho_id")
-        .in("patient_email", emailList);
+        .not("patient_email", "is", null);
+      if (enrErr) console.error("Enrollment fetch for owner sync error:", enrErr.message);
 
       const updates: { id: string; owner_name: string | null; owner_email: string | null; owner_zoho_id: string | null }[] = [];
       for (const row of enrollmentRows || []) {
