@@ -79,7 +79,7 @@ interface ZohoDeal {
   Credit_Applies_From?: string;    // display: "$500 Credit Applies Until"
   Enrollment_Status?: string;
   Enrollment_Date?: string;
-  Owner?: { name?: string; email?: string };
+  Owner?: { id?: string; name?: string; email?: string };
   Surgeon_Name_Lookup?: string;
   Surgeon?: { name?: string; id?: string };
   Contact_Name?: { name?: string; id?: string };
@@ -224,6 +224,115 @@ Deno.serve(async (req) => {
       return knownEmails.has(k) && !refundedEmails.has(k);
     });
     console.log(`Filtered to ${deals.length} deals matching known non-refunded patients (out of ${allDeals.length})`);
+
+    // ============================================================
+    // Consultant / Deal Owner sync — Zoho is the source of truth.
+    // Build a map: patient email -> latest Zoho Owner { id, name, email }
+    // Update every matching enrollment so owner_name/email/zoho_id always
+    // reflect the current CRM state (no hardcoded name mappings).
+    // ============================================================
+    const ownerByEmail = new Map<string, { id: string | null; name: string | null; email: string | null }>();
+    for (const d of allDeals) {
+      const pEmail = d.Email?.toLowerCase().trim();
+      if (!pEmail || !d.Owner) continue;
+      ownerByEmail.set(pEmail, {
+        id: d.Owner.id || null,
+        name: d.Owner.name || null,
+        email: d.Owner.email?.toLowerCase().trim() || null,
+      });
+    }
+
+    let enrollmentOwnersUpdated = 0;
+    if (ownerByEmail.size > 0) {
+      // Fetch ALL enrollments with a patient_email (avoids URL-length limits
+      // from .in() with hundreds of emails). Table is small (~few hundred rows).
+      const { data: enrollmentRows, error: enrErr } = await supabaseAdmin
+        .from("enrollments")
+        .select("id, patient_email, owner_name, owner_email, owner_zoho_id")
+        .not("patient_email", "is", null);
+      if (enrErr) console.error("Enrollment fetch for owner sync error:", enrErr.message);
+
+      const updates: { id: string; owner_name: string | null; owner_email: string | null; owner_zoho_id: string | null }[] = [];
+      for (const row of enrollmentRows || []) {
+        const key = (row.patient_email || "").toLowerCase().trim();
+        const zohoOwner = ownerByEmail.get(key);
+        if (!zohoOwner) continue;
+        const changed =
+          (row.owner_name || null) !== (zohoOwner.name || null) ||
+          ((row.owner_email || null)?.toLowerCase() || null) !== (zohoOwner.email || null) ||
+          (row.owner_zoho_id || null) !== (zohoOwner.id || null);
+        if (!changed) continue;
+        updates.push({
+          id: row.id,
+          owner_name: zohoOwner.name,
+          owner_email: zohoOwner.email,
+          owner_zoho_id: zohoOwner.id,
+        });
+      }
+
+      for (let i = 0; i < updates.length; i += 25) {
+        const chunk = updates.slice(i, i + 25);
+        const results = await Promise.all(
+          chunk.map(u =>
+            supabaseAdmin
+              .from("enrollments")
+              .update({
+                owner_name: u.owner_name,
+                owner_email: u.owner_email,
+                owner_zoho_id: u.owner_zoho_id,
+              })
+              .eq("id", u.id)
+          )
+        );
+        for (const r of results) {
+          if (r.error) console.error("Enrollment owner update error:", r.error.message);
+          else enrollmentOwnersUpdated++;
+        }
+      }
+      console.log(`Enrollment owner sync from Zoho: ${enrollmentOwnersUpdated} of ${enrollmentRows?.length ?? 0} rows updated`);
+
+      // Fallback: any enrollment whose email had no matching Paid deal.
+      // Search Zoho directly for a Deal with that email (any status) so we can
+      // still pull the current Owner. This handles legacy or non-Paid deals.
+      const unmatched = (enrollmentRows || []).filter(
+        (r: any) => r.patient_email && !ownerByEmail.has(r.patient_email.toLowerCase().trim())
+      );
+      let fallbackUpdated = 0;
+      for (const row of unmatched) {
+        try {
+          const email = row.patient_email.trim();
+          const url = `https://www.zohoapis.com/crm/v6/Deals/search?criteria=(Email:equals:${encodeURIComponent(email)})&fields=Email,Owner`;
+          const res = await fetch(url, {
+            headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+          });
+          if (res.status === 204 || !res.ok) continue;
+          const data = await res.json();
+          const deal = data.data?.[0];
+          if (!deal?.Owner) continue;
+          const owner = {
+            name: deal.Owner.name || null,
+            email: deal.Owner.email?.toLowerCase().trim() || null,
+            id: deal.Owner.id || null,
+          };
+          const changed =
+            (row.owner_name || null) !== owner.name ||
+            ((row.owner_email || null)?.toLowerCase() || null) !== owner.email ||
+            (row.owner_zoho_id || null) !== owner.id;
+          if (!changed) continue;
+          const { error } = await supabaseAdmin
+            .from("enrollments")
+            .update({ owner_name: owner.name, owner_email: owner.email, owner_zoho_id: owner.id })
+            .eq("id", row.id);
+          if (!error) fallbackUpdated++;
+        } catch (err) {
+          console.error(`Fallback owner lookup failed for ${row.patient_email}:`, err);
+        }
+      }
+      if (unmatched.length > 0) {
+        console.log(`Fallback owner lookup: ${fallbackUpdated} of ${unmatched.length} unmatched enrollments updated from Zoho`);
+      }
+    }
+
 
 
     // Load surgeons by id, name, AND zoho_id (zoho_id is the most reliable match)
