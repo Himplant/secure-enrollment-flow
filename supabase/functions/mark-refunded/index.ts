@@ -130,7 +130,10 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { data: isAdmin } = await serviceClient.rpc("is_admin", { _user_id: user.id });
+    const { data: adminRow } = await serviceClient
+      .from("admin_users").select("id").eq("user_id", user.id)
+      .not("accepted_at", "is", null).maybeSingle();
+    const isAdmin = !!adminRow;
     if (!isAdmin) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
