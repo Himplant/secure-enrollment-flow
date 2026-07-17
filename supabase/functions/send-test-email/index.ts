@@ -13,13 +13,43 @@ serve(async (req) => {
   }
 
   try {
-    const { email } = await req.json();
-    const targetEmail = email || "ray@himplant.com";
+    // SECURITY: require admin + AAL2 (MFA) — this endpoint sends real email from our domain
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const { data: adminUser } = await supabase
+      .from("admin_users").select("id").eq("user_id", user.id)
+      .not("accepted_at", "is", null).maybeSingle();
+    if (!adminUser) {
+      return new Response(JSON.stringify({ error: "Admin access required" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: aal } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (!aal || aal.currentLevel !== "aal2") {
+      return new Response(JSON.stringify({ error: "MFA required" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const { email } = await req.json().catch(() => ({}));
+    const targetEmail = email || "ray@himplant.com";
 
     // Fetch a real paid enrollment with a consent PDF
     const { data: enrollment } = await supabase
@@ -60,7 +90,7 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Error sending test email:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: "Internal error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
