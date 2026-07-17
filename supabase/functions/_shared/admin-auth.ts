@@ -73,17 +73,14 @@ export async function requireAdmin(
     };
   }
 
-  if (requireAal2) {
-    const { data: aal } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (!aal || aal.currentLevel !== "aal2") {
-      return {
-        ok: false,
-        response: new Response(JSON.stringify({ error: "MFA required" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }),
-      };
-    }
+  if (requireAal2 && !jwtHasAal2(authHeader)) {
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "MFA required" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
   }
 
   return { ok: true, userId: user.id, email: user.email ?? null, supabaseAdmin };
