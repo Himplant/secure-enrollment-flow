@@ -138,6 +138,24 @@ serve(async (req) => {
       });
     }
 
+    // SECURITY: enforce MFA (AAL2)
+    {
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: aal } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aal || aal.currentLevel !== "aal2") {
+        return new Response(JSON.stringify({ error: "MFA required" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+
+
     const { enrollment_id } = await req.json();
     if (!enrollment_id) {
       return new Response(JSON.stringify({ error: "enrollment_id required" }), {
