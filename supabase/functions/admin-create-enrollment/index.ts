@@ -1,3 +1,4 @@
+import { jwtHasAal2 } from "../_shared/admin-auth.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
@@ -85,8 +86,7 @@ serve(async (req) => {
 
     // SECURITY: enforce MFA (AAL2) so a stolen password alone cannot call admin APIs
     {
-      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (!aal || aal.currentLevel !== "aal2") {
+      if (!jwtHasAal2(authHeader)) {
         return new Response(JSON.stringify({ error: "MFA required" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -1,3 +1,4 @@
+import { jwtHasAal2 } from "../_shared/admin-auth.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -49,8 +50,7 @@ Deno.serve(async (req) => {
 
     // SECURITY: enforce MFA (AAL2)
     {
-      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (!aal || aal.currentLevel !== "aal2") {
+      if (!jwtHasAal2(authHeader)) {
         return new Response(JSON.stringify({ error: "MFA required" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

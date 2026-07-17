@@ -73,17 +73,14 @@ export async function requireAdmin(
     };
   }
 
-  if (requireAal2) {
-    const { data: aal } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (!aal || aal.currentLevel !== "aal2") {
-      return {
-        ok: false,
-        response: new Response(JSON.stringify({ error: "MFA required" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }),
-      };
-    }
+  if (requireAal2 && !jwtHasAal2(authHeader)) {
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "MFA required" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
   }
 
   return { ok: true, userId: user.id, email: user.email ?? null, supabaseAdmin };
@@ -104,4 +101,21 @@ export function hasValidCronSecret(req: Request): boolean {
     diff |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
   }
   return diff === 0;
+}
+
+// Decode the JWT and check its `aal` claim. Works server-side without a
+// persisted session (getAuthenticatorAssuranceLevel needs one).
+export function jwtHasAal2(authHeader: string | null): boolean {
+  try {
+    if (!authHeader?.startsWith("Bearer ")) return false;
+    const token = authHeader.slice(7);
+    const parts = token.split(".");
+    if (parts.length < 2) return false;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded));
+    return payload?.aal === "aal2";
+  } catch {
+    return false;
+  }
 }

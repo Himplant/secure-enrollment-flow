@@ -1,3 +1,4 @@
+import { jwtHasAal2 } from "../_shared/admin-auth.ts";
 // Pulls Zoho Deal Enrollment_Status changes back into our enrollments table.
 // Specifically handles when a deal is marked Canceled / Expired in the CRM
 // after the link was sent — we update the local status so the dashboard reflects reality.
@@ -82,8 +83,7 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const { data: aal } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (!aal || aal.currentLevel !== "aal2") {
+      if (!jwtHasAal2(authHeader)) {
         return new Response(JSON.stringify({ error: "MFA required" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
