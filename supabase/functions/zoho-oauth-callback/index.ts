@@ -38,7 +38,7 @@ serve(async (req) => {
           <head><title>OAuth Error</title></head>
           <body style="font-family: system-ui; padding: 40px; text-align: center;">
             <h1 style="color: #cc5000;">OAuth Error</h1>
-            <p>Error: ${error}</p>
+            <p>Error: ${escapeHtml(error)}</p>
             <p>Please try again or contact support.</p>
           </body>
         </html>
@@ -120,7 +120,7 @@ serve(async (req) => {
           <head><title>Token Error</title></head>
           <body style="font-family: system-ui; padding: 40px; text-align: center;">
             <h1 style="color: #cc5000;">Token Exchange Failed</h1>
-            <p>Error: ${tokenData.error}</p>
+            <p>Error: ${escapeHtml(tokenData.error)}</p>
             <p>Please try again.</p>
           </body>
         </html>
@@ -222,7 +222,7 @@ serve(async (req) => {
         <head><title>Error</title></head>
         <body style="font-family: system-ui; padding: 40px; text-align: center;">
           <h1 style="color: #cc5000;">Unexpected Error</h1>
-          <p>${errorMessage}</p>
+          <p>${escapeHtml(errorMessage)}</p>
         </body>
       </html>
       `,
