@@ -524,17 +524,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      auth_user_email: { Args: never; Returns: string }
-      get_pending_invite_id: { Args: { _user_email: string }; Returns: string }
-      has_admin_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["admin_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
-      has_pending_invite: { Args: { _user_email: string }; Returns: boolean }
-      is_admin: { Args: { _user_id: string }; Returns: boolean }
+      [_ in never]: never
     }
     Enums: {
       admin_role: "admin" | "viewer" | "super_admin"
