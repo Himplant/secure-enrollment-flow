@@ -83,6 +83,18 @@ serve(async (req) => {
       });
     }
 
+    // SECURITY: enforce MFA (AAL2) so a stolen password alone cannot call admin APIs
+    {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aal || aal.currentLevel !== "aal2") {
+        return new Response(JSON.stringify({ error: "MFA required" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+
     // SECURITY: Viewers cannot create enrollments
     if (adminUser.role === "viewer") {
       return new Response(JSON.stringify({ error: "Viewers do not have permission to create enrollments" }), {

@@ -155,19 +155,27 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Allow cron/service calls via shared secret; otherwise require admin + AAL2.
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    const providedCron = req.headers.get("x-cron-secret") ?? "";
+    const isCron = !!cronSecret && providedCron === cronSecret;
+
+    if (!isCron) {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
       });
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (user) {
+      const { data: { user } } = await userClient.auth.getUser();
+      if (!user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const supabaseAdminCheck = createClient(supabaseUrl, supabaseServiceKey);
       const { data: adminUser } = await supabaseAdminCheck
         .from("admin_users").select("id").eq("user_id", user.id)
@@ -177,10 +185,16 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      const { data: aal } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aal || aal.currentLevel !== "aal2") {
+        return new Response(JSON.stringify({ error: "MFA required" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
-    // If no user resolved, treat as cron/service call (allowed)
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
 
     // Fetch deals from Zoho
     const accessToken = await getZohoAccessToken();

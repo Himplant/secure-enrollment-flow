@@ -47,6 +47,18 @@ Deno.serve(async (req) => {
       });
     }
 
+    // SECURITY: enforce MFA (AAL2)
+    {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aal || aal.currentLevel !== "aal2") {
+        return new Response(JSON.stringify({ error: "MFA required" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+
+
     const body = await req.json();
 
     // Handle refund action (issued → earned)
