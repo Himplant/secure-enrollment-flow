@@ -135,7 +135,7 @@ export function TransactionsTab() {
           )
         `)
         .order("created_at", { ascending: false })
-        .limit(200);
+        .limit(5000);
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter as EnrollmentStatus);
