@@ -33,6 +33,7 @@ const PortalPaymentAccount = lazy(() => import("./pages/PortalPaymentAccount"));
 const PortalReports = lazy(() => import("./pages/PortalReports"));
 const PortalTeam = lazy(() => import("./pages/PortalTeam"));
 const PortalSelectWorkspace = lazy(() => import("./pages/PortalSelectWorkspace"));
+const PortalDistributorDashboard = lazy(() => import("./pages/PortalDistributorDashboard"));
 const PortalAcceptInvite = lazy(() => import("./pages/PortalAcceptInvite"));
 const PortalResetPassword = lazy(() => import("./pages/PortalResetPassword"));
 const PortalMfa = lazy(() => import("./pages/PortalMfa"));
