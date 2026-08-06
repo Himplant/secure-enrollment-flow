@@ -40,6 +40,11 @@ Deno.serve(async (req) => {
     // Narrow to the organisation the caller is currently acting as.
     const auth = await applyWorkspace(baseAuth, body);
     if (!auth.ok) return auth.response;
+    // The role must hold inside the ACTIVE workspace, not just somewhere.
+    const allowedRoles: string[] = ["surgeon_admin", "surgeon_staff"];
+    if (!auth.memberships.some((m) => allowedRoles.includes(m.role))) {
+      return json({ error: "Insufficient portal role" }, 403);
+    }
     const consultationId = String(body?.consultation_id ?? "");
     const action = String(body?.action ?? "send_reminder");
     if (!consultationId) return json({ error: "consultation_id is required" }, 400);
