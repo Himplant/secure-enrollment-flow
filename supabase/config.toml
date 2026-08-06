@@ -65,3 +65,37 @@ verify_jwt = false
 
 [functions.intl-reconcile-payments]
 verify_jwt = false
+
+# Provider setup. All of these validate the caller in code (admin/portal AAL2),
+# except the OAuth callback and the payment webhook, which authenticate the
+# request via one-time state and HMAC signature respectively.
+[functions.admin-save-provider-platform-config]
+verify_jwt = false
+
+[functions.provider-save-manual-credentials]
+verify_jwt = false
+
+[functions.provider-connect-start]
+verify_jwt = false
+
+[functions.provider-connect-callback]
+verify_jwt = false
+
+[functions.provider-test-connection]
+verify_jwt = false
+
+[functions.provider-refresh-status]
+verify_jwt = false
+
+[functions.provider-set-active]
+verify_jwt = false
+
+[functions.provider-disconnect]
+verify_jwt = false
+
+[functions.provider-rotate-credentials]
+verify_jwt = false
+
+[functions.provider-config-status]
+verify_jwt = false
+

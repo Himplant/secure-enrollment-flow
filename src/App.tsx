@@ -29,6 +29,7 @@ const ConsultationSuccess = lazy(() => import("./pages/ConsultationSuccess"));
 // Clinic / distributor portal (Phase 3) — also flag-gated.
 const PortalLogin = lazy(() => import("./pages/PortalLogin"));
 const PortalDashboard = lazy(() => import("./pages/PortalDashboard"));
+const PortalPaymentAccount = lazy(() => import("./pages/PortalPaymentAccount"));
 const PortalProtectedRoute = lazy(() =>
   import("./components/portal/PortalProtectedRoute").then(m => ({ default: m.PortalProtectedRoute }))
 );
@@ -90,6 +91,11 @@ const App = () => (
               <Route path="/portal" element={
                 <Suspense fallback={<AdminFallback />}>
                   <PortalProtectedRoute><PortalDashboard /></PortalProtectedRoute>
+                </Suspense>
+              } />
+              <Route path="/portal/payment-account" element={
+                <Suspense fallback={<AdminFallback />}>
+                  <PortalProtectedRoute><PortalPaymentAccount /></PortalProtectedRoute>
                 </Suspense>
               } />
             </>

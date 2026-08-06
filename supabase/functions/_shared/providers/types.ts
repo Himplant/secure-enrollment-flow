@@ -21,6 +21,11 @@ export interface CheckoutRequest {
   consultationId: string;
   /** Merchant that money settles to — the clinic/surgeon, never Himplant. */
   recipientMerchantId: string | null;
+  /**
+   * Surgeon `provider_accounts.id`. Real providers load that account's own
+   * encrypted credentials for the call; the simulator ignores it.
+   */
+  providerAccountId?: string | null;
   amountMinor: number;
   currency: string;
   country: string;
@@ -31,7 +36,15 @@ export interface CheckoutRequest {
   pendingUrl: string;
   failureUrl: string;
   environment: "sandbox" | "live";
+  /** Consultation link expiry (48h gate) — mirrored to the provider when supported. */
+  expiresAt?: string | null;
 }
+
+/** Context real adapters need to resolve per-surgeon credentials. */
+export interface ProviderCallContext {
+  providerAccountId?: string | null;
+}
+
 
 export interface CheckoutResult {
   checkoutUrl: string;
@@ -87,7 +100,7 @@ export interface PaymentProvider {
 
   /** Payment lifecycle. */
   createCheckout(req: CheckoutRequest): Promise<CheckoutResult>;
-  getPayment(lookupId: string): Promise<NormalizedPayment>;
+  getPayment(lookupId: string, ctx?: ProviderCallContext): Promise<NormalizedPayment>;
   verifyWebhook(req: Request, rawBody: string): Promise<WebhookVerification>;
   normalizePaymentStatus(providerStatus: string): IntlPaymentStatus;
   getAvailablePaymentMethods(country: string): string[];

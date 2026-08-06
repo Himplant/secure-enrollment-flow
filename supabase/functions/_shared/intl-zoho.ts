@@ -109,41 +109,70 @@ const ENROLLMENT_STATUS: Record<string, string> = {
   expired: "expired",
   canceled: "canceled",
   refunded: "refunded",
-  disputed: "refunded",
+  // A chargeback is NOT a refund — keep them distinct in the CRM.
+  disputed: "disputed",
 };
 
 export function toEnrollmentStatus(paymentStatus: string): string {
   return ENROLLMENT_STATUS[paymentStatus] ?? "created";
 }
 
+/** Only these Zoho modules can hold a consultation invitation. */
+export const SUPPORTED_ZOHO_MODULES = ["Deals", "Accounts"] as const;
+export type SupportedZohoModule = (typeof SUPPORTED_ZOHO_MODULES)[number];
+
+export function normalizeZohoModule(value: unknown): SupportedZohoModule | null {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "deals" || raw === "deal") return "Deals";
+  if (raw === "accounts" || raw === "account") return "Accounts";
+  return null;
+}
+
+/**
+ * Writes ONLY the five live, verified Enrollment_* fields that the U.S.
+ * SecurePay flow already writes. No unverified custom field is ever sent —
+ * international context goes into a Note instead (see consultationContextNote).
+ */
 export async function writeConsultationToZoho(w: ZohoConsultationWriteback): Promise<void> {
   const token = await getZohoAccessToken();
+  const module = normalizeZohoModule(w.module);
+  if (!module) throw new Error(`Unsupported Zoho module: ${w.module}`);
 
-  // Proven U.S. Enrollment_* fields first — these are what CRM users, views
-  // and the status-sync jobs already rely on.
   const payload: Record<string, unknown> = {
     Enrollment_Status: toEnrollmentStatus(w.paymentStatus),
-    Enrollment_Link: w.paymentUrl,
     Enrollment_Date: zohoDate(new Date().toISOString()),
     Enrollment_Expires_At: zohoDateTime(w.expiresAt),
     Enrollment_Token_Last4: w.tokenLast4,
-    // International-only context.
-    Consultation_Amount: w.amountMinor / 100,
-    Consultation_Currency: w.currency,
-    Consultation_Provider: w.provider,
-    Consultation_Country: w.country,
-    Consultation_Policy_Version: w.policyVersion,
   };
 
-  if (w.paidAt) payload.Enrollment_Paid_At = zohoDateTime(w.paidAt);
+  // Never overwrite a real patient link with a masked or unavailable value.
+  if (w.paymentUrl && !w.paymentUrl.includes("•") && !/unavailable/i.test(w.paymentUrl)) {
+    payload.Enrollment_Link = w.paymentUrl;
+  }
 
-  const res = await fetch(`https://www.zohoapis.com/crm/v6/${w.module}/${w.recordId}`, {
+  const res = await fetch(`https://www.zohoapis.com/crm/v6/${module}/${w.recordId}`, {
     method: "PUT",
     headers: { Authorization: `Zoho-oauthtoken ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ data: [payload] }),
   });
   if (!res.ok) throw new Error(`Zoho writeback failed (${res.status}): ${await res.text()}`);
 }
+
+/** Human-readable international context, written as a Note (no custom fields). */
+export function consultationContextNote(w: ZohoConsultationWriteback): string {
+  const lines = [
+    `Payment status: ${w.paymentStatus}`,
+    `Amount: ${(w.amountMinor / 100).toFixed(2)} ${w.currency}`,
+    `Provider: ${w.provider}`,
+    `Country: ${w.country}`,
+    `Surgeon: ${w.surgeonName}`,
+    `Policy version: ${w.policyVersion ?? "n/a"}`,
+    `Link expires: ${w.expiresAt}`,
+  ];
+  if (w.paidAt) lines.push(`Paid at: ${w.paidAt}`);
+  return lines.join("\n");
+}
+
 
 export async function addZohoNote(
   module: string,

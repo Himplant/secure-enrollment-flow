@@ -1461,63 +1461,97 @@ export type Database = {
           capabilities: Json
           connected_at: string | null
           connected_by: string | null
+          connection_error: string | null
           connection_method: Database["public"]["Enums"]["provider_connection_method"]
           country: Database["public"]["Enums"]["intl_country"]
           created_at: string
+          credential_masks: Json
           currency: string
           disconnected_at: string | null
           environment: string
           external_merchant_id: string | null
           id: string
           is_active: boolean
+          last_tested_at: string | null
           last_verified_at: string | null
+          live_mode: boolean
           onboarding_status: string | null
+          onboarding_url: string | null
+          platform_config_id: string | null
           provider: Database["public"]["Enums"]["payment_provider"]
+          scopes: string | null
           status: Database["public"]["Enums"]["provider_account_status"]
           surgeon_id: string
+          token_expires_at: string | null
           updated_at: string
+          webhook_status: string | null
         }
         Insert: {
           capabilities?: Json
           connected_at?: string | null
           connected_by?: string | null
+          connection_error?: string | null
           connection_method?: Database["public"]["Enums"]["provider_connection_method"]
           country: Database["public"]["Enums"]["intl_country"]
           created_at?: string
+          credential_masks?: Json
           currency: string
           disconnected_at?: string | null
           environment?: string
           external_merchant_id?: string | null
           id?: string
           is_active?: boolean
+          last_tested_at?: string | null
           last_verified_at?: string | null
+          live_mode?: boolean
           onboarding_status?: string | null
+          onboarding_url?: string | null
+          platform_config_id?: string | null
           provider: Database["public"]["Enums"]["payment_provider"]
+          scopes?: string | null
           status?: Database["public"]["Enums"]["provider_account_status"]
           surgeon_id: string
+          token_expires_at?: string | null
           updated_at?: string
+          webhook_status?: string | null
         }
         Update: {
           capabilities?: Json
           connected_at?: string | null
           connected_by?: string | null
+          connection_error?: string | null
           connection_method?: Database["public"]["Enums"]["provider_connection_method"]
           country?: Database["public"]["Enums"]["intl_country"]
           created_at?: string
+          credential_masks?: Json
           currency?: string
           disconnected_at?: string | null
           environment?: string
           external_merchant_id?: string | null
           id?: string
           is_active?: boolean
+          last_tested_at?: string | null
           last_verified_at?: string | null
+          live_mode?: boolean
           onboarding_status?: string | null
+          onboarding_url?: string | null
+          platform_config_id?: string | null
           provider?: Database["public"]["Enums"]["payment_provider"]
+          scopes?: string | null
           status?: Database["public"]["Enums"]["provider_account_status"]
           surgeon_id?: string
+          token_expires_at?: string | null
           updated_at?: string
+          webhook_status?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "provider_accounts_platform_config_id_fkey"
+            columns: ["platform_config_id"]
+            isOneToOne: false
+            referencedRelation: "provider_platform_configs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "provider_accounts_surgeon_id_fkey"
             columns: ["surgeon_id"]
@@ -1526,6 +1560,69 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      provider_platform_configs: {
+        Row: {
+          callback_url: string | null
+          capabilities: Json
+          country: Database["public"]["Enums"]["intl_country"] | null
+          created_at: string
+          created_by: string | null
+          credential_masks: Json
+          environment: string
+          id: string
+          is_complete: boolean
+          last_test_error: string | null
+          last_verified_at: string | null
+          missing_fields: string[]
+          provider: Database["public"]["Enums"]["payment_provider"]
+          return_url: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          callback_url?: string | null
+          capabilities?: Json
+          country?: Database["public"]["Enums"]["intl_country"] | null
+          created_at?: string
+          created_by?: string | null
+          credential_masks?: Json
+          environment?: string
+          id?: string
+          is_complete?: boolean
+          last_test_error?: string | null
+          last_verified_at?: string | null
+          missing_fields?: string[]
+          provider: Database["public"]["Enums"]["payment_provider"]
+          return_url?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          callback_url?: string | null
+          capabilities?: Json
+          country?: Database["public"]["Enums"]["intl_country"] | null
+          created_at?: string
+          created_by?: string | null
+          credential_masks?: Json
+          environment?: string
+          id?: string
+          is_complete?: boolean
+          last_test_error?: string | null
+          last_verified_at?: string | null
+          missing_fields?: string[]
+          provider?: Database["public"]["Enums"]["payment_provider"]
+          return_url?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: []
       }
       surgeon_credits: {
         Row: {
@@ -1685,6 +1782,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      consume_provider_oauth_state: {
+        Args: { _state: string }
+        Returns: {
+          code_verifier: string
+          created_by: string
+          created_by_email: string
+          environment: string
+          platform_config_id: string
+          provider: Database["public"]["Enums"]["payment_provider"]
+          redirect_after: string
+          surgeon_id: string
+        }[]
+      }
+      create_provider_oauth_state: {
+        Args: {
+          _code_verifier: string
+          _created_by: string
+          _created_by_email: string
+          _environment: string
+          _platform_config_id: string
+          _provider: Database["public"]["Enums"]["payment_provider"]
+          _redirect_after: string
+          _state: string
+          _surgeon_id: string
+          _ttl_seconds?: number
+        }
+        Returns: undefined
+      }
       read_consultation_link_secret: {
         Args: { _consultation_id: string }
         Returns: {
@@ -1693,12 +1818,52 @@ export type Database = {
           token_last4: string
         }[]
       }
+      read_provider_account_credentials: {
+        Args: { _account_id: string }
+        Returns: {
+          encrypted_blob: string
+          encryption_version: number
+          environment: string
+          expires_at: string
+          iv: string
+          scope: string
+        }[]
+      }
+      read_provider_platform_credentials: {
+        Args: { _config_id: string }
+        Returns: {
+          encrypted_blob: string
+          encryption_version: number
+          iv: string
+        }[]
+      }
       store_consultation_link_secret: {
         Args: {
           _ciphertext: string
           _consultation_id: string
           _iv: string
           _last4: string
+        }
+        Returns: undefined
+      }
+      store_provider_account_credentials: {
+        Args: {
+          _account_id: string
+          _blob: string
+          _environment: string
+          _expires_at: string
+          _iv: string
+          _scope: string
+          _version?: number
+        }
+        Returns: undefined
+      }
+      store_provider_platform_credentials: {
+        Args: {
+          _blob: string
+          _config_id: string
+          _iv: string
+          _version?: number
         }
         Returns: undefined
       }

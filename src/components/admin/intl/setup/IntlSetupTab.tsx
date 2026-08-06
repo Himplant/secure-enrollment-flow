@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Info } from "lucide-react";
 import { IntlSurgeonsSection } from "./IntlSurgeonsSection";
-import { ProviderAccountsSection } from "./ProviderAccountsSection";
+import { ProviderSetupPanel } from "@/components/providers/ProviderSetupPanel";
 import { DistributorsSection } from "./DistributorsSection";
 import { IntlTermsSection } from "./IntlTermsSection";
 import { PortalUsersSection } from "./PortalUsersSection";
@@ -57,7 +57,7 @@ export function IntlSetupTab() {
           <IntlSurgeonsSection />
         </TabsContent>
         <TabsContent value="accounts" className="mt-4">
-          <ProviderAccountsSection />
+          <ProviderSetupPanel scope="admin" />
         </TabsContent>
         <TabsContent value="distributors" className="mt-4">
           <DistributorsSection />

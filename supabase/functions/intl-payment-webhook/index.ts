@@ -15,7 +15,7 @@ import { getProvider } from "../_shared/providers/registry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-test-provider-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-test-provider-secret, x-signature, x-request-id",
 };
 
 const ok = () => new Response(JSON.stringify({ received: true }), {
@@ -110,7 +110,32 @@ Deno.serve(async (req) => {
   };
 
   try {
-    const payment = await provider.getPayment(verification.lookupId);
+    // Real providers need the surgeon's own credentials to re-fetch the
+    // payment, so the consultation is located first from the payload's
+    // external_reference and the account id is then handed to the adapter.
+    const hintedConsultationId = extractExternalReference(rawBody, url);
+    let providerAccountId: string | null = null;
+    if (hintedConsultationId) {
+      const { data: hinted } = await admin
+        .from("consultations")
+        .select("provider_account_id")
+        .eq("id", hintedConsultationId)
+        .maybeSingle();
+      providerAccountId = (hinted?.provider_account_id as string | null) ?? null;
+    }
+    if (!providerAccountId && providerName !== "test") {
+      // Fall back to the only connected account able to see this payment.
+      const { data: candidate } = await admin
+        .from("provider_accounts")
+        .select("id")
+        .eq("provider", providerName)
+        .eq("status", "connected")
+        .eq("is_active", true)
+        .limit(2);
+      if ((candidate ?? []).length === 1) providerAccountId = candidate![0].id as string;
+    }
+
+    const payment = await provider.getPayment(verification.lookupId, { providerAccountId });
     const consultationId = payment.externalReference;
     if (!consultationId) {
       await markStatus("orphan", "no external reference");
@@ -252,6 +277,20 @@ Deno.serve(async (req) => {
     return ok();
   }
 });
+
+/** Best-effort read of the consultation id a provider payload points at. */
+function extractExternalReference(raw: string, url: URL): string | null {
+  const fromQuery = url.searchParams.get("external_reference");
+  if (fromQuery) return fromQuery;
+  try {
+    const body = JSON.parse(raw) as Record<string, unknown>;
+    const direct = body.external_reference;
+    if (typeof direct === "string") return direct;
+    const nested = (body.data as { external_reference?: unknown } | undefined)?.external_reference;
+    if (typeof nested === "string") return nested;
+  } catch { /* signature already validated; payload shape is advisory only */ }
+  return null;
+}
 
 function safeJson(raw: string): unknown {
   try {

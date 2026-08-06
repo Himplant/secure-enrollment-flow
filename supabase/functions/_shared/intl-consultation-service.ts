@@ -9,7 +9,7 @@ import { requireIntlEnabled } from "./flags.ts";
 import { generateConsultationToken, hashConsultationToken, tokenLast4 } from "./intl-token.ts";
 import { consultationLinkUrl, storeLinkToken } from "./intl-link-secret.ts";
 import { createPolicySnapshot, resolveIntlPolicy } from "./intl-policy.ts";
-import { fetchAndUpsertSurgeonFromZoho } from "./intl-zoho.ts";
+import { fetchAndUpsertSurgeonFromZoho, normalizeZohoModule } from "./intl-zoho.ts";
 import { linkExpiresAt } from "./intl-expiry.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -72,29 +72,42 @@ export async function createIntlConsultation(
   if (!patientName) return fail(400, "patient_name is required");
 
   // ---- 1. Surgeon ----------------------------------------------------
+  // Zoho Surgeons is the source of truth. Whenever a Zoho surgeon id is
+  // supplied we ALWAYS refresh from Zoho first — even if a local row exists —
+  // before using country/provider/policy derived from it.
   let surgeon: Record<string, unknown> | null = null;
 
-  if (input.surgeonId) {
+  if (input.zohoSurgeonId) {
+    const synced = await fetchAndUpsertSurgeonFromZoho(admin, input.zohoSurgeonId);
+    if (!synced) {
+      return fail(
+        502,
+        `Unable to refresh surgeon ${input.zohoSurgeonId} from Zoho. Check the Surgeons record (Full_Name, Email, Mailing_Country) and try again.`,
+      );
+    }
+    const { data: fresh } = await admin.from("surgeons").select("*").eq("id", synced.id).maybeSingle();
+    surgeon = fresh ?? null;
+    if (!surgeon?.country) {
+      return fail(400, "Zoho surgeon record has no Mailing_Country. Set the country in Zoho and retry.");
+    }
+    if (!["MX", "CO", "CL"].includes(String(surgeon.country).toUpperCase())) {
+      return fail(
+        400,
+        `Surgeon country ${String(surgeon.country)} is not a supported international country (MX, CO, CL).`,
+      );
+    }
+  } else if (input.surgeonId) {
     const { data } = await admin.from("surgeons").select("*").eq("id", input.surgeonId).maybeSingle();
     surgeon = data ?? null;
-  } else if (input.zohoSurgeonId) {
-    const { data } = await admin.from("surgeons").select("*").eq("zoho_id", input.zohoSurgeonId).maybeSingle();
-    surgeon = data ?? null;
-    if (!surgeon) {
-      const synced = await fetchAndUpsertSurgeonFromZoho(admin, input.zohoSurgeonId);
-      if (synced) {
-        const { data: fresh } = await admin.from("surgeons").select("*").eq("id", synced.id).maybeSingle();
-        surgeon = fresh ?? null;
-      }
-    }
   }
 
   if (!surgeon) return fail(404, "Surgeon not found. Provide surgeon_id or a valid Zoho surgeon id.");
   if (!surgeon.is_active) return fail(409, "Surgeon is inactive");
   if (!surgeon.country) return fail(400, "This surgeon has no country set in Zoho");
 
-  const country = String(surgeon.country);
+  const country = String(surgeon.country).toUpperCase();
   const surgeonId = String(surgeon.id);
+
 
   // ---- 2. Country settings -------------------------------------------
   const { data: settings } = await admin
@@ -214,16 +227,27 @@ export async function createIntlConsultation(
   }
 
   // ---- 7. Duplicate prevention for Zoho-sourced invitations -----------
+  // Scoped by BOTH module and record id: a Deals record and an Accounts
+  // record can legitimately share the same numeric id.
+  const zohoModule = input.zohoModule ? normalizeZohoModule(input.zohoModule) : null;
+  if (input.zohoModule && !zohoModule) {
+    return fail(400, `Unsupported Zoho module "${input.zohoModule}". Use Deals or Accounts.`);
+  }
+
   let existingConsultation: Record<string, unknown> | null = null;
-  if (input.zohoRecordId) {
+  if (input.zohoRecordId && zohoModule) {
     const { data } = await admin
       .from("consultations")
-      .select("id, payment_status")
+      .select("id, payment_status, policy_snapshot_id")
+      .eq("zoho_module", zohoModule)
       .eq("zoho_record_id", input.zohoRecordId)
       .in("payment_status", ["draft", "link_created", "link_sent", "link_opened"])
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     existingConsultation = data ?? null;
   }
+
 
   // ---- 8. Mint the link ----------------------------------------------
   const token = generateConsultationToken();
@@ -248,7 +272,7 @@ export async function createIntlConsultation(
     payment_status: "link_created",
     consultation_status: "awaiting_payment",
     preferred_language: language,
-    zoho_module: input.zohoModule ?? null,
+    zoho_module: zohoModule,
     zoho_record_id: input.zohoRecordId ?? null,
     notes: input.notes ?? null,
     opened_at: null,
@@ -271,9 +295,24 @@ export async function createIntlConsultation(
     consultationId = created.id as string;
   }
 
+  // Replacing an unpaid invitation: the previous private link secret is
+  // overwritten (single row per consultation) and the superseded snapshot is
+  // retained as history — snapshots are immutable, so nothing is deleted and
+  // the consultation is simply repointed at the new one below.
   await storeLinkToken(admin, consultationId, token);
 
-  await createPolicySnapshot(admin, {
+  if (existingConsultation?.policy_snapshot_id) {
+    await admin.from("consultation_events").insert({
+      consultation_id: consultationId,
+      event_type: "policy_snapshot_superseded",
+      event_data: { previous_snapshot_id: existingConsultation.policy_snapshot_id },
+      actor_type: input.actorType,
+      actor_id: input.actorId ?? null,
+      actor_email: input.actorEmail ?? null,
+    });
+  }
+
+  const newSnapshotId = await createPolicySnapshot(admin, {
     consultationId,
     resolved,
     surgeonId,
@@ -283,6 +322,12 @@ export async function createIntlConsultation(
     amountMinor,
     currency,
   });
+
+  // Guarantee the consultation references the newly frozen snapshot.
+  await admin
+    .from("consultations")
+    .update({ policy_snapshot_id: newSnapshotId })
+    .eq("id", consultationId);
 
   await admin.from("consultation_events").insert({
     consultation_id: consultationId,

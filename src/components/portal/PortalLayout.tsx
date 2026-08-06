@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
-import { Building2, LogOut } from "lucide-react";
+import { Building2, CreditCard, LogOut } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { usePortalAuth } from "@/hooks/usePortalAuth";
 
@@ -25,10 +26,20 @@ export function PortalLayout({ children }: { children: ReactNode }) {
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => signOut()}>
+          <div className="flex items-center gap-1">
+            {memberships.some((m) => m.org_type === "surgeon" && m.role === "surgeon_admin" && m.is_active) && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/portal/payment-account">
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Payment account
+                </Link>
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => signOut()}>
             <LogOut className="mr-2 h-4 w-4" />
-            Sign out
-          </Button>
+              Sign out
+            </Button>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
