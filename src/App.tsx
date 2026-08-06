@@ -19,6 +19,12 @@ const AdminProtectedRoute = lazy(() =>
   import("./components/admin/AdminProtectedRoute").then(m => ({ default: m.AdminProtectedRoute }))
 );
 
+// International module — lazy so it adds nothing to the U.S. critical path.
+const ConsultationPay = lazy(() => import("./pages/ConsultationPay"));
+const ConsultationPending = lazy(() => import("./pages/ConsultationPending"));
+const ConsultationSuccess = lazy(() => import("./pages/ConsultationSuccess"));
+
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -58,8 +64,22 @@ const App = () => (
               </AdminProtectedRoute>
             </Suspense>
           } />
+          {INTL_BUILD_ENABLED && (
+            <>
+              <Route path="/consult/:token" element={
+                <Suspense fallback={<AdminFallback />}><ConsultationPay /></Suspense>
+              } />
+              <Route path="/consult/:token/pending" element={
+                <Suspense fallback={<AdminFallback />}><ConsultationPending /></Suspense>
+              } />
+              <Route path="/consult/:token/success" element={
+                <Suspense fallback={<AdminFallback />}><ConsultationSuccess /></Suspense>
+              } />
+            </>
+          )}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
+
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
