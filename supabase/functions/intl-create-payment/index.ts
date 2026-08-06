@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
     const checkout = await provider.createCheckout({
       consultationId: c.id as string,
       recipientMerchantId: account.external_merchant_id as string | null,
+      providerAccountId: account.id as string,
       amountMinor: Number(c.amount_minor),
       currency: String(c.currency),
       country: String(c.country),
@@ -116,6 +117,7 @@ Deno.serve(async (req) => {
       pendingUrl: `${appUrl}/consult/${token}/pending`,
       failureUrl: `${appUrl}/consult/${token}?failed=1`,
       environment: (account.environment as "sandbox" | "live") ?? "sandbox",
+      expiresAt: c.expires_at as string,
     });
 
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
