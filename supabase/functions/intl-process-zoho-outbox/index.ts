@@ -2,7 +2,12 @@
 // attempt limits and a dead-letter state. Admins can retry dead items.
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { requireAdmin } from "../_shared/admin-auth.ts";
-import { addZohoNote, logIntegration, writeConsultationToZoho } from "../_shared/intl-zoho.ts";
+import {
+  addZohoNote,
+  consultationContextNote,
+  logIntegration,
+  writeConsultationToZoho,
+} from "../_shared/intl-zoho.ts";
 import { consultationLinkUrl, readLinkToken } from "../_shared/intl-link-secret.ts";
 
 const corsHeaders = {
@@ -94,7 +99,7 @@ Deno.serve(async (req) => {
       const rawToken = await readLinkToken(admin, consultationId);
       if (!rawToken) throw new Error("Link token unavailable — cannot write the CRM link");
 
-      await writeConsultationToZoho({
+      const writeback = {
         module: String(c.zoho_module),
         recordId: String(c.zoho_record_id),
         paymentUrl: consultationLinkUrl(rawToken),
@@ -108,7 +113,22 @@ Deno.serve(async (req) => {
         surgeonName: String(surgeon?.name ?? ""),
         country: String(c.country),
         policyVersion: (c.terms_version as string) ?? null,
-      });
+      };
+
+      await writeConsultationToZoho(writeback);
+
+      // Unverified custom fields are never written; international payment,
+      // consultation and surgery context is recorded as a Note instead.
+      await addZohoNote(
+        String(c.zoho_module),
+        String(c.zoho_record_id),
+        `International consultation — ${String(c.payment_status)}`,
+        [
+          consultationContextNote(writeback),
+          `Consultation status: ${String(c.consultation_status)}`,
+          `Surgery status: ${String(c.surgery_status)}`,
+        ].join("\n"),
+      );
 
       if (item.operation === "add_note" && item.payload && (item.payload as Record<string, string>).note) {
         const p = item.payload as Record<string, string>;
