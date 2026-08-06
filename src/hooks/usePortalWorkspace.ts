@@ -44,6 +44,15 @@ export function usePortalWorkspace() {
     [workspaces, stored],
   );
 
+  // Persist the resolved workspace so every edge-function call carries it and
+  // the server can narrow scope to this organisation alone.
+  useEffect(() => {
+    if (active && stored !== active.key) {
+      window.localStorage.setItem(STORAGE_KEY, active.key);
+    }
+  }, [active, stored]);
+
+
   const setActive = useCallback((key: string) => {
     window.localStorage.setItem(STORAGE_KEY, key);
     window.location.assign(key.startsWith("distributor:") ? "/portal/distributor" : "/portal");
