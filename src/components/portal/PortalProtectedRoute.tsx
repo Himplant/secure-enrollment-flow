@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { usePortalAuth } from "@/hooks/usePortalAuth";
+import { usePortalWorkspace } from "@/hooks/usePortalWorkspace";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { isSurgeonPortalEnabled, isDistributorPortalEnabled } from "@/lib/featureFlags";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 /** Guards every /portal route: portal identity + the relevant portal flag. */
 export function PortalProtectedRoute({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated, isPortalUser, memberships, signOut } = usePortalAuth();
+  const { needsChoice } = usePortalWorkspace();
+  const { pathname } = useLocation();
   const { flags, isLoading: flagsLoading } = useFeatureFlags();
 
   if (isLoading || flagsLoading) {
