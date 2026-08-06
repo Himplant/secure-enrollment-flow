@@ -219,7 +219,7 @@ export function ConsultationDetailDrawer({ consultationId, onOpenChange }: Props
                     </Badge>
                   </div>
                   <div className="text-muted-foreground">
-                    {String(m.recipient_email)} · {new Date(m.created_at as string).toLocaleString()}
+                    {String(m.recipient)} · {new Date(m.created_at as string).toLocaleString()}
                   </div>
                   {m.error ? <div className="text-destructive">{String(m.error)}</div> : null}
                 </div>
