@@ -24,6 +24,10 @@ export function PortalProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!isAuthenticated) return <Navigate to="/portal/login" replace />;
 
+  if (needsChoice && pathname !== "/portal/select-workspace") {
+    return <Navigate to="/portal/select-workspace" replace />;
+  }
+
   const hasSurgeon = memberships.some((m) => m.org_type === "surgeon");
   const hasDistributor = memberships.some((m) => m.org_type === "distributor");
   const allowed =
