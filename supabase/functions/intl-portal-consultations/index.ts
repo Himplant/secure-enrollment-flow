@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const admin = auth.supabaseAdmin;
 
     if (auth.surgeonIds.length === 0) {
-      return json({ consultations: [], clinics: [] });
+      return json({ consultations: [], surgeons: [] });
     }
 
     const SELECT =
@@ -50,13 +50,17 @@ Deno.serve(async (req) => {
 
       if (!c) return json({ error: "Consultation not found" }, 404);
 
-      const [{ data: patient }, { data: clinic }, { data: events }] = await Promise.all([
+      const [{ data: patient }, { data: surgeon }, { data: events }] = await Promise.all([
         admin
           .from("consultation_patients")
           .select("full_name, email, phone, preferred_language, notes")
           .eq("id", c.patient_id as string)
           .maybeSingle(),
-        admin.from("surgeons").select("name, city, country, timezone").eq("id", c.surgeon_id as string).maybeSingle(),
+        admin
+          .from("surgeons")
+          .select("id, name, specialty, city, country, timezone")
+          .eq("id", c.surgeon_id as string)
+          .maybeSingle(),
         admin
           .from("consultation_events")
           .select("event_type, event_data, actor_type, created_at")
@@ -65,11 +69,7 @@ Deno.serve(async (req) => {
           .limit(100),
       ]);
 
-      const surgeon = c.surgeon_id
-        ? (await admin.from("surgeons").select("name, specialty").eq("id", c.surgeon_id as string).maybeSingle()).data
-        : null;
-
-      return json({ consultation: c, patient, clinic, surgeon, events: events ?? [] });
+      return json({ consultation: c, patient, surgeon, events: events ?? [] });
     }
 
     // ---- List ----------------------------------------------------------
@@ -80,10 +80,10 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(1000);
 
-    if (body.clinic_id) {
-      const clinicId = String(body.clinic_id);
-      if (!auth.surgeonIds.includes(clinicId)) return json({ error: "Clinic is outside your scope" }, 403);
-      query = query.eq("surgeon_id", clinicId);
+    if (body.surgeon_id) {
+      const surgeonId = String(body.surgeon_id);
+      if (!auth.surgeonIds.includes(surgeonId)) return json({ error: "Surgeon is outside your scope" }, 403);
+      query = query.eq("surgeon_id", surgeonId);
     }
     if (body.payment_status) query = query.eq("payment_status", String(body.payment_status));
     if (body.consultation_status) query = query.eq("consultation_status", String(body.consultation_status));
@@ -93,20 +93,16 @@ Deno.serve(async (req) => {
 
     const consultations = rows ?? [];
     const patientIds = [...new Set(consultations.map((r) => r.patient_id as string).filter(Boolean))];
-    const surgeonIds = [...new Set(consultations.map((r) => r.surgeon_id as string).filter(Boolean))];
 
-    const [{ data: patients }, { data: clinics }, surgeonRes] = await Promise.all([
+    const [{ data: patients }, { data: surgeons }] = await Promise.all([
       patientIds.length
         ? admin.from("consultation_patients").select("id, full_name, email, phone").in("id", patientIds)
         : Promise.resolve({ data: [] }),
-      admin.from("surgeons").select("id, name, city, country").in("id", auth.surgeonIds),
-      surgeonIds.length
-        ? admin.from("surgeons").select("id, name").in("id", surgeonIds)
-        : Promise.resolve({ data: [] }),
+      admin.from("surgeons").select("id, name, city, country, currency, consultation_fee_minor").in("id", auth.surgeonIds),
     ]);
 
     const patientMap = Object.fromEntries((patients ?? []).map((p) => [p.id, p]));
-    const surgeonMap = Object.fromEntries((surgeonRes.data ?? []).map((s) => [s.id, s]));
+    const surgeonMap = Object.fromEntries((surgeons ?? []).map((s) => [s.id, s]));
 
     return json({
       consultations: consultations.map((c) => ({
@@ -114,9 +110,10 @@ Deno.serve(async (req) => {
         patient: patientMap[c.patient_id as string] ?? null,
         surgeon: surgeonMap[c.surgeon_id as string] ?? null,
       })),
-      clinics: clinics ?? [],
+      surgeons: surgeons ?? [],
       memberships: auth.memberships,
     });
+
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);
   }
