@@ -30,6 +30,9 @@ const ConsultationSuccess = lazy(() => import("./pages/ConsultationSuccess"));
 const PortalLogin = lazy(() => import("./pages/PortalLogin"));
 const PortalDashboard = lazy(() => import("./pages/PortalDashboard"));
 const PortalPaymentAccount = lazy(() => import("./pages/PortalPaymentAccount"));
+const PortalReports = lazy(() => import("./pages/PortalReports"));
+const PortalTeam = lazy(() => import("./pages/PortalTeam"));
+const PortalSelectWorkspace = lazy(() => import("./pages/PortalSelectWorkspace"));
 const PortalProtectedRoute = lazy(() =>
   import("./components/portal/PortalProtectedRoute").then(m => ({ default: m.PortalProtectedRoute }))
 );
