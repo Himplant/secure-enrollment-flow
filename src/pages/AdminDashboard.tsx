@@ -2,8 +2,9 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale
+  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale, Globe, Flag
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -33,6 +34,11 @@ import { CreditsTab } from "@/components/admin/CreditsTab";
 import { CreditEconomicsTab } from "@/components/admin/CreditEconomicsTab";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import { INTL_BUILD_ENABLED, isIntlEnabled } from "@/lib/featureFlags";
+import { ConsultationsTab } from "@/components/admin/intl/ConsultationsTab";
+import { FeatureFlagsTab } from "@/components/admin/platform/FeatureFlagsTab";
+
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -40,6 +46,12 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("patients");
+
+  // International module surfaces are hidden unless both the build-time and
+  // runtime flags are on. Every intl edge function re-checks server-side.
+  const { flags } = useFeatureFlags();
+  const intlVisible = isIntlEnabled(flags);
+
 
   // Analytics date filter state
   const [preset, setPreset] = useState<DatePreset>("30d");
