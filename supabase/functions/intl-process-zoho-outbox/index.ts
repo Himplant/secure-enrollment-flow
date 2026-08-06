@@ -3,6 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { requireAdmin } from "../_shared/admin-auth.ts";
 import { addZohoNote, logIntegration, writeConsultationToZoho } from "../_shared/intl-zoho.ts";
+import { consultationLinkUrl, readLinkToken } from "../_shared/intl-link-secret.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
       const { data: c } = await admin
         .from("consultations")
         .select(
-          "id, zoho_module, zoho_record_id, token_last4, expires_at, payment_status, consultation_status, surgery_status, amount_minor, currency, provider, country, surgeon_id, terms_version",
+          "id, zoho_module, zoho_record_id, token_last4, expires_at, payment_status, consultation_status, surgery_status, amount_minor, currency, provider, country, surgeon_id, terms_version, paid_at",
         )
         .eq("id", consultationId)
         .maybeSingle();
@@ -89,15 +90,18 @@ Deno.serve(async (req) => {
         .eq("id", c.surgeon_id as string)
         .maybeSingle();
 
-      const appUrl = (Deno.env.get("APP_URL") ?? "").replace(/\/+$/, "");
+      // Write the REAL patient link, exactly like the U.S. flow does.
+      const rawToken = await readLinkToken(admin, consultationId);
+      if (!rawToken) throw new Error("Link token unavailable — cannot write the CRM link");
 
       await writeConsultationToZoho({
         module: String(c.zoho_module),
         recordId: String(c.zoho_record_id),
-        paymentUrl: `${appUrl}/consult/****${c.token_last4}`,
+        paymentUrl: consultationLinkUrl(rawToken),
         expiresAt: String(c.expires_at),
         tokenLast4: String(c.token_last4),
         paymentStatus: String(c.payment_status),
+        paidAt: (c.paid_at as string) ?? null,
         amountMinor: Number(c.amount_minor),
         currency: String(c.currency),
         provider: String(c.provider),

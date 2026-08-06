@@ -72,6 +72,7 @@ export interface ZohoConsultationWriteback {
   expiresAt: string;
   tokenLast4: string;
   paymentStatus: string;
+  paidAt?: string | null;
   amountMinor: number;
   currency: string;
   provider: string;
@@ -86,19 +87,55 @@ function zohoDateTime(iso: string): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}+00:00`;
 }
 
+function zohoDate(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+/**
+ * International payment statuses mapped onto the SAME Enrollment_Status
+ * vocabulary the proven U.S. flow writes, so CRM views, reports and the
+ * existing status-sync jobs keep working unchanged.
+ */
+const ENROLLMENT_STATUS: Record<string, string> = {
+  draft: "created",
+  link_created: "created",
+  link_sent: "sent",
+  link_opened: "opened",
+  processing: "processing",
+  approved: "paid",
+  failed: "failed",
+  expired: "expired",
+  canceled: "canceled",
+  refunded: "refunded",
+  disputed: "refunded",
+};
+
+export function toEnrollmentStatus(paymentStatus: string): string {
+  return ENROLLMENT_STATUS[paymentStatus] ?? "created";
+}
+
 export async function writeConsultationToZoho(w: ZohoConsultationWriteback): Promise<void> {
   const token = await getZohoAccessToken();
+
+  // Proven U.S. Enrollment_* fields first — these are what CRM users, views
+  // and the status-sync jobs already rely on.
   const payload: Record<string, unknown> = {
-    Consultation_Link: w.paymentUrl,
-    Consultation_Expires_At: zohoDateTime(w.expiresAt),
-    Consultation_Token_Last4: w.tokenLast4,
-    Consultation_Payment_Status: w.paymentStatus,
+    Enrollment_Status: toEnrollmentStatus(w.paymentStatus),
+    Enrollment_Link: w.paymentUrl,
+    Enrollment_Date: zohoDate(new Date().toISOString()),
+    Enrollment_Expires_At: zohoDateTime(w.expiresAt),
+    Enrollment_Token_Last4: w.tokenLast4,
+    // International-only context.
     Consultation_Amount: w.amountMinor / 100,
     Consultation_Currency: w.currency,
     Consultation_Provider: w.provider,
     Consultation_Country: w.country,
     Consultation_Policy_Version: w.policyVersion,
   };
+
+  if (w.paidAt) payload.Enrollment_Paid_At = zohoDateTime(w.paidAt);
 
   const res = await fetch(`https://www.zohoapis.com/crm/v6/${w.module}/${w.recordId}`, {
     method: "PUT",
