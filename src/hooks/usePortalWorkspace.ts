@@ -51,7 +51,7 @@ export function usePortalWorkspace() {
       window.localStorage.setItem(STORAGE_KEY, active.key);
     }
 
-  }, [active, stored]);
+  }, [active, stored, workspaces.length]);
 
 
   const setActive = useCallback((key: string) => {
