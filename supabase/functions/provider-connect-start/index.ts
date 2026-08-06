@@ -1,6 +1,10 @@
-// Begin an OAuth connection for a surgeon's Mercado Pago seller account.
-// Generates a one-time, expiring `state` plus a PKCE verifier which is kept
-// server-side only, and returns the provider authorization URL.
+// Begin a merchant connection for a surgeon's own payment account.
+//
+//  * Mercado Pago — OAuth with a one-time, expiring `state` plus a PKCE
+//    verifier kept server-side only; returns the authorization URL.
+//  * PayPal — Commerce Platform partner onboarding; creates (or reuses) the
+//    surgeon's pending provider account and returns the referral action URL.
+//    Its tracking id is the account id, which the status poll reads back.
 import {
   actorMayManageSurgeon,
   corsHeaders,
@@ -20,6 +24,9 @@ import {
   generateOAuthState,
 } from "../_shared/provider-crypto.ts";
 import { mpAuthorizationUrl } from "../_shared/providers/mercado-pago.ts";
+import { paypalCreatePartnerReferral } from "../_shared/providers/paypal.ts";
+
+const CURRENCY_BY_COUNTRY: Record<string, string> = { MX: "MXN", CO: "COP", CL: "CLP" };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
