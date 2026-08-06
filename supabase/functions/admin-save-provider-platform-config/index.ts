@@ -34,7 +34,57 @@ Deno.serve(async (req) => {
     if (!PLATFORM_FIELDS[provider]) return json({ error: "Unsupported provider" }, 400);
 
     const environment = normalizeEnvironment(body.environment);
+    const action = String(body.action ?? "save");
     const incoming = (body.credentials ?? {}) as Record<string, unknown>;
+
+    if (action === "test" || action === "disable") {
+      const existingConfig = await getPlatformConfig(db, provider, environment);
+      if (!existingConfig) return json({ error: "Nothing configured yet" }, 404);
+
+      if (action === "disable") {
+        const { error } = await db
+          .from("provider_platform_configs")
+          .update({ status: "disabled", updated_by: actor.userId })
+          .eq("id", existingConfig.id);
+        if (error) return json({ error: error.message }, 400);
+        await logProviderAudit(db, {
+          provider,
+          action: "disconnect",
+          entityType: "platform_config",
+          entityId: existingConfig.id,
+          actorId: actor.userId,
+          summary: { environment, disabled: true },
+          responseStatus: 200,
+        });
+        return json({ ok: true });
+      }
+
+      const stored = (await loadPlatformCredentials(db, existingConfig.id)) ?? {};
+      const { complete, missing } = validatePlatformCompleteness(provider, stored);
+      const testError = complete ? null : `Missing required values: ${missing.join(", ")}`;
+      await db
+        .from("provider_platform_configs")
+        .update({
+          is_complete: complete,
+          missing_fields: missing,
+          status: complete ? "configured" : "draft",
+          last_test_error: testError,
+          last_verified_at: complete ? new Date().toISOString() : existingConfig.last_verified_at,
+          updated_by: actor.userId,
+        })
+        .eq("id", existingConfig.id);
+      await logProviderAudit(db, {
+        provider,
+        action: "test",
+        entityType: "platform_config",
+        entityId: existingConfig.id,
+        actorId: actor.userId,
+        summary: { environment, complete, missing },
+        responseStatus: complete ? 200 : 400,
+      });
+      return json({ ok: complete, error: testError ?? undefined, missing });
+    }
+
 
     let config = await getPlatformConfig(db, provider, environment);
     if (!config) {
