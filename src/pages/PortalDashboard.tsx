@@ -32,6 +32,7 @@ const fmtDate = (v: string | null) =>
 
 export default function PortalDashboard() {
   const queryClient = useQueryClient();
+  const { isDistributor } = usePortalWorkspace();
   const [surgeonId, setSurgeonId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [consultationStatus, setConsultationStatus] = useState("");
