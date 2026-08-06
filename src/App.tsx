@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Shield, Loader2 } from "lucide-react";
+import { INTL_BUILD_ENABLED } from "@/lib/featureFlags";
+
 
 // Eagerly load the patient-facing enrollment page (critical path)
 import EnrollPage from "./pages/EnrollPage";
