@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     const { data: c } = await admin
       .from("consultations")
       .select(
-        "id, amount_minor, currency, country, provider, payment_status, consultation_status, expires_at, opened_at, provider_checkout_url, clinic_id, surgeon_id, patient_id, policy_id",
+        "id, amount_minor, currency, country, provider, payment_status, consultation_status, expires_at, opened_at, provider_checkout_url, surgeon_id, patient_id, policy_id",
       )
       .eq("token_hash", tokenHash)
       .maybeSingle();

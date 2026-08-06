@@ -162,13 +162,13 @@ Deno.serve(async (req) => {
       const { data: settings } = await admin
         .from("international_country_settings")
         .select("sla_first_contact_hours")
-        .eq("country", (await admin.from("clinics").select("country").eq("id", c.clinic_id).maybeSingle()).data?.country)
+        .eq("country", (await admin.from("surgeons").select("country").eq("id", c.surgeon_id).maybeSingle()).data?.country)
         .maybeSingle();
 
       const dueHours = Number(settings?.sla_first_contact_hours ?? 24);
       await admin.from("consultation_tasks").insert({
         consultation_id: c.id,
-        clinic_id: c.clinic_id,
+        surgeon_id: c.surgeon_id,
         task_type: "first_contact",
         due_at: new Date(Date.now() + dueHours * 3600_000).toISOString(),
       });

@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
 
     const [{ data: patient }, { data: clinic }] = await Promise.all([
       admin.from("consultation_patients").select("full_name, email").eq("id", c.patient_id).maybeSingle(),
-      admin.from("clinics").select("name").eq("id", c.clinic_id).maybeSingle(),
+      admin.from("surgeons").select("name").eq("id", c.surgeon_id).maybeSingle(),
     ]);
 
     const appUrl = Deno.env.get("APP_URL") ?? "";

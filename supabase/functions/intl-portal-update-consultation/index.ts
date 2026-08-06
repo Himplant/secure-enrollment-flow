@@ -26,8 +26,8 @@ type Action =
   | "add_note";
 
 const WRITE_ROLES = [
-  "clinic_admin",
-  "clinic_staff",
+  "surgeon_admin",
+  "surgeon_staff",
   "distributor_admin",
   "distributor_staff",
 ] as const;
@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
       .from("consultations")
       .select("id, clinic_id, payment_status, consultation_status, surgery_status, rescheduled_count")
       .eq("id", consultationId)
-      .in("clinic_id", auth.clinicIds.length ? auth.clinicIds : ["00000000-0000-0000-0000-000000000000"])
+      .in("surgeon_id", auth.surgeonIds.length ? auth.surgeonIds : ["00000000-0000-0000-0000-000000000000"])
       .maybeSingle();
 
     if (!c) return json({ error: "Consultation not found" }, 404);
