@@ -1,4 +1,4 @@
-// Portal write surface: clinic staff advance the consultation lifecycle
+// Portal write surface: surgeon staff advance the consultation lifecycle
 // (contacted / scheduled / completed / no-show / canceled) and add outcome
 // notes. Payment fields, amounts, and provider data are never writable here.
 import { requirePortalUser } from "../_shared/portal-auth.ts";
@@ -53,14 +53,14 @@ Deno.serve(async (req) => {
 
     const { data: c } = await admin
       .from("consultations")
-      .select("id, clinic_id, payment_status, consultation_status, surgery_status, rescheduled_count")
+      .select("id, surgeon_id, payment_status, consultation_status, surgery_status, rescheduled_count")
       .eq("id", consultationId)
       .in("surgeon_id", auth.surgeonIds.length ? auth.surgeonIds : ["00000000-0000-0000-0000-000000000000"])
       .maybeSingle();
 
     if (!c) return json({ error: "Consultation not found" }, 404);
 
-    // The clinic only owns the record once the patient has actually paid.
+    // The surgeon only owns the record once the patient has actually paid.
     const paid = c.payment_status === "approved";
     if (!paid && action !== "add_note") {
       return json({ error: "This consultation has not been paid yet" }, 409);
@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
       actor_email: auth.email,
     });
 
-    // Close any open clinic task once first contact happens.
+    // Close any open surgeon task once first contact happens.
     if (action === "mark_contacted" || action === "schedule") {
       await admin
         .from("consultation_tasks")

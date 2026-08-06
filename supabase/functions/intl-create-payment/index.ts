@@ -1,6 +1,6 @@
 // Creates the provider checkout for a consultation link.
-// The checkout is always created against the clinic's own connected merchant
-// account — money settles directly to the surgeon/clinic, never to Himplant.
+// The checkout is always created against the surgeon's own connected merchant
+// account — money settles directly to the surgeon, never to Himplant.
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 import { hashConsultationToken } from "../_shared/intl-token.ts";
@@ -64,13 +64,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!account || account.status !== "connected" || !account.is_active) {
-      return json({ error: "The clinic's payment account is currently unavailable" }, 409);
+      return json({ error: "The surgeon's payment account is currently unavailable" }, 409);
     }
 
     const provider = getProvider(c.provider as string);
     if (!provider) return json({ error: "Payment provider unavailable" }, 503);
 
-    const [{ data: patient }, { data: clinic }] = await Promise.all([
+    const [{ data: patient }, { data: surgeonRec }] = await Promise.all([
       admin.from("consultation_patients").select("full_name, email").eq("id", c.patient_id).maybeSingle(),
       admin.from("surgeons").select("name").eq("id", c.surgeon_id).maybeSingle(),
     ]);
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
       amountMinor: Number(c.amount_minor),
       currency: String(c.currency),
       country: String(c.country),
-      description: `Consultation — ${clinic?.name ?? "Clinic"}`,
+      description: `Consultation — ${surgeonRec?.name ?? "Consultation"}`,
       payerEmail: patient?.email ?? null,
       payerName: patient?.full_name ?? null,
       successUrl: `${appUrl}/consult/${token}/success`,

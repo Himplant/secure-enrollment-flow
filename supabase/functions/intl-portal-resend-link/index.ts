@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
 
     const { data: c } = await admin
       .from("consultations")
-      .select("id, clinic_id, country, payment_status")
+      .select("id, surgeon_id, country, payment_status")
       .eq("id", consultationId)
       .in("surgeon_id", auth.surgeonIds.length ? auth.surgeonIds : ["00000000-0000-0000-0000-000000000000"])
       .maybeSingle();

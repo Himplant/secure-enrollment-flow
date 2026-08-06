@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     const { data: c } = await admin
       .from("consultations")
       .select(
-        "id, amount_minor, currency, provider, recipient_external_merchant_id, payment_status, clinic_id",
+        "id, amount_minor, currency, provider, recipient_external_merchant_id, payment_status, surgeon_id",
       )
       .eq("id", consultationId)
       .maybeSingle();
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     });
 
     if (payment.status === "approved") {
-      // SLA task for the clinic to make first contact.
+      // SLA task for the surgeon to make first contact.
       const { data: settings } = await admin
         .from("international_country_settings")
         .select("sla_first_contact_hours")
