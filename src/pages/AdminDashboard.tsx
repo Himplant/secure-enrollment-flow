@@ -35,7 +35,7 @@ import { CreditEconomicsTab } from "@/components/admin/CreditEconomicsTab";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
-import { INTL_BUILD_ENABLED, isIntlEnabled } from "@/lib/featureFlags";
+import { isIntlEnabled } from "@/lib/featureFlags";
 import { ConsultationsTab } from "@/components/admin/intl/ConsultationsTab";
 import { FeatureFlagsTab } from "@/components/admin/platform/FeatureFlagsTab";
 
@@ -367,7 +367,7 @@ export default function AdminDashboard() {
             {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2"><Settings className="h-4 w-4" />User Management</TabsTrigger>
             )}
-            {INTL_BUILD_ENABLED && adminUser?.role === "super_admin" && (
+            {adminUser?.role === "super_admin" && (
               <TabsTrigger value="platform-flags" className="gap-2"><Flag className="h-4 w-4" />Feature Flags</TabsTrigger>
             )}
 
@@ -393,7 +393,7 @@ export default function AdminDashboard() {
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
           )}
-          {INTL_BUILD_ENABLED && adminUser?.role === "super_admin" && (
+          {adminUser?.role === "super_admin" && (
             <TabsContent value="platform-flags"><FeatureFlagsTab /></TabsContent>
           )}
 
