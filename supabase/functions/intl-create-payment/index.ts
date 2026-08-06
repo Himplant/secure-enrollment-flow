@@ -6,6 +6,7 @@ import { requireIntlEnabled } from "../_shared/flags.ts";
 import { hashConsultationToken } from "../_shared/intl-token.ts";
 import { getProvider } from "../_shared/providers/registry.ts";
 import { requirePolicySnapshot } from "../_shared/intl-policy.ts";
+import { isExpired, persistExpiryIfNeeded } from "../_shared/intl-expiry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +30,12 @@ Deno.serve(async (req) => {
     if (!token || token.length < 16) return json({ error: "Invalid link" }, 400);
     if (!body?.accepted_terms) return json({ error: "Terms must be accepted" }, 400);
 
+    // Consent signature is mandatory, exactly as in U.S. SecurePay.
+    const signature = typeof body?.signature_data === "string" ? body.signature_data.trim() : "";
+    if (!signature.startsWith("data:image/") || signature.length < 200) {
+      return json({ error: "A signature is required to continue" }, 400);
+    }
+
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -50,7 +57,13 @@ Deno.serve(async (req) => {
     if (flagBlock) return flagBlock;
 
     if (c.payment_status === "approved") return json({ error: "Already paid" }, 409);
-    if (new Date(c.expires_at as string).getTime() < Date.now()) {
+    if (isExpired(c.expires_at as string)) {
+      await persistExpiryIfNeeded(admin, {
+        id: c.id as string,
+        expires_at: c.expires_at as string,
+        payment_status: c.payment_status as string,
+        expired_at: c.expired_at as string | null,
+      });
       return json({ error: "This payment link has expired" }, 410);
     }
     if (["canceled", "refunded", "disputed"].includes(c.payment_status as string)) {
@@ -75,6 +88,14 @@ Deno.serve(async (req) => {
     if (!(await requirePolicySnapshot(admin, c.id as string))) {
       return json({ error: "This consultation has no accepted policy on record" }, 409);
     }
+
+    const { data: snapshot } = await admin
+      .from("consultation_policy_snapshots")
+      .select("id, policy_version, content_sha256")
+      .eq("consultation_id", c.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     const [{ data: patient }, { data: surgeonRec }] = await Promise.all([
       admin.from("consultation_patients").select("full_name, email").eq("id", c.patient_id).maybeSingle(),
@@ -109,7 +130,10 @@ Deno.serve(async (req) => {
         terms_accepted_at: new Date().toISOString(),
         terms_accept_ip: ip,
         terms_accept_user_agent: req.headers.get("user-agent"),
-        signature_data: body.signature_data ?? null,
+        signature_data: signature,
+        policy_snapshot_id: snapshot?.id ?? c.policy_snapshot_id,
+        terms_version: snapshot?.policy_version ?? c.terms_version,
+        terms_sha256: snapshot?.content_sha256 ?? c.terms_sha256,
       })
       .eq("id", c.id);
 
@@ -123,6 +147,19 @@ Deno.serve(async (req) => {
       amount_minor: Number(c.amount_minor),
       currency: String(c.currency),
       status: "processing",
+    });
+
+    await admin.from("consultation_events").insert({
+      consultation_id: c.id,
+      event_type: "terms_accepted",
+      event_data: {
+        policy_snapshot_id: snapshot?.id ?? null,
+        policy_version: snapshot?.policy_version ?? null,
+        content_sha256: snapshot?.content_sha256 ?? null,
+        signed: true,
+        ip,
+      },
+      actor_type: "patient",
     });
 
     await admin.from("consultation_events").insert({
