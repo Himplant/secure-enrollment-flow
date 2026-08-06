@@ -108,6 +108,74 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ---- Stripe Connect: poll the connected account's capabilities ----------
+  if (account.provider === "stripe_connect") {
+    const stripeAccountId = account.external_merchant_id as string | null;
+    if (!stripeAccountId) {
+      return json({ ok: false, error: "Stripe onboarding has not been started" }, 400);
+    }
+    try {
+      const environment = normalizeEnvironment(account.environment);
+      const status = await stripeAccountStatus({ environment, accountId: stripeAccountId });
+      const ready = status.chargesEnabled && status.detailsSubmitted;
+      const now = new Date().toISOString();
+
+      await db
+        .from("provider_accounts")
+        .update({
+          status: ready ? "connected" : "onboarding",
+          onboarding_status: ready
+            ? "connected"
+            : status.detailsSubmitted
+            ? "charges_disabled"
+            : "awaiting_merchant",
+          connection_error: status.disabledReason,
+          live_mode: environment === "live",
+          last_verified_at: now,
+          ...(ready ? { connected_at: now, onboarding_url: null } : {}),
+          capabilities: {
+            checkout_sessions: true,
+            direct_charges: true,
+            charges_enabled: status.chargesEnabled,
+            payouts_enabled: status.payoutsEnabled,
+            details_submitted: status.detailsSubmitted,
+            default_currency: status.defaultCurrency,
+          },
+        })
+        .eq("id", accountId);
+
+      await logProviderAudit(db, {
+        provider: "stripe_connect",
+        action: "refresh",
+        entityType: "provider_account",
+        entityId: accountId,
+        actorId: actor.userId,
+        summary: { ready },
+        responseStatus: 200,
+      });
+
+      return json({ ok: true, account: await readBack() });
+    } catch (err) {
+      const message = (err as Error).message;
+      await db
+        .from("provider_accounts")
+        .update({ connection_error: message.slice(0, 500) })
+        .eq("id", accountId);
+      await logProviderAudit(db, {
+        provider: "stripe_connect",
+        action: "refresh",
+        entityType: "provider_account",
+        entityId: accountId,
+        actorId: actor.userId,
+        responseStatus: 502,
+        error: message,
+      });
+      return json({ ok: false, error: message }, 502);
+    }
+  }
+
+
+
   try {
     // resolveMercadoPagoAccount performs the refresh-if-needed rotation.
     const resolved = await resolveMercadoPagoAccount(accountId);
