@@ -1,4 +1,4 @@
-// Portal read surface: consultations scoped to the caller's clinics /
+// Portal read surface: consultations scoped to the caller's surgeons /
 // distributors. Never returns merchant credentials, raw link tokens, or
 // anything from the U.S. enrollment tables.
 import { requirePortalUser } from "../_shared/portal-auth.ts";
