@@ -21,8 +21,9 @@ export function PortalLayout({ children }: { children: ReactNode }) {
   const orgLabel = isDistributor ? "Distributor portal" : "Surgeon portal";
 
   const nav = [
+    ...(isDistributor ? [{ to: "/portal/distributor", label: "Overview", icon: BarChart3 }] : []),
     { to: "/portal", label: "Consultations", icon: LayoutList },
-    { to: "/portal/reports", label: "Reports", icon: BarChart3 },
+    ...(isDistributor ? [] : [{ to: "/portal/reports", label: "Reports", icon: BarChart3 }]),
     ...(isSurgeonAdmin && !isDistributor
       ? [
           { to: "/portal/team", label: "Team", icon: Users },
