@@ -11,6 +11,7 @@ import {
 } from "../_shared/provider-config.ts";
 import { mpGetUserMe, resolveMercadoPagoAccount } from "../_shared/providers/mercado-pago.ts";
 import { paypalMerchantStatus } from "../_shared/providers/paypal.ts";
+import { stripeAccountStatus } from "../_shared/providers/stripe-connect.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
