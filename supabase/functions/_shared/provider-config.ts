@@ -162,6 +162,8 @@ export const PLATFORM_FIELDS: Record<string, PlatformFieldSpec[]> = {
     { key: "client_id", label: "Client ID", required: true, secret: false },
     { key: "client_secret", label: "Client Secret", required: true, secret: true },
     { key: "webhook_id", label: "Webhook ID", required: true, secret: false },
+    { key: "partner_merchant_id", label: "Partner merchant ID", required: true, secret: false },
+    { key: "partner_attribution_id", label: "Partner attribution (BN) code", required: false, secret: false },
   ],
   stripe_connect: [
     { key: "publishable_key", label: "Publishable key", required: true, secret: false },
