@@ -479,9 +479,8 @@ export const stripeConnectProvider: PaymentProvider = {
         : String(obj.id ?? ""),
       providerOrderId: isSession ? String(obj.id ?? "") : null,
       status: normalizeStripeConnectStatus(rawStatus),
-      amountMinor: typeof amount === "number"
-        ? Math.round(amount / (decimalsFor(currency ?? "USD") === 0 ? 1 : 1))
-        : null,
+      // Stripe already reports amounts in the currency's smallest unit.
+      amountMinor: typeof amount === "number" ? amount : null,
       currency,
       recipientMerchantId: account.accountId,
       externalReference:
