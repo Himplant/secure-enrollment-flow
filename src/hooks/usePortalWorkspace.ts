@@ -47,9 +47,10 @@ export function usePortalWorkspace() {
   // Persist the resolved workspace so every edge-function call carries it and
   // the server can narrow scope to this organisation alone.
   useEffect(() => {
-    if (active && stored !== active.key) {
+    if (workspaces.length === 1 && active && stored !== active.key) {
       window.localStorage.setItem(STORAGE_KEY, active.key);
     }
+
   }, [active, stored]);
 
 
