@@ -5,7 +5,6 @@ import type { IntlConsultationStatus, IntlPaymentStatus, IntlSurgeryStatus } fro
 export interface PortalConsultationRow {
   id: string;
   token_last4: string;
-  clinic_id: string;
   surgeon_id: string | null;
   amount_minor: number;
   currency: string;
@@ -25,7 +24,7 @@ export interface PortalConsultationRow {
   surgeon: { id: string; name: string } | null;
 }
 
-export interface PortalClinic {
+export interface PortalSurgeon {
   id: string;
   name: string;
   city: string | null;
@@ -34,7 +33,7 @@ export interface PortalClinic {
 
 interface ListPayload {
   consultations: PortalConsultationRow[];
-  clinics: PortalClinic[];
+  surgeons: PortalSurgeon[];
 }
 
 export async function invokePortal<T>(fn: string, body: Record<string, unknown> = {}): Promise<T> {
@@ -50,7 +49,7 @@ export async function invokePortal<T>(fn: string, body: Record<string, unknown> 
 }
 
 export function usePortalConsultations(filters: {
-  clinicId?: string;
+  surgeonId?: string;
   paymentStatus?: string;
   consultationStatus?: string;
 }) {
@@ -59,7 +58,7 @@ export function usePortalConsultations(filters: {
     staleTime: 15_000,
     queryFn: () =>
       invokePortal<ListPayload>("intl-portal-consultations", {
-        clinic_id: filters.clinicId || undefined,
+        surgeon_id: filters.surgeonId || undefined,
         payment_status: filters.paymentStatus || undefined,
         consultation_status: filters.consultationStatus || undefined,
       }),
@@ -75,8 +74,8 @@ export interface PortalConsultationDetail {
     preferred_language: string;
     notes: string | null;
   } | null;
-  clinic: { name: string; city: string | null; country: string; timezone: string } | null;
-  surgeon: { name: string; specialty: string | null } | null;
+  surgeon: { id: string; name: string; specialty: string | null; city: string | null; country: string; timezone: string | null } | null;
+  
   events: { event_type: string; event_data: unknown; actor_type: string; created_at: string }[];
 }
 

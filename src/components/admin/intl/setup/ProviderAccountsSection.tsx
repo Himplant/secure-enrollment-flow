@@ -22,12 +22,16 @@ export function ProviderAccountsSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ clinic_id: "", provider: "test", external_merchant_id: "" });
+  const [form, setForm] = useState({ surgeon_id: "", provider: "test", external_merchant_id: "" });
 
-  const { data: clinics } = useQuery({
-    queryKey: ["intl-clinics-setup-min"],
+  const { data: surgeons } = useQuery({
+    queryKey: ["intl-surgeons-min"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("clinics").select("id, name, country, default_currency").order("name");
+      const { data, error } = await supabase
+        .from("surgeons")
+        .select("id, name, country, currency")
+        .eq("is_international", true)
+        .order("name");
       if (error) throw error;
       return data ?? [];
     },
@@ -38,7 +42,9 @@ export function ProviderAccountsSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("provider_accounts")
-        .select("id, provider, country, currency, status, environment, external_merchant_id, is_active, clinic:clinics(name)")
+        .select(
+          "id, provider, country, currency, status, environment, external_merchant_id, is_active, surgeon:surgeons(name)",
+        )
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -46,16 +52,16 @@ export function ProviderAccountsSection() {
   });
 
   const save = async () => {
-    const clinic = (clinics ?? []).find((c) => c.id === form.clinic_id);
-    if (!clinic) {
-      toast({ title: "Pick a clinic", variant: "destructive" });
+    const surgeon = (surgeons ?? []).find((s) => s.id === form.surgeon_id);
+    if (!surgeon || !surgeon.country) {
+      toast({ title: "Pick a surgeon with a country set", variant: "destructive" });
       return;
     }
     const { error } = await supabase.from("provider_accounts").insert({
-      clinic_id: clinic.id,
+      surgeon_id: surgeon.id,
       provider: form.provider as "test" | "mercado_pago" | "paypal",
-      country: clinic.country,
-      currency: clinic.default_currency ?? CURRENCY_BY_COUNTRY[clinic.country],
+      country: surgeon.country as "MX" | "CO" | "CL",
+      currency: surgeon.currency ?? CURRENCY_BY_COUNTRY[surgeon.country],
       external_merchant_id: form.external_merchant_id.trim() || null,
       status: form.provider === "test" ? "connected" : "pending",
       connection_method: "admin_managed",
@@ -69,7 +75,7 @@ export function ProviderAccountsSection() {
     }
     toast({ title: "Payment account added" });
     setOpen(false);
-    setForm({ clinic_id: "", provider: "test", external_merchant_id: "" });
+    setForm({ surgeon_id: "", provider: "test", external_merchant_id: "" });
     qc.invalidateQueries({ queryKey: ["intl-provider-accounts"] });
   };
 
@@ -85,14 +91,20 @@ export function ProviderAccountsSection() {
   return (
     <SectionCard
       title="Payment accounts"
-      description="Where a clinic's consultation fees settle. The simulated test provider works today; Mercado Pago and PayPal are placeholders until those integrations are connected."
-      action={<Button size="sm" className="gap-2" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Add account</Button>}
+      description="Where a surgeon's consultation fees settle. The simulated test provider works today; Mercado Pago and PayPal are placeholders until those integrations are connected."
+      action={
+        <Button size="sm" className="gap-2" onClick={() => setOpen(true)}>
+          <Plus className="h-4 w-4" /> Add account
+        </Button>
+      }
     >
-      {isLoading ? <Spinner /> : (
+      {isLoading ? (
+        <Spinner />
+      ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Clinic</TableHead>
+              <TableHead>Surgeon</TableHead>
               <TableHead>Provider</TableHead>
               <TableHead>Country</TableHead>
               <TableHead>Currency</TableHead>
@@ -104,11 +116,15 @@ export function ProviderAccountsSection() {
             {(data ?? []).length === 0 && <EmptyRow colSpan={6} text="No payment accounts yet." />}
             {(data ?? []).map((a) => (
               <TableRow key={a.id}>
-                <TableCell className="font-medium">{(a.clinic as { name: string } | null)?.name ?? "—"}</TableCell>
+                <TableCell className="font-medium">
+                  {(a.surgeon as { name: string } | null)?.name ?? "—"}
+                </TableCell>
                 <TableCell>{PROVIDERS.find((p) => p.value === a.provider)?.label ?? a.provider}</TableCell>
                 <TableCell>{countryLabel(a.country)}</TableCell>
                 <TableCell>{a.currency}</TableCell>
-                <TableCell><Badge variant={a.status === "connected" ? "default" : "secondary"}>{a.status}</Badge></TableCell>
+                <TableCell>
+                  <Badge variant={a.status === "connected" ? "default" : "secondary"}>{a.status}</Badge>
+                </TableCell>
                 <TableCell>
                   <Button variant="ghost" size="icon" onClick={() => remove(a.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
@@ -122,33 +138,52 @@ export function ProviderAccountsSection() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add payment account</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add payment account</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Clinic</Label>
-              <Select value={form.clinic_id} onValueChange={(v) => setForm({ ...form, clinic_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Select a clinic" /></SelectTrigger>
+              <Label>Surgeon</Label>
+              <Select value={form.surgeon_id} onValueChange={(v) => setForm({ ...form, surgeon_id: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a surgeon" />
+                </SelectTrigger>
                 <SelectContent>
-                  {(clinics ?? []).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  {(surgeons ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} — {countryLabel(s.country)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Provider</Label>
               <Select value={form.provider} onValueChange={(v) => setForm({ ...form, provider: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {PROVIDERS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                  {PROVIDERS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Merchant / account ID (optional)</Label>
-              <Input value={form.external_merchant_id} onChange={(e) => setForm({ ...form, external_merchant_id: e.target.value })} />
+              <Input
+                value={form.external_merchant_id}
+                onChange={(e) => setForm({ ...form, external_merchant_id: e.target.value })}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={save}>Save</Button>
           </DialogFooter>
         </DialogContent>

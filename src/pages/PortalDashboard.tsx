@@ -31,14 +31,14 @@ const fmtDate = (v: string | null) =>
 
 export default function PortalDashboard() {
   const queryClient = useQueryClient();
-  const [clinicId, setClinicId] = useState("");
+  const [surgeonId, setSurgeonId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [consultationStatus, setConsultationStatus] = useState("");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, error } = usePortalConsultations({
-    clinicId,
+    surgeonId,
     paymentStatus,
     consultationStatus,
   });
@@ -79,7 +79,7 @@ export default function PortalDashboard() {
           <div>
             <h1 className="text-2xl font-semibold">Consultations</h1>
             <p className="text-sm text-muted-foreground">
-              Records assigned to your clinics only.
+              Records assigned to your surgeons only.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={refresh} disabled={isFetching}>
@@ -116,11 +116,11 @@ export default function PortalDashboard() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Select value={clinicId || "all"} onValueChange={(v) => setClinicId(v === "all" ? "" : v)}>
-                <SelectTrigger className="md:w-52"><SelectValue placeholder="All clinics" /></SelectTrigger>
+              <Select value={surgeonId || "all"} onValueChange={(v) => setSurgeonId(v === "all" ? "" : v)}>
+                <SelectTrigger className="md:w-52"><SelectValue placeholder="All surgeons" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All clinics</SelectItem>
-                  {(data?.clinics ?? []).map((c) => (
+                  <SelectItem value="all">All surgeons</SelectItem>
+                  {(data?.surgeons ?? []).map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>

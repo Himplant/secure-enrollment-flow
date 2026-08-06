@@ -105,7 +105,7 @@ export function PortalConsultationSheet({ consultationId, onOpenChange }: Props)
             <SheetHeader>
               <SheetTitle>{data?.patient?.full_name ?? "Consultation"}</SheetTitle>
               <SheetDescription>
-                {data?.clinic?.name} · {COUNTRY_LABEL[c.country] ?? c.country} ·{" "}
+                {data?.surgeon?.name} · {COUNTRY_LABEL[c.country] ?? c.country} ·{" "}
                 {formatIntlMoney(c.amount_minor, c.currency)}
               </SheetDescription>
             </SheetHeader>

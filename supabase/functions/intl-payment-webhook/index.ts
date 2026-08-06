@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     const { data: c } = await admin
       .from("consultations")
       .select(
-        "id, amount_minor, currency, provider, recipient_external_merchant_id, payment_status, clinic_id",
+        "id, amount_minor, currency, provider, recipient_external_merchant_id, payment_status, surgeon_id",
       )
       .eq("id", consultationId)
       .maybeSingle();
@@ -158,17 +158,17 @@ Deno.serve(async (req) => {
     });
 
     if (payment.status === "approved") {
-      // SLA task for the clinic to make first contact.
+      // SLA task for the surgeon to make first contact.
       const { data: settings } = await admin
         .from("international_country_settings")
         .select("sla_first_contact_hours")
-        .eq("country", (await admin.from("clinics").select("country").eq("id", c.clinic_id).maybeSingle()).data?.country)
+        .eq("country", (await admin.from("surgeons").select("country").eq("id", c.surgeon_id).maybeSingle()).data?.country)
         .maybeSingle();
 
       const dueHours = Number(settings?.sla_first_contact_hours ?? 24);
       await admin.from("consultation_tasks").insert({
         consultation_id: c.id,
-        clinic_id: c.clinic_id,
+        surgeon_id: c.surgeon_id,
         task_type: "first_contact",
         due_at: new Date(Date.now() + dueHours * 3600_000).toISOString(),
       });

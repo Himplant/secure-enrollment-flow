@@ -1,4 +1,4 @@
-// Portal read surface: consultations scoped to the caller's clinics /
+// Portal read surface: consultations scoped to the caller's surgeons /
 // distributors. Never returns merchant credentials, raw link tokens, or
 // anything from the U.S. enrollment tables.
 import { requirePortalUser } from "../_shared/portal-auth.ts";
@@ -29,12 +29,12 @@ Deno.serve(async (req) => {
     const consultationId = body.consultation_id ? String(body.consultation_id) : null;
     const admin = auth.supabaseAdmin;
 
-    if (auth.clinicIds.length === 0) {
-      return json({ consultations: [], clinics: [] });
+    if (auth.surgeonIds.length === 0) {
+      return json({ consultations: [], surgeons: [] });
     }
 
     const SELECT =
-      "id, token_last4, clinic_id, surgeon_id, patient_id, amount_minor, currency, country, provider, " +
+      "id, token_last4, surgeon_id, patient_id, amount_minor, currency, country, provider, " +
       "payment_status, consultation_status, surgery_status, expires_at, sent_at, opened_at, paid_at, " +
       "first_contact_at, scheduled_at, rescheduled_count, consulted_at, no_show_at, closed_at, " +
       "outcome_notes, created_at, updated_at";
@@ -45,18 +45,22 @@ Deno.serve(async (req) => {
         .from("consultations")
         .select(SELECT)
         .eq("id", consultationId)
-        .in("clinic_id", auth.clinicIds)
+        .in("surgeon_id", auth.surgeonIds)
         .maybeSingle();
 
       if (!c) return json({ error: "Consultation not found" }, 404);
 
-      const [{ data: patient }, { data: clinic }, { data: events }] = await Promise.all([
+      const [{ data: patient }, { data: surgeon }, { data: events }] = await Promise.all([
         admin
           .from("consultation_patients")
           .select("full_name, email, phone, preferred_language, notes")
           .eq("id", c.patient_id as string)
           .maybeSingle(),
-        admin.from("clinics").select("name, city, country, timezone").eq("id", c.clinic_id as string).maybeSingle(),
+        admin
+          .from("surgeons")
+          .select("id, name, specialty, city, country, timezone")
+          .eq("id", c.surgeon_id as string)
+          .maybeSingle(),
         admin
           .from("consultation_events")
           .select("event_type, event_data, actor_type, created_at")
@@ -65,25 +69,21 @@ Deno.serve(async (req) => {
           .limit(100),
       ]);
 
-      const surgeon = c.surgeon_id
-        ? (await admin.from("surgeons").select("name, specialty").eq("id", c.surgeon_id as string).maybeSingle()).data
-        : null;
-
-      return json({ consultation: c, patient, clinic, surgeon, events: events ?? [] });
+      return json({ consultation: c, patient, surgeon, events: events ?? [] });
     }
 
     // ---- List ----------------------------------------------------------
     let query = admin
       .from("consultations")
       .select(SELECT)
-      .in("clinic_id", auth.clinicIds)
+      .in("surgeon_id", auth.surgeonIds)
       .order("created_at", { ascending: false })
       .limit(1000);
 
-    if (body.clinic_id) {
-      const clinicId = String(body.clinic_id);
-      if (!auth.clinicIds.includes(clinicId)) return json({ error: "Clinic is outside your scope" }, 403);
-      query = query.eq("clinic_id", clinicId);
+    if (body.surgeon_id) {
+      const surgeonId = String(body.surgeon_id);
+      if (!auth.surgeonIds.includes(surgeonId)) return json({ error: "Surgeon is outside your scope" }, 403);
+      query = query.eq("surgeon_id", surgeonId);
     }
     if (body.payment_status) query = query.eq("payment_status", String(body.payment_status));
     if (body.consultation_status) query = query.eq("consultation_status", String(body.consultation_status));
@@ -93,20 +93,16 @@ Deno.serve(async (req) => {
 
     const consultations = rows ?? [];
     const patientIds = [...new Set(consultations.map((r) => r.patient_id as string).filter(Boolean))];
-    const surgeonIds = [...new Set(consultations.map((r) => r.surgeon_id as string).filter(Boolean))];
 
-    const [{ data: patients }, { data: clinics }, surgeonRes] = await Promise.all([
+    const [{ data: patients }, { data: surgeons }] = await Promise.all([
       patientIds.length
         ? admin.from("consultation_patients").select("id, full_name, email, phone").in("id", patientIds)
         : Promise.resolve({ data: [] }),
-      admin.from("clinics").select("id, name, city, country").in("id", auth.clinicIds),
-      surgeonIds.length
-        ? admin.from("surgeons").select("id, name").in("id", surgeonIds)
-        : Promise.resolve({ data: [] }),
+      admin.from("surgeons").select("id, name, city, country, currency, consultation_fee_minor").in("id", auth.surgeonIds),
     ]);
 
     const patientMap = Object.fromEntries((patients ?? []).map((p) => [p.id, p]));
-    const surgeonMap = Object.fromEntries((surgeonRes.data ?? []).map((s) => [s.id, s]));
+    const surgeonMap = Object.fromEntries((surgeons ?? []).map((s) => [s.id, s]));
 
     return json({
       consultations: consultations.map((c) => ({
@@ -114,9 +110,10 @@ Deno.serve(async (req) => {
         patient: patientMap[c.patient_id as string] ?? null,
         surgeon: surgeonMap[c.surgeon_id as string] ?? null,
       })),
-      clinics: clinics ?? [],
+      surgeons: surgeons ?? [],
       memberships: auth.memberships,
     });
+
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);
   }

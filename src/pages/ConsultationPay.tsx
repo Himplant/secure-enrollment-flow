@@ -20,8 +20,7 @@ interface ConsultationPayload {
     expires_at: string;
     checkout_url: string | null;
   };
-  clinic: { name: string; city: string | null; country: string } | null;
-  surgeon: { name: string; specialty: string | null } | null;
+  surgeon: { name: string; specialty: string | null; city: string | null; country: string | null } | null;
   patient: { full_name: string; email: string | null; preferred_language: string } | null;
   policy: {
     version: string;
@@ -106,7 +105,7 @@ export default function ConsultationPay() {
     );
   }
 
-  const { consultation, clinic, surgeon, policy } = data;
+  const { consultation, surgeon, policy } = data;
   const terminal = ["approved", "expired", "canceled", "refunded", "disputed"].includes(
     consultation.payment_status,
   );
@@ -117,8 +116,8 @@ export default function ConsultationPay() {
         <header className="text-center space-y-2">
           <h1 className="text-2xl font-semibold">Consultation fee</h1>
           <p className="text-muted-foreground text-sm">
-            Your payment goes directly to {clinic?.name ?? "the clinic"}
-            {clinic?.country ? ` in ${COUNTRY_LABEL[clinic.country] ?? clinic.country}` : ""}.
+            Your payment goes directly to {surgeon?.name ?? "your surgeon"}
+            {surgeon?.country ? ` in ${COUNTRY_LABEL[surgeon.country] ?? surgeon.country}` : ""}.
           </p>
         </header>
 
@@ -128,8 +127,8 @@ export default function ConsultationPay() {
             <IntlStatusBadge kind="payment" status={consultation.payment_status} />
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <Row label="Clinic" value={clinic?.name ?? "—"} />
-            {surgeon && <Row label="Surgeon" value={surgeon.name} />}
+            <Row label="Surgeon" value={surgeon?.name ?? "—"} />
+            {surgeon?.city && <Row label="Location" value={surgeon.city} />}
             <Row label="Amount" value={amount} strong />
             <Row
               label="Link expires"

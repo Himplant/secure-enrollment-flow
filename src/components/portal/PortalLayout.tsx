@@ -8,7 +8,7 @@ export function PortalLayout({ children }: { children: ReactNode }) {
 
   const orgLabel = memberships.some((m) => m.org_type === "distributor")
     ? "Distributor portal"
-    : "Clinic portal";
+    : "Surgeon portal";
 
   return (
     <div className="min-h-screen bg-background">

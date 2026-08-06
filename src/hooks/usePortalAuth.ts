@@ -4,7 +4,7 @@ import type { User, Session } from "@supabase/supabase-js";
 
 /**
  * Authentication state for EXTERNAL portal users (distributors, surgeons,
- * clinic office staff).
+ * surgeon office staff).
  *
  * Deliberately separate from `useAdminAuth`. The two models never share code:
  * an international bug must not be able to weaken Himplant admin auth or its
@@ -15,17 +15,17 @@ export type PortalRole =
   | "distributor_admin"
   | "distributor_staff"
   | "distributor_analyst"
-  | "clinic_admin"
-  | "clinic_staff"
-  | "clinic_analyst";
+  | "surgeon_admin"
+  | "surgeon_staff"
+  | "surgeon_analyst";
 
-export type PortalOrgType = "distributor" | "clinic";
+export type PortalOrgType = "distributor" | "surgeon";
 
 export interface PortalMembership {
   id: string;
   org_type: PortalOrgType;
   distributor_id: string | null;
-  clinic_id: string | null;
+  surgeon_id: string | null;
   role: PortalRole;
   is_active: boolean;
 }
@@ -88,7 +88,7 @@ export function usePortalAuth() {
 
       const { data: memberships } = await supabase
         .from("portal_memberships")
-        .select("id, org_type, distributor_id, clinic_id, role, is_active")
+        .select("id, org_type, distributor_id, surgeon_id, role, is_active")
         .eq("portal_user_id", portalUser.id)
         .eq("is_active", true)
         .is("revoked_at", null);
@@ -172,14 +172,14 @@ export function usePortalAuth() {
     await supabase.auth.signOut();
   };
 
-  const clinicMemberships = state.memberships.filter((m) => m.org_type === "clinic");
+  const surgeonMemberships = state.memberships.filter((m) => m.org_type === "surgeon");
   const distributorMemberships = state.memberships.filter((m) => m.org_type === "distributor");
 
   const hasRole = (role: PortalRole) => state.memberships.some((m) => m.role === role);
 
   return {
     ...state,
-    clinicMemberships,
+    surgeonMemberships,
     distributorMemberships,
     hasRole,
     signOut,

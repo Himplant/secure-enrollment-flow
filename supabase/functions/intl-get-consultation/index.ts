@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     const { data: c } = await admin
       .from("consultations")
       .select(
-        "id, amount_minor, currency, country, provider, payment_status, consultation_status, expires_at, opened_at, provider_checkout_url, clinic_id, surgeon_id, patient_id, policy_id",
+        "id, amount_minor, currency, country, provider, payment_status, consultation_status, expires_at, opened_at, provider_checkout_url, surgeon_id, patient_id, policy_id",
       )
       .eq("token_hash", tokenHash)
       .maybeSingle();
@@ -61,8 +61,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const [{ data: clinic }, { data: patient }, { data: policy }] = await Promise.all([
-      admin.from("clinics").select("name, city, country, timezone").eq("id", c.clinic_id).maybeSingle(),
+    const [{ data: surgeon }, { data: patient }, { data: policy }] = await Promise.all([
+      admin.from("surgeons").select("name, specialty, city, country, timezone").eq("id", c.surgeon_id).maybeSingle(),
       admin.from("consultation_patients").select("full_name, email, preferred_language").eq("id", c.patient_id).maybeSingle(),
       c.policy_id
         ? admin
@@ -72,10 +72,6 @@ Deno.serve(async (req) => {
             .maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
-
-    const surgeon = c.surgeon_id
-      ? (await admin.from("surgeons").select("name, specialty").eq("id", c.surgeon_id).maybeSingle()).data
-      : null;
 
     return json({
       consultation: {
@@ -89,8 +85,8 @@ Deno.serve(async (req) => {
         expires_at: c.expires_at,
         checkout_url: c.provider_checkout_url,
       },
-      clinic,
       surgeon,
+
       patient,
       policy,
     });

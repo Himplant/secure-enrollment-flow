@@ -68,6 +68,6 @@ export function isDistributorPortalEnabled(flags: FeatureFlags): boolean {
   return isIntlEnabled(flags) && flags.distributor_portal_enabled;
 }
 
-export function isClinicPortalEnabled(flags: FeatureFlags): boolean {
+export function isSurgeonPortalEnabled(flags: FeatureFlags): boolean {
   return isIntlEnabled(flags) && flags.surgeon_portal_enabled;
 }
