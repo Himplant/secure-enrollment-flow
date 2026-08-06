@@ -73,8 +73,8 @@ export function jwtHasAal2(authHeader: string | null): boolean {
 export interface RequirePortalOpts {
   /** Require the caller to hold at least one of these roles. */
   anyRole?: PortalRole[];
-  /** Require the caller's scope to include this clinic. */
-  clinicId?: string;
+  /** Require the caller's scope to include this surgeon. */
+  surgeonId?: string;
   /** Require the caller's scope to include this distributor. */
   distributorId?: string;
   /** Step-up MFA — used for money-moving actions such as connecting a merchant account. */
@@ -113,7 +113,7 @@ export async function requirePortalUser(
 
   const { data: membershipRows } = await supabaseAdmin
     .from("portal_memberships")
-    .select("id, org_type, distributor_id, clinic_id, role")
+    .select("id, org_type, distributor_id, surgeon_id, role")
     .eq("portal_user_id", portalUser.id)
     .eq("is_active", true)
     .is("revoked_at", null);
@@ -125,41 +125,27 @@ export async function requirePortalUser(
     .filter((m) => m.org_type === "distributor" && m.distributor_id)
     .map((m) => m.distributor_id as string);
 
-  // Clinic scope = direct clinic memberships + clinics reachable via distributor
-  // assignment or distributor region coverage. Mirrors private.portal_scope_clinic_ids.
-  const clinicIdSet = new Set<string>(
-    memberships.filter((m) => m.org_type === "clinic" && m.clinic_id).map((m) => m.clinic_id as string),
+  // Surgeon scope = direct surgeon memberships + surgeons assigned to the
+  // caller's distributors. Mirrors private.portal_scope_surgeon_ids.
+  const surgeonIdSet = new Set<string>(
+    memberships.filter((m) => m.org_type === "surgeon" && m.surgeon_id).map((m) => m.surgeon_id as string),
   );
 
   if (distributorIds.length > 0) {
     const { data: assigned } = await supabaseAdmin
-      .from("clinic_distributors")
-      .select("clinic_id")
+      .from("distributor_surgeons")
+      .select("surgeon_id")
       .in("distributor_id", distributorIds);
-    for (const row of assigned ?? []) clinicIdSet.add(row.clinic_id as string);
-
-    const { data: regionRows } = await supabaseAdmin
-      .from("distributor_regions")
-      .select("region_id")
-      .in("distributor_id", distributorIds);
-    const regionIds = (regionRows ?? []).map((r) => r.region_id as string);
-
-    if (regionIds.length > 0) {
-      const { data: regionClinics } = await supabaseAdmin
-        .from("clinics")
-        .select("id")
-        .in("region_id", regionIds);
-      for (const row of regionClinics ?? []) clinicIdSet.add(row.id as string);
-    }
+    for (const row of assigned ?? []) surgeonIdSet.add(row.surgeon_id as string);
   }
 
-  const clinicIds = [...clinicIdSet];
+  const surgeonIds = [...surgeonIdSet];
 
   if (opts.anyRole && !memberships.some((m) => opts.anyRole!.includes(m.role))) {
     return fail(403, "Insufficient portal role");
   }
-  if (opts.clinicId && !clinicIds.includes(opts.clinicId)) {
-    return fail(403, "Clinic is outside your scope");
+  if (opts.surgeonId && !surgeonIds.includes(opts.surgeonId)) {
+    return fail(403, "Surgeon is outside your scope");
   }
   if (opts.distributorId && !distributorIds.includes(opts.distributorId)) {
     return fail(403, "Distributor is outside your scope");
@@ -174,8 +160,9 @@ export async function requirePortalUser(
     email: user.email ?? null,
     portalUserId: portalUser.id as string,
     memberships,
-    clinicIds,
+    surgeonIds,
     distributorIds,
     supabaseAdmin,
   };
 }
+
