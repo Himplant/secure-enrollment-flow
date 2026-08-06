@@ -272,7 +272,6 @@ export function normalizePaypalStatus(providerStatus: string): IntlPaymentStatus
     REFUNDED: "refunded",
     PARTIALLY_REFUNDED: "refunded",
     REVERSED: "disputed",
-};
   };
   return map[s] ?? "processing";
 }
