@@ -5,7 +5,6 @@ import type { IntlConsultationStatus, IntlPaymentStatus, IntlSurgeryStatus } fro
 export interface PortalConsultationRow {
   id: string;
   token_last4: string;
-  surgeon_id: string;
   surgeon_id: string | null;
   amount_minor: number;
   currency: string;
