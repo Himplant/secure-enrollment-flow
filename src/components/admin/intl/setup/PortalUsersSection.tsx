@@ -136,7 +136,7 @@ export function PortalUsersSection() {
   /** Revokes every membership; the auth identity itself is left intact. */
   const remove = async (u: { id: string; portal_memberships?: unknown }) => {
     try {
-      const memberships = ((u.portal_memberships ?? []) as unknown as MembershipRow[]) ?? [];
+      const memberships = (u.portal_memberships ?? []) as unknown as MembershipRow[];
       for (const m of memberships) {
         await callIdentity({ action: "remove_membership", membership_id: m.id });
       }
@@ -193,8 +193,13 @@ export function PortalUsersSection() {
                     {u.accepted_at ? "Active" : "Invited"}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => remove(u.id)}>
+                <TableCell className="flex items-center gap-1">
+                  {!u.accepted_at && (
+                    <Button variant="ghost" size="sm" onClick={() => resend(u.id)}>
+                      Resend
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" onClick={() => remove(u)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </TableCell>
