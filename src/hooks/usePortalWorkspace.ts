@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { usePortalAuth, type PortalMembership } from "./usePortalAuth";
+
 
 const STORAGE_KEY = "portal.workspace";
 
