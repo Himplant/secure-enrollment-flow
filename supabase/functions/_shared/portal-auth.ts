@@ -166,3 +166,47 @@ export async function requirePortalUser(
   };
 }
 
+/**
+ * Narrow an authenticated portal caller to the single organisation they are
+ * currently acting as (the "active workspace" the UI shows).
+ *
+ * Scope is ALWAYS recomputed server-side from the caller's own memberships:
+ * an unknown or non-member workspace is rejected, so this can only ever
+ * shrink access, never widen it. Callers that omit a workspace keep their
+ * full scope for backwards compatibility.
+ */
+export async function applyWorkspace(
+  auth: PortalAuthOk,
+  body: Record<string, unknown> | null | undefined,
+): Promise<PortalAuthResult> {
+  const orgType = body?.workspace_org_type ? String(body.workspace_org_type) : null;
+  const orgId = body?.workspace_org_id ? String(body.workspace_org_id) : null;
+  if (!orgType || !orgId) return auth;
+
+  if (orgType !== "surgeon" && orgType !== "distributor") {
+    return fail(400, "Invalid workspace");
+  }
+
+  const memberships = auth.memberships.filter((m) =>
+    m.org_type === orgType &&
+    (orgType === "surgeon" ? m.surgeon_id === orgId : m.distributor_id === orgId)
+  );
+  if (memberships.length === 0) return fail(403, "Workspace is outside your scope");
+
+  let surgeonIds: string[] = [];
+  const distributorIds: string[] = orgType === "distributor" ? [orgId] : [];
+
+  if (orgType === "surgeon") {
+    surgeonIds = [orgId];
+  } else {
+    const { data: assigned } = await auth.supabaseAdmin
+      .from("distributor_surgeons")
+      .select("surgeon_id")
+      .eq("distributor_id", orgId);
+    surgeonIds = [...new Set((assigned ?? []).map((r) => r.surgeon_id as string))];
+  }
+
+  return { ...auth, memberships, surgeonIds, distributorIds };
+}
+
+
