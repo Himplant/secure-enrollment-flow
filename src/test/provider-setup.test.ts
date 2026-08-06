@@ -10,17 +10,16 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const KEY = "unit-test-provider-credentials-key-0123456789";
 
+const ENV: Record<string, string | undefined> = {
+  PROVIDER_CREDENTIALS_KEY: KEY,
+  SUPABASE_URL: "https://example.supabase.co",
+  APP_URL: "https://app.example.com",
+};
+
+const g = globalThis as unknown as { Deno?: { env: { get: (n: string) => string | undefined } } };
+
 beforeAll(() => {
-  (globalThis as unknown as { Deno: unknown }).Deno = {
-    env: {
-      get: (name: string) =>
-        ({
-          PROVIDER_CREDENTIALS_KEY: KEY,
-          SUPABASE_URL: "https://example.supabase.co",
-          APP_URL: "https://app.example.com",
-        })[name],
-    },
-  };
+  g.Deno = { env: { get: (name: string) => ENV[name] } };
 });
 
 // The adapter imports provider-config.ts, which pulls the Deno-only supabase
@@ -34,8 +33,13 @@ vi.mock("../../supabase/functions/_shared/provider-config.ts", () => ({
   serviceClient: vi.fn(),
 }));
 
-const crypto_ = await import("../../supabase/functions/_shared/provider-crypto.ts");
-const mp = await import("../../supabase/functions/_shared/providers/mercado-pago.ts");
+// Imported through runtime specifiers: these are Deno modules and must stay
+// out of the browser TypeScript program.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const CRYPTO_PATH = "../../supabase/functions/_shared/provider-crypto.ts";
+const MP_PATH = "../../supabase/functions/_shared/providers/mercado-pago.ts";
+const crypto_: any = await import(/* @vite-ignore */ CRYPTO_PATH);
+const mp: any = await import(/* @vite-ignore */ MP_PATH);
 
 describe("credential encryption", () => {
   it("round-trips an encrypted credential blob", async () => {
@@ -56,12 +60,12 @@ describe("credential encryption", () => {
   });
 
   it("refuses to operate without an encryption key", async () => {
-    const original = (globalThis as { Deno: { env: { get: (n: string) => unknown } } }).Deno.env.get;
-    (globalThis as { Deno: { env: { get: (n: string) => unknown } } }).Deno.env.get = () => undefined;
+    const original = ENV.PROVIDER_CREDENTIALS_KEY;
+    ENV.PROVIDER_CREDENTIALS_KEY = undefined;
     await expect(crypto_.encryptCredentials({ a: "b" })).rejects.toBeInstanceOf(
       crypto_.MissingEncryptionKeyError,
     );
-    (globalThis as { Deno: { env: { get: (n: string) => unknown } } }).Deno.env.get = original;
+    ENV.PROVIDER_CREDENTIALS_KEY = original;
   });
 });
 
