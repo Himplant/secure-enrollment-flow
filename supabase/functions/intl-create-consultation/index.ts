@@ -31,6 +31,9 @@ Deno.serve(async (req) => {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return json({ error: "Invalid JSON body" }, 400);
 
+    const expiryError = rejectExpiryOverride(body.expires_in_hours);
+    if (expiryError) return json({ error: expiryError }, 400);
+
     const result = await createIntlConsultation(auth.supabaseAdmin, {
       surgeonId: body.surgeon_id ? String(body.surgeon_id) : null,
       patientName: String(body.patient_name ?? ""),

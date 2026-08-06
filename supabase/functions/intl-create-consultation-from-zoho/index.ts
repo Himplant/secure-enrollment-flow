@@ -93,6 +93,9 @@ Deno.serve(async (req) => {
           ? Math.round(Number(body.amount) * 100)
           : null;
 
+    const expiryError = rejectExpiryOverride(body.expires_in_hours);
+    if (expiryError) return json({ error: expiryError }, 400);
+
     const result = await createIntlConsultation(admin, {
       surgeonId: body.surgeon_id ? String(body.surgeon_id) : null,
       zohoSurgeonId: body.zoho_surgeon_id

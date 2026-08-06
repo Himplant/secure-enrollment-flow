@@ -27,7 +27,7 @@ export interface CreateConsultationInput {
   provider?: string | null;
   policyId?: string | null;
   notes?: string | null;
-  expiresInHours?: number | null;
+
   zohoModule?: string | null;
   zohoRecordId?: string | null;
   agentEmail?: string | null;
