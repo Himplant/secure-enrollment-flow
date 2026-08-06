@@ -227,16 +227,27 @@ export async function createIntlConsultation(
   }
 
   // ---- 7. Duplicate prevention for Zoho-sourced invitations -----------
+  // Scoped by BOTH module and record id: a Deals record and an Accounts
+  // record can legitimately share the same numeric id.
+  const zohoModule = input.zohoModule ? normalizeZohoModule(input.zohoModule) : null;
+  if (input.zohoModule && !zohoModule) {
+    return fail(400, `Unsupported Zoho module "${input.zohoModule}". Use Deals or Accounts.`);
+  }
+
   let existingConsultation: Record<string, unknown> | null = null;
-  if (input.zohoRecordId) {
+  if (input.zohoRecordId && zohoModule) {
     const { data } = await admin
       .from("consultations")
-      .select("id, payment_status")
+      .select("id, payment_status, policy_snapshot_id")
+      .eq("zoho_module", zohoModule)
       .eq("zoho_record_id", input.zohoRecordId)
       .in("payment_status", ["draft", "link_created", "link_sent", "link_opened"])
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     existingConsultation = data ?? null;
   }
+
 
   // ---- 8. Mint the link ----------------------------------------------
   const token = generateConsultationToken();
