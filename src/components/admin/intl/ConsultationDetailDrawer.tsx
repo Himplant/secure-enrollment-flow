@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,12 +84,10 @@ export function ConsultationDetailDrawer({ consultationId, onOpenChange }: Props
           .order("created_at", { ascending: false }),
       ]);
       return {
-        // deno-lint-ignore no-explicit-any
-        c: c.data as any,
+        c: c.data as Record<string, any>,
         messages: messages.data ?? [],
         attempts: attempts.data ?? [],
-        // deno-lint-ignore no-explicit-any
-        snapshot: snapshot.data as any,
+        snapshot: snapshot.data as Record<string, any> | null,
         events: events.data ?? [],
         tasks: tasks.data ?? [],
         outbox: outbox.data ?? [],
