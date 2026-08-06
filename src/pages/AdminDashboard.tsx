@@ -387,9 +387,16 @@ export default function AdminDashboard() {
             />
           </TabsContent>
           <TabsContent value="audit"><AuditLogTab /></TabsContent>
+          {intlVisible && (
+            <TabsContent value="intl-consultations"><ConsultationsTab /></TabsContent>
+          )}
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
           )}
+          {INTL_BUILD_ENABLED && adminUser?.role === "super_admin" && (
+            <TabsContent value="platform-flags"><FeatureFlagsTab /></TabsContent>
+          )}
+
         </Tabs>
       </main>
     </div>
