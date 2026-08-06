@@ -4,7 +4,7 @@
 // OWN practice only. Every surgeon id in the request is re-derived from the
 // caller's memberships server-side; nothing in the request body can widen
 // scope. Himplant admin users are never touched by this endpoint.
-import { requirePortalUser } from "../_shared/portal-auth.ts";
+import { applyWorkspace, requirePortalUser } from "../_shared/portal-auth.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 
 const corsHeaders = {
@@ -30,8 +30,8 @@ Deno.serve(async (req) => {
     const flagBlock = await requireIntlEnabled();
     if (flagBlock) return flagBlock;
 
-    const auth = await requirePortalUser(req, { anyRole: ["surgeon_admin"] });
-    if (!auth.ok) return auth.response;
+    const baseAuth = await requirePortalUser(req, { anyRole: ["surgeon_admin"] });
+    if (!baseAuth.ok) return baseAuth.response;
 
     // Practices this caller actually administers.
     const ownedSurgeonIds = auth.memberships
@@ -42,6 +42,9 @@ Deno.serve(async (req) => {
 
     const admin = auth.supabaseAdmin;
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Narrow to the organisation the caller is currently acting as.
+    const auth = await applyWorkspace(baseAuth, body);
+    if (!auth.ok) return auth.response;
     const action = String(body.action ?? "list");
 
     const resolveSurgeonId = (): string | null => {

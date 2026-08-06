@@ -4,7 +4,7 @@
 // Regenerating a link (which invalidates the old one) requires
 // `action: "regenerate"` and an explicit confirmation flag.
 // Distributor roles are read-only and cannot use this endpoint.
-import { requirePortalUser } from "../_shared/portal-auth.ts";
+import { applyWorkspace, requirePortalUser } from "../_shared/portal-auth.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 import { sendConsultationLink } from "../_shared/intl-send-link.ts";
 import { consultationLinkUrl, storeLinkToken } from "../_shared/intl-link-secret.ts";
@@ -33,10 +33,13 @@ Deno.serve(async (req) => {
     if (flagBlock) return flagBlock;
 
     // Surgeon-office roles only — distributors are read-only.
-    const auth = await requirePortalUser(req, { anyRole: ["surgeon_admin", "surgeon_staff"] });
-    if (!auth.ok) return auth.response;
+    const baseAuth = await requirePortalUser(req, { anyRole: ["surgeon_admin", "surgeon_staff"] });
+    if (!baseAuth.ok) return baseAuth.response;
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    // Narrow to the organisation the caller is currently acting as.
+    const auth = await applyWorkspace(baseAuth, body);
+    if (!auth.ok) return auth.response;
     const consultationId = String(body?.consultation_id ?? "");
     const action = String(body?.action ?? "send_reminder");
     if (!consultationId) return json({ error: "consultation_id is required" }, 400);

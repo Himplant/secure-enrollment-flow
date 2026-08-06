@@ -1,7 +1,7 @@
 // Portal write surface: surgeon staff advance the consultation lifecycle
 // (contacted / scheduled / completed / no-show / canceled) and add outcome
 // notes. Payment fields, amounts, and provider data are never writable here.
-import { requirePortalUser } from "../_shared/portal-auth.ts";
+import { applyWorkspace, requirePortalUser } from "../_shared/portal-auth.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 
 const corsHeaders = {
@@ -36,10 +36,13 @@ Deno.serve(async (req) => {
     const flagBlock = await requireIntlEnabled();
     if (flagBlock) return flagBlock;
 
-    const auth = await requirePortalUser(req, { anyRole: [...WRITE_ROLES] });
-    if (!auth.ok) return auth.response;
+    const baseAuth = await requirePortalUser(req, { anyRole: [...WRITE_ROLES] });
+    if (!baseAuth.ok) return baseAuth.response;
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    // Narrow to the organisation the caller is currently acting as.
+    const auth = await applyWorkspace(baseAuth, body);
+    if (!auth.ok) return auth.response;
     if (!body) return json({ error: "Invalid JSON body" }, 400);
 
     const consultationId = String(body.consultation_id ?? "");
