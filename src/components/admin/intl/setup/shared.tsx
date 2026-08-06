@@ -1,21 +1,6 @@
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Trash2 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { TableCell, TableRow } from "@/components/ui/table";
+import { Loader2 } from "lucide-react";
 import { COUNTRY_LABEL } from "@/lib/intlMoney";
 
 export const COUNTRIES = ["MX", "CO", "CL"] as const;
@@ -70,11 +55,3 @@ export function Spinner() {
     </div>
   );
 }
-
-export {
-  useState, useQuery, useQueryClient, supabase, Button, Input, Label, Switch,
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-  Badge, Plus, Trash2, useToast,
-};
