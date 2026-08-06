@@ -157,6 +157,80 @@ export type Database = {
           },
         ]
       }
+      consultation_messages: {
+        Row: {
+          actor_email: string | null
+          actor_type: string
+          attempt_count: number
+          bounced_at: string | null
+          channel: string
+          consultation_id: string
+          created_at: string
+          delivered_at: string | null
+          error: string | null
+          failed_at: string | null
+          id: string
+          language: string
+          message_type: string
+          provider_message_id: string | null
+          recipient: string
+          sent_at: string | null
+          status: string
+          template_version: string
+          updated_at: string
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_type?: string
+          attempt_count?: number
+          bounced_at?: string | null
+          channel?: string
+          consultation_id: string
+          created_at?: string
+          delivered_at?: string | null
+          error?: string | null
+          failed_at?: string | null
+          id?: string
+          language?: string
+          message_type: string
+          provider_message_id?: string | null
+          recipient: string
+          sent_at?: string | null
+          status?: string
+          template_version?: string
+          updated_at?: string
+        }
+        Update: {
+          actor_email?: string | null
+          actor_type?: string
+          attempt_count?: number
+          bounced_at?: string | null
+          channel?: string
+          consultation_id?: string
+          created_at?: string
+          delivered_at?: string | null
+          error?: string | null
+          failed_at?: string | null
+          id?: string
+          language?: string
+          message_type?: string
+          provider_message_id?: string | null
+          recipient?: string
+          sent_at?: string | null
+          status?: string
+          template_version?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consultation_messages_consultation_id_fkey"
+            columns: ["consultation_id"]
+            isOneToOne: false
+            referencedRelation: "consultations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       consultation_patients: {
         Row: {
           country: Database["public"]["Enums"]["intl_country"]
@@ -198,6 +272,156 @@ export type Database = {
           zoho_record_id?: string | null
         }
         Relationships: []
+      }
+      consultation_payment_attempts: {
+        Row: {
+          amount_minor: number
+          checkout_url: string | null
+          consultation_id: string
+          created_at: string
+          currency: string
+          failure_reason: string | null
+          id: string
+          provider: Database["public"]["Enums"]["payment_provider"]
+          provider_order_id: string | null
+          provider_payment_id: string | null
+          raw_provider_payload: Json | null
+          reconciled_at: string | null
+          status: Database["public"]["Enums"]["intl_payment_status"]
+          updated_at: string
+        }
+        Insert: {
+          amount_minor: number
+          checkout_url?: string | null
+          consultation_id: string
+          created_at?: string
+          currency: string
+          failure_reason?: string | null
+          id?: string
+          provider: Database["public"]["Enums"]["payment_provider"]
+          provider_order_id?: string | null
+          provider_payment_id?: string | null
+          raw_provider_payload?: Json | null
+          reconciled_at?: string | null
+          status?: Database["public"]["Enums"]["intl_payment_status"]
+          updated_at?: string
+        }
+        Update: {
+          amount_minor?: number
+          checkout_url?: string | null
+          consultation_id?: string
+          created_at?: string
+          currency?: string
+          failure_reason?: string | null
+          id?: string
+          provider?: Database["public"]["Enums"]["payment_provider"]
+          provider_order_id?: string | null
+          provider_payment_id?: string | null
+          raw_provider_payload?: Json | null
+          reconciled_at?: string | null
+          status?: Database["public"]["Enums"]["intl_payment_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consultation_payment_attempts_consultation_id_fkey"
+            columns: ["consultation_id"]
+            isOneToOne: false
+            referencedRelation: "consultations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consultation_policy_snapshots: {
+        Row: {
+          amount_minor: number
+          cancellation_policy: string | null
+          consultation_id: string
+          content_sha256: string
+          country: Database["public"]["Enums"]["intl_country"]
+          created_at: string
+          currency: string
+          id: string
+          language: string
+          no_show_policy: string | null
+          policy_id: string | null
+          policy_version: string
+          privacy_text: string | null
+          privacy_url: string | null
+          provider: Database["public"]["Enums"]["payment_provider"]
+          refund_exceptions: string | null
+          resolution_rule: string
+          surgeon_id: string
+          terms_text: string
+          terms_url: string | null
+        }
+        Insert: {
+          amount_minor: number
+          cancellation_policy?: string | null
+          consultation_id: string
+          content_sha256: string
+          country: Database["public"]["Enums"]["intl_country"]
+          created_at?: string
+          currency: string
+          id?: string
+          language: string
+          no_show_policy?: string | null
+          policy_id?: string | null
+          policy_version: string
+          privacy_text?: string | null
+          privacy_url?: string | null
+          provider: Database["public"]["Enums"]["payment_provider"]
+          refund_exceptions?: string | null
+          resolution_rule: string
+          surgeon_id: string
+          terms_text: string
+          terms_url?: string | null
+        }
+        Update: {
+          amount_minor?: number
+          cancellation_policy?: string | null
+          consultation_id?: string
+          content_sha256?: string
+          country?: Database["public"]["Enums"]["intl_country"]
+          created_at?: string
+          currency?: string
+          id?: string
+          language?: string
+          no_show_policy?: string | null
+          policy_id?: string | null
+          policy_version?: string
+          privacy_text?: string | null
+          privacy_url?: string | null
+          provider?: Database["public"]["Enums"]["payment_provider"]
+          refund_exceptions?: string | null
+          resolution_rule?: string
+          surgeon_id?: string
+          terms_text?: string
+          terms_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consultation_policy_snapshots_consultation_id_fkey"
+            columns: ["consultation_id"]
+            isOneToOne: false
+            referencedRelation: "consultations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultation_policy_snapshots_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "international_policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultation_policy_snapshots_surgeon_id_fkey"
+            columns: ["surgeon_id"]
+            isOneToOne: false
+            referencedRelation: "surgeons"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       consultation_tasks: {
         Row: {
@@ -269,6 +493,7 @@ export type Database = {
           failed_at: string | null
           first_contact_at: string | null
           id: string
+          last_reminder_at: string | null
           no_show_at: string | null
           notes: string | null
           opened_at: string | null
@@ -277,6 +502,8 @@ export type Database = {
           patient_id: string
           payment_status: Database["public"]["Enums"]["intl_payment_status"]
           policy_id: string | null
+          policy_snapshot_id: string | null
+          preferred_language: string
           provider: Database["public"]["Enums"]["payment_provider"]
           provider_account_id: string | null
           provider_checkout_url: string | null
@@ -284,6 +511,7 @@ export type Database = {
           provider_payment_id: string | null
           recipient_external_merchant_id: string | null
           refunded_at: string | null
+          reminder_count: number
           rescheduled_count: number
           scheduled_at: string | null
           sent_at: string | null
@@ -322,6 +550,7 @@ export type Database = {
           failed_at?: string | null
           first_contact_at?: string | null
           id?: string
+          last_reminder_at?: string | null
           no_show_at?: string | null
           notes?: string | null
           opened_at?: string | null
@@ -330,6 +559,8 @@ export type Database = {
           patient_id: string
           payment_status?: Database["public"]["Enums"]["intl_payment_status"]
           policy_id?: string | null
+          policy_snapshot_id?: string | null
+          preferred_language?: string
           provider: Database["public"]["Enums"]["payment_provider"]
           provider_account_id?: string | null
           provider_checkout_url?: string | null
@@ -337,6 +568,7 @@ export type Database = {
           provider_payment_id?: string | null
           recipient_external_merchant_id?: string | null
           refunded_at?: string | null
+          reminder_count?: number
           rescheduled_count?: number
           scheduled_at?: string | null
           sent_at?: string | null
@@ -375,6 +607,7 @@ export type Database = {
           failed_at?: string | null
           first_contact_at?: string | null
           id?: string
+          last_reminder_at?: string | null
           no_show_at?: string | null
           notes?: string | null
           opened_at?: string | null
@@ -383,6 +616,8 @@ export type Database = {
           patient_id?: string
           payment_status?: Database["public"]["Enums"]["intl_payment_status"]
           policy_id?: string | null
+          policy_snapshot_id?: string | null
+          preferred_language?: string
           provider?: Database["public"]["Enums"]["payment_provider"]
           provider_account_id?: string | null
           provider_checkout_url?: string | null
@@ -390,6 +625,7 @@ export type Database = {
           provider_payment_id?: string | null
           recipient_external_merchant_id?: string | null
           refunded_at?: string | null
+          reminder_count?: number
           rescheduled_count?: number
           scheduled_at?: string | null
           sent_at?: string | null
@@ -433,6 +669,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "consultations_policy_snapshot_id_fkey"
+            columns: ["policy_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "consultation_policy_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "consultations_provider_account_id_fkey"
             columns: ["provider_account_id"]
             isOneToOne: false
@@ -453,18 +696,21 @@ export type Database = {
           created_at: string
           distributor_id: string
           id: string
+          is_override: boolean
           surgeon_id: string
         }
         Insert: {
           created_at?: string
           distributor_id: string
           id?: string
+          is_override?: boolean
           surgeon_id: string
         }
         Update: {
           created_at?: string
           distributor_id?: string
           id?: string
+          is_override?: boolean
           surgeon_id?: string
         }
         Relationships: [
@@ -486,6 +732,7 @@ export type Database = {
       }
       distributors: {
         Row: {
+          countries: string[]
           created_at: string
           id: string
           is_active: boolean
@@ -497,6 +744,7 @@ export type Database = {
           zoho_id: string | null
         }
         Insert: {
+          countries?: string[]
           created_at?: string
           id?: string
           is_active?: boolean
@@ -508,6 +756,7 @@ export type Database = {
           zoho_id?: string | null
         }
         Update: {
+          countries?: string[]
           created_at?: string
           id?: string
           is_active?: boolean
@@ -749,7 +998,11 @@ export type Database = {
           is_enabled: boolean
           link_expiry_hours: number
           max_fee_minor: number | null
+          max_reminders: number
           min_fee_minor: number
+          reminder_hours_after_create: number
+          reminder_hours_before_expiry: number
+          reminders_enabled: boolean
           sla_first_contact_hours: number
           updated_at: string
         }
@@ -763,7 +1016,11 @@ export type Database = {
           is_enabled?: boolean
           link_expiry_hours?: number
           max_fee_minor?: number | null
+          max_reminders?: number
           min_fee_minor?: number
+          reminder_hours_after_create?: number
+          reminder_hours_before_expiry?: number
+          reminders_enabled?: boolean
           sla_first_contact_hours?: number
           updated_at?: string
         }
@@ -777,7 +1034,11 @@ export type Database = {
           is_enabled?: boolean
           link_expiry_hours?: number
           max_fee_minor?: number | null
+          max_reminders?: number
           min_fee_minor?: number
+          reminder_hours_after_create?: number
+          reminder_hours_before_expiry?: number
+          reminders_enabled?: boolean
           sla_first_contact_hours?: number
           updated_at?: string
         }
@@ -792,11 +1053,14 @@ export type Database = {
           effective_at: string
           id: string
           is_active: boolean
+          is_country_default: boolean
           language: string
           no_show_policy: string | null
           privacy_url: string | null
           provider: Database["public"]["Enums"]["payment_provider"] | null
+          published_at: string | null
           refund_exceptions: string | null
+          retired_at: string | null
           surgeon_id: string | null
           terms_text: string
           terms_url: string | null
@@ -811,11 +1075,14 @@ export type Database = {
           effective_at?: string
           id?: string
           is_active?: boolean
+          is_country_default?: boolean
           language?: string
           no_show_policy?: string | null
           privacy_url?: string | null
           provider?: Database["public"]["Enums"]["payment_provider"] | null
+          published_at?: string | null
           refund_exceptions?: string | null
+          retired_at?: string | null
           surgeon_id?: string | null
           terms_text: string
           terms_url?: string | null
@@ -830,11 +1097,14 @@ export type Database = {
           effective_at?: string
           id?: string
           is_active?: boolean
+          is_country_default?: boolean
           language?: string
           no_show_policy?: string | null
           privacy_url?: string | null
           provider?: Database["public"]["Enums"]["payment_provider"] | null
+          published_at?: string | null
           refund_exceptions?: string | null
+          retired_at?: string | null
           surgeon_id?: string | null
           terms_text?: string
           terms_url?: string | null
@@ -1131,28 +1401,43 @@ export type Database = {
       }
       processed_provider_events: {
         Row: {
+          attempts: number
+          consultation_id: string | null
           error: string | null
           external_event_id: string
+          last_error: string | null
+          next_attempt_at: string | null
           processing_status: string
           provider: Database["public"]["Enums"]["payment_provider"]
           raw_payload: Json | null
           received_at: string
+          updated_at: string
         }
         Insert: {
+          attempts?: number
+          consultation_id?: string | null
           error?: string | null
           external_event_id: string
+          last_error?: string | null
+          next_attempt_at?: string | null
           processing_status?: string
           provider: Database["public"]["Enums"]["payment_provider"]
           raw_payload?: Json | null
           received_at?: string
+          updated_at?: string
         }
         Update: {
+          attempts?: number
+          consultation_id?: string | null
           error?: string | null
           external_event_id?: string
+          last_error?: string | null
+          next_attempt_at?: string | null
           processing_status?: string
           provider?: Database["public"]["Enums"]["payment_provider"]
           raw_payload?: Json | null
           received_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1400,7 +1685,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      read_consultation_link_secret: {
+        Args: { _consultation_id: string }
+        Returns: {
+          ciphertext: string
+          iv: string
+          token_last4: string
+        }[]
+      }
+      store_consultation_link_secret: {
+        Args: {
+          _ciphertext: string
+          _consultation_id: string
+          _iv: string
+          _last4: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       admin_role: "admin" | "viewer" | "super_admin"

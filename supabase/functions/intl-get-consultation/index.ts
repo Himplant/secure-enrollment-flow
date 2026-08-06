@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     const expired = new Date(c.expires_at as string).getTime() < Date.now();
 
     // First open is recorded once, and only while the link is still actionable.
-    if (!c.opened_at && !expired && c.payment_status === "link_sent") {
+    if (!c.opened_at && !expired && ["link_created", "link_sent"].includes(c.payment_status as string)) {
       await admin
         .from("consultations")
         .update({ opened_at: new Date().toISOString(), payment_status: "link_opened" })

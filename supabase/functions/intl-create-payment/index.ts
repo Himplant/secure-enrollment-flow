@@ -5,6 +5,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 import { hashConsultationToken } from "../_shared/intl-token.ts";
 import { getProvider } from "../_shared/providers/registry.ts";
+import { requirePolicySnapshot } from "../_shared/intl-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,6 +71,11 @@ Deno.serve(async (req) => {
     const provider = getProvider(c.provider as string);
     if (!provider) return json({ error: "Payment provider unavailable" }, 503);
 
+    // Fail closed: no immutable policy snapshot means no checkout.
+    if (!(await requirePolicySnapshot(admin, c.id as string))) {
+      return json({ error: "This consultation has no accepted policy on record" }, 409);
+    }
+
     const [{ data: patient }, { data: surgeonRec }] = await Promise.all([
       admin.from("consultation_patients").select("full_name, email").eq("id", c.patient_id).maybeSingle(),
       admin.from("surgeons").select("name").eq("id", c.surgeon_id).maybeSingle(),
@@ -106,6 +112,18 @@ Deno.serve(async (req) => {
         signature_data: body.signature_data ?? null,
       })
       .eq("id", c.id);
+
+    // Every attempt is preserved; consultation columns stay a latest-summary.
+    await admin.from("consultation_payment_attempts").insert({
+      consultation_id: c.id,
+      provider: c.provider,
+      provider_order_id: checkout.providerOrderId,
+      provider_payment_id: checkout.providerPaymentId,
+      checkout_url: checkout.checkoutUrl,
+      amount_minor: Number(c.amount_minor),
+      currency: String(c.currency),
+      status: "processing",
+    });
 
     await admin.from("consultation_events").insert({
       consultation_id: c.id,

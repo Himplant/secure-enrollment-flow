@@ -57,20 +57,54 @@ Deno.serve(async (req) => {
     return new Response("invalid signature", { status: 401, headers: corsHeaders });
   }
 
-  // Idempotency — a unique violation means we already handled this event.
-  const { error: dupeErr } = await admin.from("processed_provider_events").insert({
-    provider: providerName,
-    external_event_id: verification.eventId ?? verification.lookupId,
-    raw_payload: safeJson(rawBody),
-    processing_status: "received",
-  });
-  if (dupeErr) return ok();
-
+  // Idempotency WITHOUT permanently discarding transient failures:
+  // an event is only "done" once it reaches processed / mismatch / orphan / dead.
   const eventKey = verification.eventId ?? verification.lookupId;
+  const TERMINAL = ["processed", "mismatch", "orphan", "duplicate", "dead"];
+
+  const { data: existingEvent } = await admin
+    .from("processed_provider_events")
+    .select("processing_status, attempts")
+    .eq("provider", providerName)
+    .eq("external_event_id", eventKey)
+    .maybeSingle();
+
+  if (existingEvent && TERMINAL.includes(String(existingEvent.processing_status))) {
+    return ok();
+  }
+
+  const attemptNo = Number(existingEvent?.attempts ?? 0) + 1;
+
+  if (existingEvent) {
+    await admin
+      .from("processed_provider_events")
+      .update({ processing_status: "processing", attempts: attemptNo, updated_at: new Date().toISOString() })
+      .eq("provider", providerName)
+      .eq("external_event_id", eventKey);
+  } else {
+    await admin.from("processed_provider_events").insert({
+      provider: providerName,
+      external_event_id: eventKey,
+      raw_payload: safeJson(rawBody),
+      processing_status: "processing",
+      attempts: attemptNo,
+    });
+  }
+
   const markStatus = async (status: string, error?: string) => {
     await admin
       .from("processed_provider_events")
-      .update({ processing_status: status, error: error ?? null })
+      .update({
+        processing_status: status,
+        error: error ?? null,
+        last_error: error ?? null,
+        attempts: attemptNo,
+        updated_at: new Date().toISOString(),
+        next_attempt_at:
+          status === "retryable_error"
+            ? new Date(Date.now() + Math.min(6 * 3600_000, 60_000 * Math.pow(3, attemptNo))).toISOString()
+            : null,
+      })
       .eq("provider", providerName)
       .eq("external_event_id", eventKey);
   };
@@ -150,6 +184,36 @@ Deno.serve(async (req) => {
 
     await admin.from("consultations").update(update).eq("id", c.id);
 
+    // Preserve the per-attempt record rather than only the latest summary.
+    const attemptPatch = {
+      status: payment.status,
+      provider_payment_id: payment.providerPaymentId,
+      raw_provider_payload: payment.raw as Record<string, unknown>,
+      reconciled_at: new Date().toISOString(),
+      failure_reason: payment.status === "failed" ? "provider reported failure" : null,
+    };
+
+    const { data: attemptRow } = await admin
+      .from("consultation_payment_attempts")
+      .select("id")
+      .eq("consultation_id", c.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (attemptRow) {
+      await admin.from("consultation_payment_attempts").update(attemptPatch).eq("id", attemptRow.id);
+    } else {
+      await admin.from("consultation_payment_attempts").insert({
+        consultation_id: c.id,
+        provider: providerName,
+        provider_order_id: payment.providerOrderId,
+        amount_minor: Number(c.amount_minor),
+        currency: String(c.currency),
+        ...attemptPatch,
+      });
+    }
+
     await admin.from("consultation_events").insert({
       consultation_id: c.id,
       event_type: `payment_${payment.status}`,
@@ -184,7 +248,7 @@ Deno.serve(async (req) => {
     await markStatus("processed");
     return ok();
   } catch (e) {
-    await markStatus("error", e instanceof Error ? e.message : "unexpected");
+    await markStatus(attemptNo >= 6 ? "dead" : "retryable_error", e instanceof Error ? e.message : "unexpected");
     return ok();
   }
 });

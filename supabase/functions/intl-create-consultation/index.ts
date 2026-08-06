@@ -1,10 +1,10 @@
-// Creates an international consultation payment invitation.
-// Admin-only, AAL2 enforced, and blocked entirely unless the international
-// module + country + provider flags are all on.
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+// Creates an international consultation payment invitation from the Himplant
+// admin dashboard. All validation, policy resolution, duplicate handling and
+// link minting live in the shared service that the Zoho endpoint also uses.
 import { requireAdmin } from "../_shared/admin-auth.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
-import { generateConsultationToken, hashConsultationToken, tokenLast4 } from "../_shared/intl-token.ts";
+import { createIntlConsultation } from "../_shared/intl-consultation-service.ts";
+import { sendConsultationLink } from "../_shared/intl-send-link.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,165 +21,51 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const flagBlock = await requireIntlEnabled();
+    if (flagBlock) return flagBlock;
+
     const auth = await requireAdmin(req, { requireAal2: true });
     if (!auth.ok) return auth.response;
 
-    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return json({ error: "Invalid JSON body" }, 400);
 
-    const surgeonId = String(body.surgeon_id ?? "");
-    const patientName = String(body.patient_name ?? "").trim();
-    const patientEmail = body.patient_email ? String(body.patient_email).trim() : null;
-    const patientPhone = body.patient_phone ? String(body.patient_phone).trim() : null;
-    const language = String(body.preferred_language ?? "es");
-    const amountMinor = Number(body.amount_minor);
-
-    if (!surgeonId) return json({ error: "surgeon_id is required" }, 400);
-    if (!patientName) return json({ error: "patient_name is required" }, 400);
-    if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
-      return json({ error: "amount_minor must be a positive integer" }, 400);
-    }
-
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
-    const { data: surgeon } = await admin
-      .from("surgeons")
-      .select("id, name, country, currency, consultation_fee_minor, active_provider, is_active, is_international")
-      .eq("id", surgeonId)
-      .maybeSingle();
-
-    if (!surgeon || !surgeon.is_active) return json({ error: "Surgeon not found or inactive" }, 404);
-    if (!surgeon.country) return json({ error: "This surgeon has no country set" }, 400);
-
-    const country = surgeon.country as string;
-
-    // Country settings gate the fee range, currency, and allowed providers.
-    const { data: settings } = await admin
-      .from("international_country_settings")
-      .select("*")
-      .eq("country", country)
-      .maybeSingle();
-
-    if (!settings || !settings.is_enabled) {
-      return json({ error: `Consultations are not enabled for ${country}` }, 503);
-    }
-
-    const currency = String(body.currency ?? surgeon.currency ?? settings.default_currency);
-
-    if (amountMinor < Number(settings.min_fee_minor)) {
-      return json({ error: "Amount is below the minimum consultation fee" }, 400);
-    }
-    if (settings.max_fee_minor && amountMinor > Number(settings.max_fee_minor)) {
-      return json({ error: "Amount is above the maximum consultation fee" }, 400);
-    }
-
-    // Resolve the recipient merchant account. No valid account = no invitation.
-    const requested = body.provider ? String(body.provider) : null;
-    const allowed = (settings.allowed_providers ?? []) as string[];
-
-    const { data: accounts } = await admin
-      .from("provider_accounts")
-      .select("id, provider, external_merchant_id, currency, status, is_active")
-      .eq("surgeon_id", surgeonId)
-      .eq("status", "connected")
-      .eq("is_active", true);
-
-    const candidates = (accounts ?? []).filter(
-      (a) =>
-        allowed.includes(a.provider as string) &&
-        String(a.currency).toUpperCase() === currency.toUpperCase() &&
-        (!requested || a.provider === requested) &&
-        (requested || !surgeon.active_provider || a.provider === surgeon.active_provider),
-    );
-
-    const account = candidates[0];
-    if (!account) {
-      return json(
-        { error: "This surgeon has no connected payment account for the requested provider and currency" },
-        409,
-      );
-    }
-
-    const flagBlock = await requireIntlEnabled({
-      country,
-      provider: account.provider as string,
-    });
-    if (flagBlock) return flagBlock;
-
-    // Patient record (international patients are kept out of the U.S. `patients` table).
-    const { data: patient, error: patientErr } = await admin
-      .from("consultation_patients")
-      .insert({
-        full_name: patientName,
-        email: patientEmail,
-        phone: patientPhone,
-        country,
-        preferred_language: language,
-        notes: body.notes ? String(body.notes) : null,
-      })
-      .select("id")
-      .single();
-
-    if (patientErr) return json({ error: patientErr.message }, 400);
-
-    const token = generateConsultationToken();
-    const tokenHash = await hashConsultationToken(token);
-    const expiryHours = Number(settings.link_expiry_hours ?? 72);
-    const expiresAt = new Date(Date.now() + expiryHours * 3600_000).toISOString();
-
-    const { data: activePolicy } = await admin
-      .from("international_policies")
-      .select("id, version, content_sha256")
-      .eq("country", country)
-      .eq("is_active", true)
-      .order("effective_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const { data: consultation, error: consultErr } = await admin
-      .from("consultations")
-      .insert({
-        token_hash: tokenHash,
-        token_last4: tokenLast4(token),
-        expires_at: expiresAt,
-        surgeon_id: surgeonId,
-        patient_id: patient.id,
-        agent_email: auth.email,
-        amount_minor: amountMinor,
-        currency,
-        country,
-        provider: account.provider,
-        provider_account_id: account.id,
-        recipient_external_merchant_id: account.external_merchant_id,
-        payment_status: "link_created",
-        consultation_status: "awaiting_payment",
-        policy_id: activePolicy?.id ?? null,
-        terms_version: activePolicy?.version ?? null,
-        terms_sha256: activePolicy?.content_sha256 ?? null,
-      })
-      .select("id")
-      .single();
-
-
-    if (consultErr) return json({ error: consultErr.message }, 400);
-
-    await admin.from("consultation_events").insert({
-      consultation_id: consultation.id,
-      event_type: "consultation_created",
-      event_data: { amount_minor: amountMinor, currency, provider: account.provider },
-      actor_type: "admin",
-      actor_id: auth.userId,
-      actor_email: auth.email,
+    const result = await createIntlConsultation(auth.supabaseAdmin, {
+      surgeonId: body.surgeon_id ? String(body.surgeon_id) : null,
+      patientName: String(body.patient_name ?? ""),
+      patientEmail: body.patient_email ? String(body.patient_email) : null,
+      patientPhone: body.patient_phone ? String(body.patient_phone) : null,
+      language: body.preferred_language ? String(body.preferred_language) : null,
+      amountMinor: body.amount_minor !== undefined ? Number(body.amount_minor) : null,
+      currency: body.currency ? String(body.currency) : null,
+      provider: body.provider ? String(body.provider) : null,
+      policyId: body.policy_id ? String(body.policy_id) : null,
+      notes: body.notes ? String(body.notes) : null,
+      expiresInHours: body.expires_in_hours ? Number(body.expires_in_hours) : null,
+      actorType: "admin",
+      actorId: auth.userId,
+      actorEmail: auth.email,
     });
 
-    const appUrl = Deno.env.get("APP_URL") ?? "";
+    if (!result.ok) return json({ error: result.error }, result.status);
+
+    const send = body.send_email === false
+      ? { ok: false, error: "Email skipped by request", suppressed: "skipped" as string | undefined }
+      : await sendConsultationLink(auth.supabaseAdmin, result.consultationId, "initial_link", {
+          type: "admin",
+          id: auth.userId,
+          email: auth.email,
+        });
+
     return json({
-      consultation_id: consultation.id,
-      payment_url: `${appUrl}/consult/${token}`,
-      expires_at: expiresAt,
+      consultation_id: result.consultationId,
+      payment_url: result.paymentUrl,
+      token_last4: result.tokenLast4,
+      expires_at: result.expiresAt,
+      policy_version: result.policy.version,
+      policy_rule: result.policy.rule,
+      email_sent: send.ok,
+      email_error: send.ok ? null : ((send as { error?: string }).error ?? null),
     });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);
