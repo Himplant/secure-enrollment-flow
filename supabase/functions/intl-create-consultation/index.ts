@@ -2,6 +2,7 @@
 // admin dashboard. All validation, policy resolution, duplicate handling and
 // link minting live in the shared service that the Zoho endpoint also uses.
 import { requireAdmin } from "../_shared/admin-auth.ts";
+import { rejectExpiryOverride } from "../_shared/intl-expiry.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 import { createIntlConsultation } from "../_shared/intl-consultation-service.ts";
 import { sendConsultationLink } from "../_shared/intl-send-link.ts";
@@ -30,6 +31,9 @@ Deno.serve(async (req) => {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return json({ error: "Invalid JSON body" }, 400);
 
+    const expiryError = rejectExpiryOverride(body.expires_in_hours);
+    if (expiryError) return json({ error: expiryError }, 400);
+
     const result = await createIntlConsultation(auth.supabaseAdmin, {
       surgeonId: body.surgeon_id ? String(body.surgeon_id) : null,
       patientName: String(body.patient_name ?? ""),
@@ -41,7 +45,6 @@ Deno.serve(async (req) => {
       provider: body.provider ? String(body.provider) : null,
       policyId: body.policy_id ? String(body.policy_id) : null,
       notes: body.notes ? String(body.notes) : null,
-      expiresInHours: body.expires_in_hours ? Number(body.expires_in_hours) : null,
       actorType: "admin",
       actorId: auth.userId,
       actorEmail: auth.email,

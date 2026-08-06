@@ -1,9 +1,13 @@
 // Public read of a consultation by its raw link token.
 // Returns only what the payment page needs — never merchant credentials,
 // internal ids, agent notes, or CRM references.
+//
+// The terms shown to the patient come from the FROZEN policy snapshot taken
+// when the link was minted, never from the live policy table.
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 import { hashConsultationToken } from "../_shared/intl-token.ts";
+import { isExpired, persistExpiryIfNeeded } from "../_shared/intl-expiry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,7 +37,7 @@ Deno.serve(async (req) => {
     const { data: c } = await admin
       .from("consultations")
       .select(
-        "id, amount_minor, currency, country, provider, payment_status, consultation_status, expires_at, opened_at, provider_checkout_url, surgeon_id, patient_id, policy_id",
+        "id, amount_minor, currency, country, provider, payment_status, consultation_status, expires_at, expired_at, opened_at, provider_checkout_url, surgeon_id, patient_id, policy_snapshot_id, terms_accepted_at",
       )
       .eq("token_hash", tokenHash)
       .maybeSingle();
@@ -46,7 +50,16 @@ Deno.serve(async (req) => {
     });
     if (flagBlock) return flagBlock;
 
-    const expired = new Date(c.expires_at as string).getTime() < Date.now();
+    // Expiry is persisted, not just computed — the record must tell the truth.
+    const expired = isExpired(c.expires_at as string);
+    if (expired) {
+      await persistExpiryIfNeeded(admin, {
+        id: c.id as string,
+        expires_at: c.expires_at as string,
+        payment_status: c.payment_status as string,
+        expired_at: c.expired_at as string | null,
+      });
+    }
 
     // First open is recorded once, and only while the link is still actionable.
     if (!c.opened_at && !expired && ["link_created", "link_sent"].includes(c.payment_status as string)) {
@@ -61,16 +74,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    const [{ data: surgeon }, { data: patient }, { data: policy }] = await Promise.all([
+    const [{ data: surgeon }, { data: patient }, { data: snapshot }] = await Promise.all([
       admin.from("surgeons").select("name, specialty, city, country, timezone").eq("id", c.surgeon_id).maybeSingle(),
       admin.from("consultation_patients").select("full_name, email, preferred_language").eq("id", c.patient_id).maybeSingle(),
-      c.policy_id
-        ? admin
-            .from("international_policies")
-            .select("version, terms_text, terms_url, privacy_url, cancellation_policy, no_show_policy")
-            .eq("id", c.policy_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+      admin
+        .from("consultation_policy_snapshots")
+        .select(
+          "id, policy_version, content_sha256, language, terms_text, terms_url, privacy_url, privacy_text, cancellation_policy, no_show_policy, refund_exceptions, created_at",
+        )
+        .eq("consultation_id", c.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     return json({
@@ -84,11 +99,28 @@ Deno.serve(async (req) => {
         consultation_status: c.consultation_status,
         expires_at: c.expires_at,
         checkout_url: c.provider_checkout_url,
+        terms_accepted_at: c.terms_accepted_at,
+        // Fail closed on the client too: no frozen terms means no checkout.
+        can_pay: !!snapshot && !expired,
       },
       surgeon,
-
       patient,
-      policy,
+      // Frozen at link creation. Renamed fields keep the page contract stable.
+      policy: snapshot
+        ? {
+            version: snapshot.policy_version,
+            content_sha256: snapshot.content_sha256,
+            language: snapshot.language,
+            terms_text: snapshot.terms_text,
+            terms_url: snapshot.terms_url,
+            privacy_url: snapshot.privacy_url,
+            privacy_text: snapshot.privacy_text,
+            cancellation_policy: snapshot.cancellation_policy,
+            no_show_policy: snapshot.no_show_policy,
+            refund_exceptions: snapshot.refund_exceptions,
+            frozen_at: snapshot.created_at,
+          }
+        : null,
     });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);

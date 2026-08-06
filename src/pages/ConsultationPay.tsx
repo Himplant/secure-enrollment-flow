@@ -4,10 +4,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { SignaturePad } from "@/components/SignaturePad";
+import { Loader2, ShieldCheck, AlertTriangle, Lock } from "lucide-react";
 import { formatIntlMoney, COUNTRY_LABEL } from "@/lib/intlMoney";
 import { IntlStatusBadge } from "@/components/intl/IntlStatusBadge";
 import type { IntlPaymentStatus } from "@/lib/intlStatus";
+
+const PROVIDER_LABEL: Record<string, string> = {
+  mercado_pago: "Mercado Pago",
+  paypal: "PayPal",
+  stripe_connect: "Stripe",
+  test: "Sandbox simulator",
+};
 
 interface ConsultationPayload {
   consultation: {
@@ -19,16 +29,23 @@ interface ConsultationPayload {
     payment_status: IntlPaymentStatus;
     expires_at: string;
     checkout_url: string | null;
+    terms_accepted_at: string | null;
+    can_pay: boolean;
   };
   surgeon: { name: string; specialty: string | null; city: string | null; country: string | null } | null;
   patient: { full_name: string; email: string | null; preferred_language: string } | null;
   policy: {
     version: string;
+    content_sha256: string;
+    language: string;
     terms_text: string;
     terms_url: string | null;
     privacy_url: string | null;
+    privacy_text: string | null;
     cancellation_policy: string | null;
     no_show_policy: string | null;
+    refund_exceptions: string | null;
+    frozen_at: string;
   } | null;
 }
 
@@ -40,6 +57,7 @@ export default function ConsultationPay() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
+  const [signature, setSignature] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -62,17 +80,15 @@ export default function ConsultationPay() {
   }, [token]);
 
   const amount = useMemo(
-    () =>
-      data
-        ? formatIntlMoney(data.consultation.amount_minor, data.consultation.currency)
-        : "",
+    () => (data ? formatIntlMoney(data.consultation.amount_minor, data.consultation.currency) : ""),
     [data],
   );
 
   const handlePay = async () => {
+    if (!signature) return;
     setSubmitting(true);
     const { data: res, error: err } = await supabase.functions.invoke("intl-create-payment", {
-      body: { token, accepted_terms: true },
+      body: { token, accepted_terms: true, signature_data: signature },
     });
     setSubmitting(false);
     const payload = res as { checkout_url?: string; error?: string } | null;
@@ -109,6 +125,8 @@ export default function ConsultationPay() {
   const terminal = ["approved", "expired", "canceled", "refunded", "disputed"].includes(
     consultation.payment_status,
   );
+  const providerLabel = PROVIDER_LABEL[consultation.provider] ?? consultation.provider;
+  const canSubmit = accepted && !!signature && consultation.can_pay && !submitting;
 
   return (
     <main className="min-h-screen bg-background py-10 px-4">
@@ -130,34 +148,73 @@ export default function ConsultationPay() {
             <Row label="Surgeon" value={surgeon?.name ?? "—"} />
             {surgeon?.city && <Row label="Location" value={surgeon.city} />}
             <Row label="Amount" value={amount} strong />
-            <Row
-              label="Link expires"
-              value={new Date(consultation.expires_at).toLocaleString()}
-            />
+            <Row label="Paid via" value={providerLabel} />
+            <Row label="Link expires" value={new Date(consultation.expires_at).toLocaleString()} />
             <p className="pt-2 text-xs text-muted-foreground">
-              This consultation fee is non-refundable.
+              This consultation fee is non-refundable. This link is valid for 48 hours.
             </p>
           </CardContent>
         </Card>
 
-        {policy && (
+        {policy ? (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Terms (v{policy.version})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="max-h-48 overflow-y-auto rounded-md border p-3 text-xs whitespace-pre-wrap text-muted-foreground">
-                {policy.terms_text}
-              </div>
+              <Tabs defaultValue="terms">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="terms">Terms of Service</TabsTrigger>
+                  <TabsTrigger value="privacy">Privacy Policy</TabsTrigger>
+                </TabsList>
+                <TabsContent value="terms" className="mt-3">
+                  <ScrollArea className="h-64 w-full rounded-md border bg-background p-4">
+                    <div className="text-xs whitespace-pre-wrap text-muted-foreground">
+                      {policy.terms_text}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+                <TabsContent value="privacy" className="mt-3">
+                  <ScrollArea className="h-64 w-full rounded-md border bg-background p-4">
+                    <div className="text-xs whitespace-pre-wrap text-muted-foreground">
+                      {policy.privacy_text ??
+                        (policy.privacy_url
+                          ? `The privacy policy is available at ${policy.privacy_url}`
+                          : "Privacy Policy not available.")}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+
               {policy.cancellation_policy && (
                 <p className="text-xs text-muted-foreground">{policy.cancellation_policy}</p>
               )}
+              {policy.no_show_policy && (
+                <p className="text-xs text-muted-foreground">{policy.no_show_policy}</p>
+              )}
+              {policy.refund_exceptions && (
+                <p className="text-xs text-muted-foreground">{policy.refund_exceptions}</p>
+              )}
+
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Lock className="h-3 w-3" />
+                Locked on {new Date(policy.frozen_at).toLocaleDateString()} · {policy.content_sha256.slice(0, 12)}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              The terms for this consultation are not available yet. Please contact your surgeon's
+              office to have the link reissued.
             </CardContent>
           </Card>
         )}
 
-        {!terminal && (
-          <div className="space-y-4">
+        {!terminal && consultation.can_pay && (
+          <div className="space-y-5">
+            <SignaturePad onSignatureChange={setSignature} />
+
             <label className="flex items-start gap-3 text-sm">
               <Checkbox
                 checked={accepted}
@@ -165,15 +222,12 @@ export default function ConsultationPay() {
                 className="mt-0.5"
               />
               <span>
-                I accept the consultation terms and understand the fee is non-refundable.
+                I have read and agree to the Terms of Service and Privacy Policy shown above, and I
+                understand this consultation fee is non-refundable.
               </span>
             </label>
-            <Button
-              className="w-full"
-              size="lg"
-              disabled={!accepted || submitting}
-              onClick={handlePay}
-            >
+
+            <Button className="w-full" size="lg" disabled={!canSubmit} onClick={handlePay}>
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -183,6 +237,11 @@ export default function ConsultationPay() {
                 </>
               )}
             </Button>
+
+            <p className="text-center text-xs text-muted-foreground">
+              Secure payment processed by {providerLabel}
+            </p>
+
             {params.get("failed") === "1" && (
               <p className="text-center text-sm text-destructive">
                 The previous attempt did not complete. You can try again.
