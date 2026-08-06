@@ -10,7 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Checkbox } from "@/components/ui/checkbox";
 import { SectionCard, EmptyRow, Spinner } from "./shared";
 import { DistributorSurgeonsDialog } from "./DistributorSurgeonsDialog";
 
