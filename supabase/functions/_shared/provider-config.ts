@@ -33,7 +33,7 @@ export function json(body: unknown, status = 200): Response {
 export type SupportedProvider = "mercado_pago" | "paypal" | "stripe_connect" | "test";
 export type ProviderEnvironment = "sandbox" | "live";
 
-export const IMPLEMENTED_PROVIDERS: SupportedProvider[] = ["mercado_pago", "test"];
+export const IMPLEMENTED_PROVIDERS: SupportedProvider[] = ["mercado_pago", "paypal", "test"];
 
 export function normalizeEnvironment(value: unknown): ProviderEnvironment {
   return value === "live" || value === "production" ? "live" : "sandbox";
@@ -162,6 +162,8 @@ export const PLATFORM_FIELDS: Record<string, PlatformFieldSpec[]> = {
     { key: "client_id", label: "Client ID", required: true, secret: false },
     { key: "client_secret", label: "Client Secret", required: true, secret: true },
     { key: "webhook_id", label: "Webhook ID", required: true, secret: false },
+    { key: "partner_merchant_id", label: "Partner merchant ID", required: true, secret: false },
+    { key: "partner_attribution_id", label: "Partner attribution (BN) code", required: false, secret: false },
   ],
   stripe_connect: [
     { key: "publishable_key", label: "Publishable key", required: true, secret: false },

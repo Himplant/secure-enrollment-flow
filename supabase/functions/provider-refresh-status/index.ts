@@ -6,9 +6,11 @@ import {
   encryptionKeyErrorResponse,
   json,
   logProviderAudit,
+  normalizeEnvironment,
   resolveProviderActor,
 } from "../_shared/provider-config.ts";
 import { mpGetUserMe, resolveMercadoPagoAccount } from "../_shared/providers/mercado-pago.ts";
+import { paypalMerchantStatus } from "../_shared/providers/paypal.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -31,7 +33,80 @@ Deno.serve(async (req) => {
   if (!actorMayManageSurgeon(actor, account.surgeon_id as string)) {
     return json({ error: "Surgeon is outside your scope" }, 403);
   }
-  if (account.provider !== "mercado_pago") return json({ error: "Unsupported provider" }, 400);
+  if (account.provider !== "mercado_pago" && account.provider !== "paypal") {
+    return json({ error: "Unsupported provider" }, 400);
+  }
+
+  const readBack = async () => {
+    const { data } = await db
+      .from("provider_accounts")
+      .select(
+        "id, status, external_merchant_id, token_expires_at, scopes, last_verified_at, last_tested_at, live_mode, environment, credential_masks, onboarding_status, onboarding_url, connection_error",
+      )
+      .eq("id", accountId)
+      .maybeSingle();
+    return data;
+  };
+
+  // ---- PayPal: poll partner onboarding status -----------------------------
+  if (account.provider === "paypal") {
+    try {
+      const environment = normalizeEnvironment(account.environment);
+      const status = await paypalMerchantStatus({ environment, trackingId: accountId });
+      const ready = !!status.merchantId && status.paymentsReceivable;
+      const now = new Date().toISOString();
+
+      await db
+        .from("provider_accounts")
+        .update({
+          external_merchant_id: status.merchantId,
+          status: ready ? "connected" : "onboarding",
+          onboarding_status: ready
+            ? "connected"
+            : status.merchantId
+            ? "payments_not_receivable"
+            : "awaiting_merchant",
+          connection_error: null,
+          live_mode: environment === "live",
+          last_verified_at: now,
+          ...(ready ? { connected_at: now, onboarding_url: null } : {}),
+          capabilities: {
+            orders_v2: true,
+            payments_receivable: status.paymentsReceivable,
+            email_confirmed: status.emailConfirmed,
+          },
+        })
+        .eq("id", accountId);
+
+      await logProviderAudit(db, {
+        provider: "paypal",
+        action: "refresh",
+        entityType: "provider_account",
+        entityId: accountId,
+        actorId: actor.userId,
+        summary: { ready },
+        responseStatus: 200,
+      });
+
+      return json({ ok: true, account: await readBack() });
+    } catch (err) {
+      const message = (err as Error).message;
+      await db
+        .from("provider_accounts")
+        .update({ connection_error: message.slice(0, 500) })
+        .eq("id", accountId);
+      await logProviderAudit(db, {
+        provider: "paypal",
+        action: "refresh",
+        entityType: "provider_account",
+        entityId: accountId,
+        actorId: actor.userId,
+        responseStatus: 502,
+        error: message,
+      });
+      return json({ ok: false, error: message }, 502);
+    }
+  }
 
   try {
     // resolveMercadoPagoAccount performs the refresh-if-needed rotation.

@@ -32,9 +32,11 @@ const fmt = (v: string | null | undefined) =>
 interface Props {
   consultationId: string | null;
   onOpenChange: (open: boolean) => void;
+  /** Distributor viewers get the record without any write actions. */
+  readOnly?: boolean;
 }
 
-export function PortalConsultationSheet({ consultationId, onOpenChange }: Props) {
+export function PortalConsultationSheet({ consultationId, onOpenChange, readOnly = false }: Props) {
   const queryClient = useQueryClient();
   const { data, isLoading } = usePortalConsultation(consultationId);
   const [scheduledAt, setScheduledAt] = useState("");
@@ -127,11 +129,20 @@ export function PortalConsultationSheet({ consultationId, onOpenChange }: Props)
               <Field label="Scheduled" value={fmt(c.scheduled_at)} />
             </div>
 
+            {readOnly && (
+              <p className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+                Read-only view. Only the surgeon's own team can update a consultation.
+              </p>
+            )}
+
+            {!readOnly && (
+            <>
             <Separator />
 
             {/* Link management */}
             <section className="space-y-3">
               <h3 className="text-sm font-semibold">Payment link</h3>
+
               <p className="text-xs text-muted-foreground">
                 Link ending ••••{c.token_last4}. Reissuing invalidates the previous link and
                 resets the expiry.
@@ -246,8 +257,11 @@ export function PortalConsultationSheet({ consultationId, onOpenChange }: Props)
                 </Button>
               </div>
             </section>
+            </>
+            )}
 
             <Separator />
+
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Activity</h3>
