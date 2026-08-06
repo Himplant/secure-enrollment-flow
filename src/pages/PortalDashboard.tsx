@@ -31,7 +31,7 @@ const fmtDate = (v: string | null) =>
 
 export default function PortalDashboard() {
   const queryClient = useQueryClient();
-  const [surgeonId, setClinicId] = useState("");
+  const [surgeonId, setSurgeonId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [consultationStatus, setConsultationStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -116,7 +116,7 @@ export default function PortalDashboard() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Select value={surgeonId || "all"} onValueChange={(v) => setClinicId(v === "all" ? "" : v)}>
+              <Select value={surgeonId || "all"} onValueChange={(v) => setSurgeonId(v === "all" ? "" : v)}>
                 <SelectTrigger className="md:w-52"><SelectValue placeholder="All surgeons" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All surgeons</SelectItem>
