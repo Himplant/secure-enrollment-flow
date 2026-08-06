@@ -72,29 +72,42 @@ export async function createIntlConsultation(
   if (!patientName) return fail(400, "patient_name is required");
 
   // ---- 1. Surgeon ----------------------------------------------------
+  // Zoho Surgeons is the source of truth. Whenever a Zoho surgeon id is
+  // supplied we ALWAYS refresh from Zoho first — even if a local row exists —
+  // before using country/provider/policy derived from it.
   let surgeon: Record<string, unknown> | null = null;
 
-  if (input.surgeonId) {
+  if (input.zohoSurgeonId) {
+    const synced = await fetchAndUpsertSurgeonFromZoho(admin, input.zohoSurgeonId);
+    if (!synced) {
+      return fail(
+        502,
+        `Unable to refresh surgeon ${input.zohoSurgeonId} from Zoho. Check the Surgeons record (Full_Name, Email, Mailing_Country) and try again.`,
+      );
+    }
+    const { data: fresh } = await admin.from("surgeons").select("*").eq("id", synced.id).maybeSingle();
+    surgeon = fresh ?? null;
+    if (!surgeon?.country) {
+      return fail(400, "Zoho surgeon record has no Mailing_Country. Set the country in Zoho and retry.");
+    }
+    if (!["MX", "CO", "CL"].includes(String(surgeon.country).toUpperCase())) {
+      return fail(
+        400,
+        `Surgeon country ${String(surgeon.country)} is not a supported international country (MX, CO, CL).`,
+      );
+    }
+  } else if (input.surgeonId) {
     const { data } = await admin.from("surgeons").select("*").eq("id", input.surgeonId).maybeSingle();
     surgeon = data ?? null;
-  } else if (input.zohoSurgeonId) {
-    const { data } = await admin.from("surgeons").select("*").eq("zoho_id", input.zohoSurgeonId).maybeSingle();
-    surgeon = data ?? null;
-    if (!surgeon) {
-      const synced = await fetchAndUpsertSurgeonFromZoho(admin, input.zohoSurgeonId);
-      if (synced) {
-        const { data: fresh } = await admin.from("surgeons").select("*").eq("id", synced.id).maybeSingle();
-        surgeon = fresh ?? null;
-      }
-    }
   }
 
   if (!surgeon) return fail(404, "Surgeon not found. Provide surgeon_id or a valid Zoho surgeon id.");
   if (!surgeon.is_active) return fail(409, "Surgeon is inactive");
   if (!surgeon.country) return fail(400, "This surgeon has no country set in Zoho");
 
-  const country = String(surgeon.country);
+  const country = String(surgeon.country).toUpperCase();
   const surgeonId = String(surgeon.id);
+
 
   // ---- 2. Country settings -------------------------------------------
   const { data: settings } = await admin
