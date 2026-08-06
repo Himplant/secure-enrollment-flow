@@ -4,6 +4,7 @@
 // same header names) but uses a SEPARATE international secret and never
 // touches U.S. enrollment tables.
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { rejectExpiryOverride } from "../_shared/intl-expiry.ts";
 import { createIntlConsultation } from "../_shared/intl-consultation-service.ts";
 import { sendConsultationLink } from "../_shared/intl-send-link.ts";
 import { addZohoNote, logIntegration, writeConsultationToZoho } from "../_shared/intl-zoho.ts";
@@ -108,7 +109,6 @@ Deno.serve(async (req) => {
       provider: body.provider ? String(body.provider) : null,
       policyId: body.policy_id ? String(body.policy_id) : null,
       notes: body.notes ? String(body.notes) : null,
-      expiresInHours: body.expires_in_hours ? Number(body.expires_in_hours) : null,
       zohoModule: body.zoho_module ? String(body.zoho_module) : null,
       zohoRecordId: body.zoho_record_id ? String(body.zoho_record_id) : null,
       agentEmail: body.owner_email ? String(body.owner_email) : null,

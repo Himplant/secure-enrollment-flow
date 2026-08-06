@@ -2,6 +2,7 @@
 // admin dashboard. All validation, policy resolution, duplicate handling and
 // link minting live in the shared service that the Zoho endpoint also uses.
 import { requireAdmin } from "../_shared/admin-auth.ts";
+import { rejectExpiryOverride } from "../_shared/intl-expiry.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 import { createIntlConsultation } from "../_shared/intl-consultation-service.ts";
 import { sendConsultationLink } from "../_shared/intl-send-link.ts";
@@ -41,7 +42,6 @@ Deno.serve(async (req) => {
       provider: body.provider ? String(body.provider) : null,
       policyId: body.policy_id ? String(body.policy_id) : null,
       notes: body.notes ? String(body.notes) : null,
-      expiresInHours: body.expires_in_hours ? Number(body.expires_in_hours) : null,
       actorType: "admin",
       actorId: auth.userId,
       actorEmail: auth.email,
