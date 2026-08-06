@@ -10,6 +10,7 @@ import { generateConsultationToken, hashConsultationToken, tokenLast4 } from "./
 import { consultationLinkUrl, storeLinkToken } from "./intl-link-secret.ts";
 import { createPolicySnapshot, resolveIntlPolicy } from "./intl-policy.ts";
 import { fetchAndUpsertSurgeonFromZoho } from "./intl-zoho.ts";
+import { linkExpiresAt } from "./intl-expiry.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -227,8 +228,8 @@ export async function createIntlConsultation(
   // ---- 8. Mint the link ----------------------------------------------
   const token = generateConsultationToken();
   const tokenHash = await hashConsultationToken(token);
-  const expiryHours = Number(input.expiresInHours ?? settings.link_expiry_hours ?? 72);
-  const expiresAt = new Date(Date.now() + expiryHours * 3600_000).toISOString();
+  // Always exactly 48h — matches U.S. SecurePay. Callers cannot override it.
+  const expiresAt = linkExpiresAt();
 
   const row = {
     token_hash: tokenHash,

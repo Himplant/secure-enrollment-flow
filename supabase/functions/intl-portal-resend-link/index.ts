@@ -10,6 +10,7 @@ import { sendConsultationLink } from "../_shared/intl-send-link.ts";
 import { consultationLinkUrl, storeLinkToken } from "../_shared/intl-link-secret.ts";
 import { generateConsultationToken, hashConsultationToken, tokenLast4 } from "../_shared/intl-token.ts";
 import { createPolicySnapshot, resolveIntlPolicy } from "../_shared/intl-policy.ts";
+import { linkExpiresAt } from "../_shared/intl-expiry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -91,7 +92,7 @@ Deno.serve(async (req) => {
     if (!resolved) return json({ error: "No active policy — cannot regenerate this link" }, 409);
 
     const token = generateConsultationToken();
-    const expiresAt = new Date(Date.now() + Number(settings?.link_expiry_hours ?? 72) * 3600_000).toISOString();
+    const expiresAt = linkExpiresAt();
 
     const { error: updErr } = await admin
       .from("consultations")
