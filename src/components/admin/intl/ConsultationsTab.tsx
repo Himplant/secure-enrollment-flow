@@ -28,7 +28,7 @@ interface ConsultationRow {
   payment_status: IntlPaymentStatus;
   consultation_status: IntlConsultationStatus;
   token_last4: string;
-  clinic: { name: string } | null;
+  surgeon: { name: string } | null;
   patient: { full_name: string; email: string | null } | null;
 }
 
@@ -43,7 +43,7 @@ export function ConsultationsTab() {
       const { data, error } = await supabase
         .from("consultations")
         .select(
-          "id, created_at, amount_minor, currency, country, provider, payment_status, consultation_status, token_last4, clinic:clinics(name), patient:consultation_patients(full_name, email)",
+          "id, created_at, amount_minor, currency, country, provider, payment_status, consultation_status, token_last4, surgeon:surgeons(name), patient:consultation_patients(full_name, email)",
         )
         .order("created_at", { ascending: false })
         .limit(2000);
@@ -56,7 +56,7 @@ export function ConsultationsTab() {
   const rows = (data ?? []).filter((r) =>
     !term
       ? true
-      : [r.patient?.full_name, r.patient?.email, r.clinic?.name, r.token_last4]
+      : [r.patient?.full_name, r.patient?.email, r.surgeon?.name, r.token_last4]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(term)),
   );
@@ -68,7 +68,7 @@ export function ConsultationsTab() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Search patient, clinic or link"
+            placeholder="Search patient, surgeon or link"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -101,7 +101,7 @@ export function ConsultationsTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Patient</TableHead>
-                    <TableHead>Clinic</TableHead>
+                    <TableHead>Surgeon</TableHead>
                     <TableHead>Country</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Payment</TableHead>
@@ -116,7 +116,7 @@ export function ConsultationsTab() {
                         <div className="font-medium">{r.patient?.full_name ?? "—"}</div>
                         <div className="text-xs text-muted-foreground">{r.patient?.email ?? ""}</div>
                       </TableCell>
-                      <TableCell>{r.clinic?.name ?? "—"}</TableCell>
+                      <TableCell>{r.surgeon?.name ?? "—"}</TableCell>
                       <TableCell>{COUNTRY_LABEL[r.country] ?? r.country}</TableCell>
                       <TableCell>{formatIntlMoney(r.amount_minor, r.currency)}</TableCell>
                       <TableCell>

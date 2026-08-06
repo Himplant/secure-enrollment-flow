@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { usePortalAuth } from "@/hooks/usePortalAuth";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
-import { isClinicPortalEnabled, isDistributorPortalEnabled } from "@/lib/featureFlags";
+import { isSurgeonPortalEnabled, isDistributorPortalEnabled } from "@/lib/featureFlags";
 import { Card, CardContent } from "@/components/ui/card";
 
 /** Guards every /portal route: portal identity + the relevant portal flag. */
@@ -21,10 +21,10 @@ export function PortalProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!isAuthenticated) return <Navigate to="/portal/login" replace />;
 
-  const hasClinic = memberships.some((m) => m.org_type === "clinic");
+  const hasSurgeon = memberships.some((m) => m.org_type === "surgeon");
   const hasDistributor = memberships.some((m) => m.org_type === "distributor");
   const allowed =
-    (hasClinic && isClinicPortalEnabled(flags)) ||
+    (hasSurgeon && isSurgeonPortalEnabled(flags)) ||
     (hasDistributor && isDistributorPortalEnabled(flags));
 
   if (!isPortalUser || !allowed) {
