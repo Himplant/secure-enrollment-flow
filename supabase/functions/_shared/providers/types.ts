@@ -100,7 +100,7 @@ export interface PaymentProvider {
 
   /** Payment lifecycle. */
   createCheckout(req: CheckoutRequest): Promise<CheckoutResult>;
-  getPayment(lookupId: string): Promise<NormalizedPayment>;
+  getPayment(lookupId: string, ctx?: ProviderCallContext): Promise<NormalizedPayment>;
   verifyWebhook(req: Request, rawBody: string): Promise<WebhookVerification>;
   normalizePaymentStatus(providerStatus: string): IntlPaymentStatus;
   getAvailablePaymentMethods(country: string): string[];
