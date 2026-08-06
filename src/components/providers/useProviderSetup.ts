@@ -22,7 +22,7 @@ export interface PlatformConfig {
   callback_url: string | null;
   webhook_url: string | null;
   return_url: string | null;
-  credential_masks: Record<string, string> | null;
+  credential_masks: Record<string, { present: boolean; mask: string | null }> | null;
   capabilities: Record<string, unknown> | null;
   last_verified_at: string | null;
   last_test_error: string | null;
@@ -60,7 +60,7 @@ export interface ProviderAccount {
   last_verified_at: string | null;
   last_tested_at: string | null;
   webhook_status: string | null;
-  credential_masks: Record<string, string> | null;
+  credential_masks: Record<string, { present: boolean; mask: string | null }> | null;
   updated_at: string;
   surgeons: { name: string; country: string | null } | null;
 }

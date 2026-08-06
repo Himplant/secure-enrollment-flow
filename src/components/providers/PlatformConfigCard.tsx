@@ -124,15 +124,17 @@ export function PlatformConfigCard({
               <Label className="flex items-center gap-2">
                 {field.label}
                 {!field.required && <span className="text-xs text-muted-foreground">optional</span>}
-                {masks[field.key] && (
-                  <span className="font-mono text-xs text-muted-foreground">{masks[field.key]}</span>
+                {masks[field.key]?.present && (
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {masks[field.key]?.mask}
+                  </span>
                 )}
               </Label>
               <div className="flex gap-2">
                 <Input
                   type={field.secret && !reveal[field.key] ? "password" : "text"}
                   autoComplete="off"
-                  placeholder={masks[field.key] ? "Saved — enter a new value to replace" : ""}
+                  placeholder={masks[field.key]?.present ? "Saved — enter a new value to replace" : ""}
                   value={values[field.key] ?? ""}
                   onChange={(e) => setValues({ ...values, [field.key]: e.target.value })}
                 />

@@ -76,10 +76,11 @@ describe("secret masking", () => {
       client_secret: "sup3r-s3cret-value",
       missing: undefined,
     });
-    expect(masks.access_token).toMatch(/abcd$/);
-    expect(masks.access_token).not.toContain("APP_USR-1234567890");
-    expect(masks.client_secret).not.toContain("sup3r");
-    expect(masks.missing).toBeUndefined();
+    expect(masks.access_token.present).toBe(true);
+    expect(masks.access_token.mask).toMatch(/abcd$/);
+    expect(masks.access_token.mask).not.toContain("APP_USR-1234567890");
+    expect(masks.client_secret.mask).not.toContain("sup3r");
+    expect(masks.missing).toEqual({ present: false, mask: null });
   });
 });
 
