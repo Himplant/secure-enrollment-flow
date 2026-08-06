@@ -85,7 +85,6 @@ Deno.serve(async (req) => {
         if (action === "reschedule") {
           patch.rescheduled_count = Number(c.rescheduled_count ?? 0) + 1;
         }
-        if (!c.first_contact_at) patch.first_contact_at = patch.first_contact_at ?? now;
         break;
       }
       case "mark_completed":
