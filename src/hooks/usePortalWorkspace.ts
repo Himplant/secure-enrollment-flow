@@ -56,6 +56,12 @@ export function usePortalWorkspace() {
     setActive,
     needsChoice: workspaces.length > 1 && !stored,
     isDistributor: active?.orgType === "distributor",
-    isSurgeonAdmin: workspaces.some((w) => w.role === "surgeon_admin"),
+    // Permission checks read the ACTIVE membership only: being an admin of one
+    // organisation must never grant admin rights inside another.
+    isSurgeonAdmin: active?.role === "surgeon_admin",
+    isDistributorAdmin: active?.role === "distributor_admin",
+    isReadOnly: active?.role === "surgeon_analyst" || active?.role === "distributor_analyst" ||
+      active?.orgType === "distributor",
   };
 }
+
