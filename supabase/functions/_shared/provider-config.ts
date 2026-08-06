@@ -33,7 +33,7 @@ export function json(body: unknown, status = 200): Response {
 export type SupportedProvider = "mercado_pago" | "paypal" | "stripe_connect" | "test";
 export type ProviderEnvironment = "sandbox" | "live";
 
-export const IMPLEMENTED_PROVIDERS: SupportedProvider[] = ["mercado_pago", "test"];
+export const IMPLEMENTED_PROVIDERS: SupportedProvider[] = ["mercado_pago", "paypal", "test"];
 
 export function normalizeEnvironment(value: unknown): ProviderEnvironment {
   return value === "live" || value === "production" ? "live" : "sandbox";
