@@ -26,6 +26,13 @@ const ConsultationPay = lazy(() => import("./pages/ConsultationPay"));
 const ConsultationPending = lazy(() => import("./pages/ConsultationPending"));
 const ConsultationSuccess = lazy(() => import("./pages/ConsultationSuccess"));
 
+// Clinic / distributor portal (Phase 3) — also flag-gated.
+const PortalLogin = lazy(() => import("./pages/PortalLogin"));
+const PortalDashboard = lazy(() => import("./pages/PortalDashboard"));
+const PortalProtectedRoute = lazy(() =>
+  import("./components/portal/PortalProtectedRoute").then(m => ({ default: m.PortalProtectedRoute }))
+);
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -76,6 +83,14 @@ const App = () => (
               } />
               <Route path="/consult/:token/success" element={
                 <Suspense fallback={<AdminFallback />}><ConsultationSuccess /></Suspense>
+              } />
+              <Route path="/portal/login" element={
+                <Suspense fallback={<AdminFallback />}><PortalLogin /></Suspense>
+              } />
+              <Route path="/portal" element={
+                <Suspense fallback={<AdminFallback />}>
+                  <PortalProtectedRoute><PortalDashboard /></PortalProtectedRoute>
+                </Suspense>
               } />
             </>
           )}
