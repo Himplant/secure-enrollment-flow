@@ -29,7 +29,14 @@ export function usePortalWorkspace() {
     [memberships],
   );
 
-  const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+  const rawStored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+
+  // A saved workspace that no longer maps to an active membership must never
+  // linger — it would otherwise silently point at a revoked organisation.
+  const stored = rawStored && workspaces.some((w) => w.key === rawStored) ? rawStored : null;
+  if (typeof window !== "undefined" && rawStored && !stored && !isLoading && workspaces.length > 0) {
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
 
   const active = useMemo(
     () => workspaces.find((w) => w.key === stored) ?? workspaces[0] ?? null,
@@ -40,6 +47,7 @@ export function usePortalWorkspace() {
     window.localStorage.setItem(STORAGE_KEY, key);
     window.location.assign(key.startsWith("distributor:") ? "/portal/distributor" : "/portal");
   }, []);
+
 
   return {
     isLoading,

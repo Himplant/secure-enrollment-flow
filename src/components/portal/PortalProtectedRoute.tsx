@@ -9,8 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 
 /** Guards every /portal route: portal identity + the relevant portal flag. */
 export function PortalProtectedRoute({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, isPortalUser, memberships, signOut } = usePortalAuth();
-  const { needsChoice } = usePortalWorkspace();
+  const { isLoading, isAuthenticated, isPortalUser, memberships, portalUser, mfaVerified, signOut } =
+    usePortalAuth();
+  const { needsChoice, active } = usePortalWorkspace();
   const { pathname } = useLocation();
   const { flags, isLoading: flagsLoading } = useFeatureFlags();
 
@@ -27,6 +28,19 @@ export function PortalProtectedRoute({ children }: { children: ReactNode }) {
   if (needsChoice && pathname !== "/portal/select-workspace") {
     return <Navigate to="/portal/select-workspace" replace />;
   }
+
+  // AAL2 is mandatory for administrator roles in the ACTIVE workspace, and for
+  // any account explicitly flagged as mfa_required.
+  const activeRoleNeedsMfa = active?.role === "surgeon_admin" || active?.role === "distributor_admin";
+  if (
+    isPortalUser &&
+    (activeRoleNeedsMfa || portalUser?.mfa_required) &&
+    !mfaVerified &&
+    pathname !== "/portal/mfa"
+  ) {
+    return <Navigate to="/portal/mfa" replace />;
+  }
+
 
   const hasSurgeon = memberships.some((m) => m.org_type === "surgeon");
   const hasDistributor = memberships.some((m) => m.org_type === "distributor");
