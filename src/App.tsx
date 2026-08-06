@@ -101,6 +101,27 @@ const App = () => (
                   <PortalProtectedRoute><PortalPaymentAccount /></PortalProtectedRoute>
                 </Suspense>
               } />
+              <Route path="/portal/reports" element={
+                <Suspense fallback={<AdminFallback />}>
+                  <PortalProtectedRoute><PortalReports /></PortalProtectedRoute>
+                </Suspense>
+              } />
+              <Route path="/portal/team" element={
+                <Suspense fallback={<AdminFallback />}>
+                  <PortalProtectedRoute><PortalTeam /></PortalProtectedRoute>
+                </Suspense>
+              } />
+              <Route path="/portal/select-workspace" element={
+                <Suspense fallback={<AdminFallback />}>
+                  <PortalProtectedRoute><PortalSelectWorkspace /></PortalProtectedRoute>
+                </Suspense>
+              } />
+              <Route path="/portal/distributor" element={
+                <Suspense fallback={<AdminFallback />}>
+                  <PortalProtectedRoute><PortalDashboard /></PortalProtectedRoute>
+                </Suspense>
+              } />
+
             </>
           )}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
