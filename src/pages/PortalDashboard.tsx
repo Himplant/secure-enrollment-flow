@@ -24,6 +24,7 @@ import { PortalConsultationSheet } from "@/components/portal/PortalConsultationS
 import { IntlStatusBadge } from "@/components/intl/IntlStatusBadge";
 import { formatIntlMoney, COUNTRY_LABEL } from "@/lib/intlMoney";
 import { usePortalConsultations } from "@/hooks/usePortalConsultations";
+import { usePortalWorkspace } from "@/hooks/usePortalWorkspace";
 import { CONSULTATION_STATUS_META, PAYMENT_STATUS_META } from "@/lib/intlStatus";
 
 const fmtDate = (v: string | null) =>
@@ -216,6 +217,7 @@ export default function PortalDashboard() {
 
       <PortalConsultationSheet
         consultationId={selectedId}
+        readOnly={isDistributor}
         onOpenChange={(open) => !open && setSelectedId(null)}
       />
     </PortalLayout>
