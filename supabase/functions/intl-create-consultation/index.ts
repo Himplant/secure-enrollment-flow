@@ -27,15 +27,14 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     if (!body) return json({ error: "Invalid JSON body" }, 400);
 
-    const clinicId = String(body.clinic_id ?? "");
-    const surgeonId = body.surgeon_id ? String(body.surgeon_id) : null;
+    const surgeonId = String(body.surgeon_id ?? "");
     const patientName = String(body.patient_name ?? "").trim();
     const patientEmail = body.patient_email ? String(body.patient_email).trim() : null;
     const patientPhone = body.patient_phone ? String(body.patient_phone).trim() : null;
     const language = String(body.preferred_language ?? "es");
     const amountMinor = Number(body.amount_minor);
 
-    if (!clinicId) return json({ error: "clinic_id is required" }, 400);
+    if (!surgeonId) return json({ error: "surgeon_id is required" }, 400);
     if (!patientName) return json({ error: "patient_name is required" }, 400);
     if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
       return json({ error: "amount_minor must be a positive integer" }, 400);
@@ -46,15 +45,16 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: clinic } = await admin
-      .from("clinics")
-      .select("id, name, country, region_id, default_currency, active_provider, is_active")
-      .eq("id", clinicId)
+    const { data: surgeon } = await admin
+      .from("surgeons")
+      .select("id, name, country, currency, consultation_fee_minor, active_provider, is_active, is_international")
+      .eq("id", surgeonId)
       .maybeSingle();
 
-    if (!clinic || !clinic.is_active) return json({ error: "Clinic not found or inactive" }, 404);
+    if (!surgeon || !surgeon.is_active) return json({ error: "Surgeon not found or inactive" }, 404);
+    if (!surgeon.country) return json({ error: "This surgeon has no country set" }, 400);
 
-    const country = clinic.country as string;
+    const country = surgeon.country as string;
 
     // Country settings gate the fee range, currency, and allowed providers.
     const { data: settings } = await admin
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       return json({ error: `Consultations are not enabled for ${country}` }, 503);
     }
 
-    const currency = String(body.currency ?? clinic.default_currency ?? settings.default_currency);
+    const currency = String(body.currency ?? surgeon.currency ?? settings.default_currency);
 
     if (amountMinor < Number(settings.min_fee_minor)) {
       return json({ error: "Amount is below the minimum consultation fee" }, 400);
@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     const { data: accounts } = await admin
       .from("provider_accounts")
       .select("id, provider, external_merchant_id, currency, status, is_active")
-      .eq("clinic_id", clinicId)
+      .eq("surgeon_id", surgeonId)
       .eq("status", "connected")
       .eq("is_active", true);
 
@@ -92,13 +92,13 @@ Deno.serve(async (req) => {
         allowed.includes(a.provider as string) &&
         String(a.currency).toUpperCase() === currency.toUpperCase() &&
         (!requested || a.provider === requested) &&
-        (requested || !clinic.active_provider || a.provider === clinic.active_provider),
+        (requested || !surgeon.active_provider || a.provider === surgeon.active_provider),
     );
 
     const account = candidates[0];
     if (!account) {
       return json(
-        { error: "This clinic has no connected payment account for the requested provider and currency" },
+        { error: "This surgeon has no connected payment account for the requested provider and currency" },
         409,
       );
     }
@@ -145,9 +145,7 @@ Deno.serve(async (req) => {
         token_hash: tokenHash,
         token_last4: tokenLast4(token),
         expires_at: expiresAt,
-        clinic_id: clinicId,
         surgeon_id: surgeonId,
-        region_id: clinic.region_id,
         patient_id: patient.id,
         agent_email: auth.email,
         amount_minor: amountMinor,
@@ -164,6 +162,7 @@ Deno.serve(async (req) => {
       })
       .select("id")
       .single();
+
 
     if (consultErr) return json({ error: consultErr.message }, 400);
 
