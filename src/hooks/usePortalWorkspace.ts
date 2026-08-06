@@ -29,7 +29,14 @@ export function usePortalWorkspace() {
     [memberships],
   );
 
-  const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+  const rawStored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+
+  // A saved workspace that no longer maps to an active membership must never
+  // linger — it would otherwise silently point at a revoked organisation.
+  const stored = rawStored && workspaces.some((w) => w.key === rawStored) ? rawStored : null;
+  if (typeof window !== "undefined" && rawStored && !stored && !isLoading && workspaces.length > 0) {
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
 
   const active = useMemo(
     () => workspaces.find((w) => w.key === stored) ?? workspaces[0] ?? null,
@@ -41,6 +48,7 @@ export function usePortalWorkspace() {
     window.location.assign(key.startsWith("distributor:") ? "/portal/distributor" : "/portal");
   }, []);
 
+
   return {
     isLoading,
     workspaces,
@@ -48,6 +56,12 @@ export function usePortalWorkspace() {
     setActive,
     needsChoice: workspaces.length > 1 && !stored,
     isDistributor: active?.orgType === "distributor",
-    isSurgeonAdmin: workspaces.some((w) => w.role === "surgeon_admin"),
+    // Permission checks read the ACTIVE membership only: being an admin of one
+    // organisation must never grant admin rights inside another.
+    isSurgeonAdmin: active?.role === "surgeon_admin",
+    isDistributorAdmin: active?.role === "distributor_admin",
+    isReadOnly: active?.role === "surgeon_analyst" || active?.role === "distributor_analyst" ||
+      active?.orgType === "distributor",
   };
 }
+

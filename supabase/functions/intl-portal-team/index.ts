@@ -117,19 +117,39 @@ Deno.serve(async (req) => {
 
       let { data: portalUser } = await admin
         .from("portal_users")
-        .select("id")
+        .select("id, accepted_at")
         .ilike("email", email)
         .maybeSingle();
 
       if (!portalUser) {
         const { data: created, error: createErr } = await admin
           .from("portal_users")
-          .insert({ email, full_name: fullName, is_active: true, mfa_required: false })
-          .select("id")
+          .insert({
+            email,
+            full_name: fullName,
+            is_active: true,
+            mfa_required: role === "surgeon_admin",
+            invited_by: auth.userId,
+          })
+          .select("id, accepted_at")
           .single();
         if (createErr) return json({ error: createErr.message }, 400);
         portalUser = created;
       }
+
+      // Real Supabase Auth invitation — a database row alone never grants login.
+      if (!portalUser!.accepted_at) {
+        const appUrl = (Deno.env.get("APP_URL") ?? "").replace(/\/$/, "");
+        const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+          redirectTo: `${appUrl}/portal/accept-invite`,
+          data: { portal_user: true },
+        });
+        // An existing auth identity simply signs in / uses forgot-password.
+        if (inviteErr && !/already been registered|already exists|email_exists/i.test(inviteErr.message ?? "")) {
+          return json({ error: inviteErr.message }, 400);
+        }
+      }
+
 
       const { data: existing } = await admin
         .from("portal_memberships")

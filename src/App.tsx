@@ -33,6 +33,9 @@ const PortalPaymentAccount = lazy(() => import("./pages/PortalPaymentAccount"));
 const PortalReports = lazy(() => import("./pages/PortalReports"));
 const PortalTeam = lazy(() => import("./pages/PortalTeam"));
 const PortalSelectWorkspace = lazy(() => import("./pages/PortalSelectWorkspace"));
+const PortalAcceptInvite = lazy(() => import("./pages/PortalAcceptInvite"));
+const PortalResetPassword = lazy(() => import("./pages/PortalResetPassword"));
+const PortalMfa = lazy(() => import("./pages/PortalMfa"));
 const PortalProtectedRoute = lazy(() =>
   import("./components/portal/PortalProtectedRoute").then(m => ({ default: m.PortalProtectedRoute }))
 );
@@ -90,6 +93,15 @@ const App = () => (
               } />
               <Route path="/portal/login" element={
                 <Suspense fallback={<AdminFallback />}><PortalLogin /></Suspense>
+              } />
+              <Route path="/portal/accept-invite" element={
+                <Suspense fallback={<AdminFallback />}><PortalAcceptInvite /></Suspense>
+              } />
+              <Route path="/portal/reset-password" element={
+                <Suspense fallback={<AdminFallback />}><PortalResetPassword /></Suspense>
+              } />
+              <Route path="/portal/mfa" element={
+                <Suspense fallback={<AdminFallback />}><PortalMfa /></Suspense>
               } />
               <Route path="/portal" element={
                 <Suspense fallback={<AdminFallback />}>

@@ -75,6 +75,14 @@ export function PortalUsersSection() {
     },
   });
 
+  /** All identity writes go through the service-role edge function. */
+  const callIdentity = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke("intl-portal-identity", { body });
+    const payload = data as { error?: string } | null;
+    if (error || payload?.error) throw new Error(payload?.error ?? error?.message ?? "Request failed");
+    return payload;
+  };
+
   const save = async () => {
     const email = form.email.trim().toLowerCase();
     const scopeId = form.org_type === "surgeon" ? form.surgeon_id : form.distributor_id;
@@ -83,52 +91,66 @@ export function PortalUsersSection() {
       return;
     }
 
-    const { data: existing } = await supabase.from("portal_users").select("id").eq("email", email).maybeSingle();
-    let portalUserId = existing?.id;
+    try {
+      const res = (await callIdentity({
+        action: "invite",
+        email,
+        full_name: form.full_name.trim() || null,
+        org_type: form.org_type,
+        surgeon_id: form.org_type === "surgeon" ? form.surgeon_id : null,
+        distributor_id: form.org_type === "distributor" ? form.distributor_id : null,
+        role: form.role,
+      })) as { invite?: { sent: boolean; mode: string } };
 
-    if (!portalUserId) {
-      const { data: inserted, error } = await supabase
-        .from("portal_users")
-        .insert({ email, full_name: form.full_name.trim() || null, is_active: true })
-        .select("id")
-        .single();
-      if (error) {
-        toast({ title: "Could not create portal user", description: error.message, variant: "destructive" });
-        return;
+      toast({
+        title: "Portal access granted",
+        description: res?.invite?.sent
+          ? `An invitation email was sent to ${email}.`
+          : `${email} already has a sign-in — they can use their existing password or "Forgot password".`,
+      });
+      setOpen(false);
+      setForm({ email: "", full_name: "", org_type: "surgeon", surgeon_id: "", distributor_id: "", role: "surgeon_admin" });
+      qc.invalidateQueries({ queryKey: ["portal-users"] });
+    } catch (e) {
+      toast({
+        title: "Could not grant access",
+        description: e instanceof Error ? e.message : "Unexpected error",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const resend = async (portalUserId: string) => {
+    try {
+      await callIdentity({ action: "resend_invite", portal_user_id: portalUserId });
+      toast({ title: "Invitation resent" });
+    } catch (e) {
+      toast({
+        title: "Could not resend",
+        description: e instanceof Error ? e.message : "Unexpected error",
+        variant: "destructive",
+      });
+    }
+  };
+
+  /** Revokes every membership; the auth identity itself is left intact. */
+  const remove = async (u: { id: string; portal_memberships?: unknown }) => {
+    try {
+      const memberships = (u.portal_memberships ?? []) as unknown as MembershipRow[];
+      for (const m of memberships) {
+        await callIdentity({ action: "remove_membership", membership_id: m.id });
       }
-      portalUserId = inserted.id;
+      toast({ title: "Portal access revoked" });
+      qc.invalidateQueries({ queryKey: ["portal-users"] });
+    } catch (e) {
+      toast({
+        title: "Could not revoke access",
+        description: e instanceof Error ? e.message : "Unexpected error",
+        variant: "destructive",
+      });
     }
-
-    const { error: memErr } = await supabase.from("portal_memberships").insert({
-      portal_user_id: portalUserId,
-      org_type: form.org_type as "surgeon" | "distributor",
-      surgeon_id: form.org_type === "surgeon" ? form.surgeon_id : null,
-      distributor_id: form.org_type === "distributor" ? form.distributor_id : null,
-      role: form.role as PortalRole,
-      is_active: true,
-    });
-    if (memErr) {
-      toast({ title: "Could not grant access", description: memErr.message, variant: "destructive" });
-      return;
-    }
-
-    toast({
-      title: "Portal access granted",
-      description: `${email} can sign in at /portal/login with a magic link.`,
-    });
-    setOpen(false);
-    setForm({ email: "", full_name: "", org_type: "surgeon", surgeon_id: "", distributor_id: "", role: "surgeon_admin" });
-    qc.invalidateQueries({ queryKey: ["portal-users"] });
   };
 
-  const remove = async (id: string) => {
-    const { error } = await supabase.from("portal_users").delete().eq("id", id);
-    if (error) {
-      toast({ title: "Could not delete", description: error.message, variant: "destructive" });
-      return;
-    }
-    qc.invalidateQueries({ queryKey: ["portal-users"] });
-  };
 
   const roles = form.org_type === "surgeon" ? SURGEON_ROLES : DISTRIBUTOR_ROLES;
 
@@ -171,8 +193,13 @@ export function PortalUsersSection() {
                     {u.accepted_at ? "Active" : "Invited"}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => remove(u.id)}>
+                <TableCell className="flex items-center gap-1">
+                  {!u.accepted_at && (
+                    <Button variant="ghost" size="sm" onClick={() => resend(u.id)}>
+                      Resend
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" onClick={() => remove(u)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </TableCell>
