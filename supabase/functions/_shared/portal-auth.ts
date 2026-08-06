@@ -15,15 +15,15 @@ export type PortalRole =
   | "distributor_admin"
   | "distributor_staff"
   | "distributor_analyst"
-  | "clinic_admin"
-  | "clinic_staff"
-  | "clinic_analyst";
+  | "surgeon_admin"
+  | "surgeon_staff"
+  | "surgeon_analyst";
 
 export interface PortalMembership {
   id: string;
-  org_type: "distributor" | "clinic";
+  org_type: "distributor" | "surgeon";
   distributor_id: string | null;
-  clinic_id: string | null;
+  surgeon_id: string | null;
   role: PortalRole;
 }
 
@@ -33,10 +33,11 @@ export interface PortalAuthOk {
   email: string | null;
   portalUserId: string;
   memberships: PortalMembership[];
-  clinicIds: string[];
+  surgeonIds: string[];
   distributorIds: string[];
   supabaseAdmin: ReturnType<typeof createClient>;
 }
+
 
 export interface PortalAuthErr {
   ok: false;
