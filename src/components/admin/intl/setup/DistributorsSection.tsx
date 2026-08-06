@@ -8,14 +8,17 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SectionCard, EmptyRow, Spinner } from "./shared";
+import { DistributorSurgeonsDialog } from "./DistributorSurgeonsDialog";
 
 export function DistributorsSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [assigning, setAssigning] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({ name: "", legal_name: "", primary_contact_email: "", primary_contact_phone: "", is_active: true });
 
   const { data, isLoading } = useQuery({
@@ -64,7 +67,7 @@ export function DistributorsSection() {
   return (
     <SectionCard
       title="Distributors"
-      description="Partner organisations that own one or more regions."
+      description="Partner organisations that oversee a group of international surgeons."
       action={
         <Button size="sm" className="gap-2" onClick={() => setOpen(true)}>
           <Plus className="h-4 w-4" /> Add distributor
@@ -81,7 +84,7 @@ export function DistributorsSection() {
               <TableHead>Legal name</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-12" />
+              <TableHead className="w-24" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -94,7 +97,10 @@ export function DistributorsSection() {
                 <TableCell>
                   <Badge variant={d.is_active ? "default" : "secondary"}>{d.is_active ? "Active" : "Inactive"}</Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="flex justify-end gap-1">
+                  <Button variant="ghost" size="icon" title="Assign surgeons" onClick={() => setAssigning({ id: d.id, name: d.name })}>
+                    <Users className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => remove(d.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
@@ -104,6 +110,8 @@ export function DistributorsSection() {
           </TableBody>
         </Table>
       )}
+
+      <DistributorSurgeonsDialog distributor={assigning} onClose={() => setAssigning(null)} />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
