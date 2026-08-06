@@ -8,9 +8,9 @@ import { usePortalAuth } from "@/hooks/usePortalAuth";
  * Staff, analysts and distributor roles never see credential controls.
  */
 export default function PortalPaymentAccount() {
-  const { memberships, loading } = usePortalAuth();
+  const { memberships, isLoading } = usePortalAuth();
 
-  if (loading) return null;
+  if (isLoading) return null;
 
   const isSurgeonAdmin = memberships.some(
     (m) => m.org_type === "surgeon" && m.role === "surgeon_admin" && m.is_active,
