@@ -131,7 +131,7 @@ const App = () => (
               } />
               <Route path="/portal/distributor" element={
                 <Suspense fallback={<AdminFallback />}>
-                  <PortalProtectedRoute><PortalDashboard /></PortalProtectedRoute>
+                  <PortalProtectedRoute><PortalDistributorDashboard /></PortalProtectedRoute>
                 </Suspense>
               } />
 
