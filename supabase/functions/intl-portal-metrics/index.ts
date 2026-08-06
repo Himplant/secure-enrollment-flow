@@ -4,7 +4,7 @@
 // (own surgeon memberships + surgeons assigned to their distributors), so a
 // distributor can never read another distributor's numbers by changing a
 // request body. Nothing here touches U.S. enrollment data.
-import { requirePortalUser } from "../_shared/portal-auth.ts";
+import { applyWorkspace, requirePortalUser } from "../_shared/portal-auth.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 
 const corsHeaders = {
@@ -116,10 +116,13 @@ Deno.serve(async (req) => {
     const flagBlock = await requireIntlEnabled();
     if (flagBlock) return flagBlock;
 
-    const auth = await requirePortalUser(req);
-    if (!auth.ok) return auth.response;
+    const baseAuth = await requirePortalUser(req);
+    if (!baseAuth.ok) return baseAuth.response;
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Narrow to the organisation the caller is currently acting as.
+    const auth = await applyWorkspace(baseAuth, body);
+    if (!auth.ok) return auth.response;
     const admin = auth.supabaseAdmin;
 
     if (auth.surgeonIds.length === 0) {

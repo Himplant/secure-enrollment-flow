@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { usePortalAuth, type PortalMembership } from "./usePortalAuth";
+
 
 const STORAGE_KEY = "portal.workspace";
 
@@ -42,6 +43,16 @@ export function usePortalWorkspace() {
     () => workspaces.find((w) => w.key === stored) ?? workspaces[0] ?? null,
     [workspaces, stored],
   );
+
+  // Persist the resolved workspace so every edge-function call carries it and
+  // the server can narrow scope to this organisation alone.
+  useEffect(() => {
+    if (workspaces.length === 1 && active && stored !== active.key) {
+      window.localStorage.setItem(STORAGE_KEY, active.key);
+    }
+
+  }, [active, stored, workspaces.length]);
+
 
   const setActive = useCallback((key: string) => {
     window.localStorage.setItem(STORAGE_KEY, key);

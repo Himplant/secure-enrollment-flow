@@ -36,8 +36,20 @@ interface ListPayload {
   surgeons: PortalSurgeon[];
 }
 
+/** Active workspace, so the server can narrow scope to that organisation only. */
+function workspaceParams(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const raw = window.localStorage.getItem("portal.workspace");
+  if (!raw) return {};
+  const [orgType, orgId] = raw.split(":");
+  if ((orgType !== "surgeon" && orgType !== "distributor") || !orgId) return {};
+  return { workspace_org_type: orgType, workspace_org_id: orgId };
+}
+
 export async function invokePortal<T>(fn: string, body: Record<string, unknown> = {}): Promise<T> {
-  const { data, error } = await supabase.functions.invoke(fn, { body });
+  const { data, error } = await supabase.functions.invoke(fn, {
+    body: { ...workspaceParams(), ...body },
+  });
   if (error) {
     const message = (data as { error?: string } | null)?.error ?? error.message;
     throw new Error(message);
@@ -47,6 +59,7 @@ export async function invokePortal<T>(fn: string, body: Record<string, unknown> 
   }
   return data as T;
 }
+
 
 export function usePortalConsultations(filters: {
   surgeonId?: string;
