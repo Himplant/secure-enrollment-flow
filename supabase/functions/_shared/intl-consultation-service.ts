@@ -9,7 +9,7 @@ import { requireIntlEnabled } from "./flags.ts";
 import { generateConsultationToken, hashConsultationToken, tokenLast4 } from "./intl-token.ts";
 import { consultationLinkUrl, storeLinkToken } from "./intl-link-secret.ts";
 import { createPolicySnapshot, resolveIntlPolicy } from "./intl-policy.ts";
-import { fetchAndUpsertSurgeonFromZoho } from "./intl-zoho.ts";
+import { fetchAndUpsertSurgeonFromZoho, normalizeZohoModule } from "./intl-zoho.ts";
 import { linkExpiresAt } from "./intl-expiry.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -272,7 +272,7 @@ export async function createIntlConsultation(
     payment_status: "link_created",
     consultation_status: "awaiting_payment",
     preferred_language: language,
-    zoho_module: input.zohoModule ?? null,
+    zoho_module: zohoModule,
     zoho_record_id: input.zohoRecordId ?? null,
     notes: input.notes ?? null,
     opened_at: null,
@@ -295,9 +295,24 @@ export async function createIntlConsultation(
     consultationId = created.id as string;
   }
 
+  // Replacing an unpaid invitation: the previous private link secret is
+  // overwritten (single row per consultation) and the superseded snapshot is
+  // retained as history — snapshots are immutable, so nothing is deleted and
+  // the consultation is simply repointed at the new one below.
   await storeLinkToken(admin, consultationId, token);
 
-  await createPolicySnapshot(admin, {
+  if (existingConsultation?.policy_snapshot_id) {
+    await admin.from("consultation_events").insert({
+      consultation_id: consultationId,
+      event_type: "policy_snapshot_superseded",
+      event_data: { previous_snapshot_id: existingConsultation.policy_snapshot_id },
+      actor_type: input.actorType,
+      actor_id: input.actorId ?? null,
+      actor_email: input.actorEmail ?? null,
+    });
+  }
+
+  const newSnapshotId = await createPolicySnapshot(admin, {
     consultationId,
     resolved,
     surgeonId,
@@ -307,6 +322,12 @@ export async function createIntlConsultation(
     amountMinor,
     currency,
   });
+
+  // Guarantee the consultation references the newly frozen snapshot.
+  await admin
+    .from("consultations")
+    .update({ policy_snapshot_id: newSnapshotId })
+    .eq("id", consultationId);
 
   await admin.from("consultation_events").insert({
     consultation_id: consultationId,
