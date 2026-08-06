@@ -6,8 +6,8 @@
 // the merchant of record.
 //
 // This file is completely separate from the U.S. SecurePay Stripe flow:
-//   * it never reads the STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET secrets used
-//     by `create-checkout-session` and `stripe-webhook`;
+//   * it never reads the U.S. Stripe environment secrets used by the domestic
+//     checkout and webhook functions;
 //   * it authenticates with the international platform credentials stored
 //     (encrypted) in `provider_platform_configs` for `stripe_connect`;
 //   * its webhooks arrive on `intl-payment-webhook`, never on `stripe-webhook`.
