@@ -9,7 +9,6 @@ export default function ConsultationSuccess() {
   const { token } = useParams<{ token: string }>();
   const [data, setData] = useState<{
     consultation?: { amount_minor: number; currency: string; payment_status: string };
-    clinic?: { name: string } | null;
     surgeon?: { name: string } | null;
   } | null>(null);
 
@@ -39,11 +38,11 @@ export default function ConsultationSuccess() {
             {formatIntlMoney(data.consultation.amount_minor, data.consultation.currency)}
           </p>
           <p>
-            Your consultation fee has been paid directly to {data.clinic?.name ?? "the clinic"}
-            {data.surgeon ? ` (${data.surgeon.name})` : ""}.
+            Your consultation fee has been paid directly to{" "}
+            {data.surgeon?.name ?? "your surgeon"}.
           </p>
           <p>
-            The clinic will contact you shortly to schedule your consultation. Keep this
+            The surgeon’s team will contact you shortly to schedule your consultation. Keep this
             confirmation for your records.
           </p>
         </CardContent>
