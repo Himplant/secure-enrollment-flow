@@ -1,9 +1,15 @@
-// Link management for portal users: refresh the expiry of an unpaid
-// consultation link and mint a brand new token. The previous token is
-// invalidated immediately because only its hash is stored.
+// Portal link actions — kept for backwards compatibility.
+//
+// `resend` now means "send a reminder using the CURRENT active link".
+// Regenerating a link (which invalidates the old one) requires
+// `action: "regenerate"` and an explicit confirmation flag.
+// Distributor roles are read-only and cannot use this endpoint.
 import { requirePortalUser } from "../_shared/portal-auth.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
+import { sendConsultationLink } from "../_shared/intl-send-link.ts";
+import { consultationLinkUrl, storeLinkToken } from "../_shared/intl-link-secret.ts";
 import { generateConsultationToken, hashConsultationToken, tokenLast4 } from "../_shared/intl-token.ts";
+import { createPolicySnapshot, resolveIntlPolicy } from "../_shared/intl-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,41 +31,67 @@ Deno.serve(async (req) => {
     const flagBlock = await requireIntlEnabled();
     if (flagBlock) return flagBlock;
 
-    const auth = await requirePortalUser(req, {
-      anyRole: ["surgeon_admin", "surgeon_staff", "distributor_admin", "distributor_staff"],
-    });
+    // Surgeon-office roles only — distributors are read-only.
+    const auth = await requirePortalUser(req, { anyRole: ["surgeon_admin", "surgeon_staff"] });
     if (!auth.ok) return auth.response;
 
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     const consultationId = String(body?.consultation_id ?? "");
+    const action = String(body?.action ?? "send_reminder");
     if (!consultationId) return json({ error: "consultation_id is required" }, 400);
 
     const admin = auth.supabaseAdmin;
 
     const { data: c } = await admin
       .from("consultations")
-      .select("id, surgeon_id, country, payment_status")
+      .select("id, surgeon_id, country, provider, payment_status, amount_minor, currency, preferred_language")
       .eq("id", consultationId)
       .in("surgeon_id", auth.surgeonIds.length ? auth.surgeonIds : ["00000000-0000-0000-0000-000000000000"])
       .maybeSingle();
 
     if (!c) return json({ error: "Consultation not found" }, 404);
-    if (NON_REISSUABLE.includes(c.payment_status as string)) {
+
+    const countryBlock = await requireIntlEnabled({ country: String(c.country) });
+    if (countryBlock) return countryBlock;
+
+    if (action === "send_reminder") {
+      const send = await sendConsultationLink(admin, consultationId, "reminder", {
+        type: "portal",
+        id: auth.userId,
+        email: auth.email,
+      });
+      if (!send.ok) return json({ error: send.error, suppressed: send.suppressed ?? null }, send.status);
+      return json({ ok: true, action, message_id: send.messageId ?? null });
+    }
+
+    if (action !== "regenerate") return json({ error: "Unknown action" }, 400);
+    if (body?.confirm_invalidate !== true) {
+      return json(
+        { error: "Regenerating the link invalidates the previous one. Send confirm_invalidate: true to proceed." },
+        400,
+      );
+    }
+    if (NON_REISSUABLE.includes(String(c.payment_status))) {
       return json({ error: "This payment link can no longer be reissued" }, 409);
     }
 
-    const countryBlock = await requireIntlEnabled({ country: c.country as string });
-    if (countryBlock) return countryBlock;
-
     const { data: settings } = await admin
       .from("international_country_settings")
-      .select("link_expiry_hours")
-      .eq("country", c.country as string)
+      .select("link_expiry_hours, default_language")
+      .eq("country", String(c.country))
       .maybeSingle();
 
-    const hours = Number(settings?.link_expiry_hours ?? 72);
+    const language = String(c.preferred_language ?? settings?.default_language ?? "es");
+    const resolved = await resolveIntlPolicy(admin, {
+      surgeonId: String(c.surgeon_id),
+      country: String(c.country),
+      language,
+      provider: String(c.provider),
+    });
+    if (!resolved) return json({ error: "No active policy — cannot regenerate this link" }, 409);
+
     const token = generateConsultationToken();
-    const expiresAt = new Date(Date.now() + hours * 3600_000).toISOString();
+    const expiresAt = new Date(Date.now() + Number(settings?.link_expiry_hours ?? 72) * 3600_000).toISOString();
 
     const { error: updErr } = await admin
       .from("consultations")
@@ -68,24 +100,49 @@ Deno.serve(async (req) => {
         token_last4: tokenLast4(token),
         expires_at: expiresAt,
         payment_status: "link_created",
+        sent_at: null,
         opened_at: null,
         expired_at: null,
       })
       .eq("id", consultationId);
-
     if (updErr) return json({ error: updErr.message }, 400);
+
+    await storeLinkToken(admin, consultationId, token);
+    await createPolicySnapshot(admin, {
+      consultationId,
+      resolved,
+      surgeonId: String(c.surgeon_id),
+      country: String(c.country),
+      language,
+      provider: String(c.provider),
+      amountMinor: Number(c.amount_minor),
+      currency: String(c.currency),
+    });
 
     await admin.from("consultation_events").insert({
       consultation_id: consultationId,
-      event_type: "portal_link_reissued",
-      event_data: { expires_at: expiresAt },
+      event_type: "portal_link_regenerated",
+      event_data: { expires_at: expiresAt, previous_link_invalidated: true },
       actor_type: "portal",
       actor_id: auth.userId,
       actor_email: auth.email,
     });
 
-    const appUrl = Deno.env.get("APP_URL") ?? "";
-    return json({ payment_url: `${appUrl}/consult/${token}`, expires_at: expiresAt });
+    const send = await sendConsultationLink(admin, consultationId, "initial_link", {
+      type: "portal",
+      id: auth.userId,
+      email: auth.email,
+    });
+
+    return json({
+      ok: true,
+      action,
+      payment_url: consultationLinkUrl(token),
+      token_last4: tokenLast4(token),
+      expires_at: expiresAt,
+      previous_link_invalidated: true,
+      email_sent: send.ok,
+    });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);
   }

@@ -50,3 +50,18 @@ verify_jwt = false
 
 [functions.intl-portal-resend-link]
 verify_jwt = false
+
+[functions.intl-create-consultation-from-zoho]
+verify_jwt = false
+
+[functions.intl-send-consultation-link]
+verify_jwt = false
+
+[functions.intl-process-reminders]
+verify_jwt = false
+
+[functions.intl-process-zoho-outbox]
+verify_jwt = false
+
+[functions.intl-reconcile-payments]
+verify_jwt = false

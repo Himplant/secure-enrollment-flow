@@ -25,12 +25,9 @@ type Action =
   | "set_surgery_status"
   | "add_note";
 
-const WRITE_ROLES = [
-  "surgeon_admin",
-  "surgeon_staff",
-  "distributor_admin",
-  "distributor_staff",
-] as const;
+// Distributor roles are READ-ONLY for patient progress by default. Only
+// Himplant admins and surgeon-office users may advance a consultation.
+const WRITE_ROLES = ["surgeon_admin", "surgeon_staff"] as const;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
