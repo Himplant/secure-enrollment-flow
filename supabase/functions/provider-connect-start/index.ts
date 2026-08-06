@@ -51,9 +51,20 @@ Deno.serve(async (req) => {
 
     const environment = normalizeEnvironment(body.environment);
     const config = await getPlatformConfig(db, provider, environment);
-    if (!config || !config.is_complete) {
-      return json({ error: `${provider} platform configuration is incomplete` }, 400);
+    if (!config) {
+      return json({
+        error: `No ${provider} platform configuration exists for the ${environment} environment. ` +
+          `Save the ${provider} platform credentials in Providers → Platform setup before connecting a surgeon.`,
+      }, 400);
     }
+    if (!config.is_complete) {
+      const missing = (config.missing_fields ?? []).join(", ") || "required credentials";
+      return json({
+        error: `${provider} platform configuration is incomplete — missing: ${missing}. ` +
+          `Add them in Providers → Platform setup (${environment}).`,
+      }, 400);
+    }
+
 
     // ---- PayPal: partner onboarding referral -------------------------------
     if (provider === "paypal") {
