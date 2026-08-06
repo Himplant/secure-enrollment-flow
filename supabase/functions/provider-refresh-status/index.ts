@@ -34,7 +34,11 @@ Deno.serve(async (req) => {
   if (!actorMayManageSurgeon(actor, account.surgeon_id as string)) {
     return json({ error: "Surgeon is outside your scope" }, 403);
   }
-  if (account.provider !== "mercado_pago" && account.provider !== "paypal") {
+  if (
+    account.provider !== "mercado_pago" &&
+    account.provider !== "paypal" &&
+    account.provider !== "stripe_connect"
+  ) {
     return json({ error: "Unsupported provider" }, 400);
   }
 
