@@ -1,3 +1,4 @@
+import { surgeonLocationFields } from "../_shared/surgeon-country.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
@@ -90,6 +91,7 @@ async function fetchAndUpsertSurgeonFromZoho(
       phone: s.Phone || null,
       specialty: s.Specialty || null,
       is_active: true,
+      ...surgeonLocationFields(s),
     };
 
     const { data: upserted, error } = await supabase
