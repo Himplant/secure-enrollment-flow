@@ -41,3 +41,12 @@ verify_jwt = false
 
 [functions.intl-payment-webhook]
 verify_jwt = false
+
+[functions.intl-portal-consultations]
+verify_jwt = false
+
+[functions.intl-portal-update-consultation]
+verify_jwt = false
+
+[functions.intl-portal-resend-link]
+verify_jwt = false
