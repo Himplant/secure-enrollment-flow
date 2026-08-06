@@ -2,8 +2,9 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale
+  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale, Globe, Flag
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -33,6 +34,11 @@ import { CreditsTab } from "@/components/admin/CreditsTab";
 import { CreditEconomicsTab } from "@/components/admin/CreditEconomicsTab";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import { isIntlEnabled } from "@/lib/featureFlags";
+import { ConsultationsTab } from "@/components/admin/intl/ConsultationsTab";
+import { FeatureFlagsTab } from "@/components/admin/platform/FeatureFlagsTab";
+
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -40,6 +46,12 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("patients");
+
+  // International module surfaces are hidden unless both the build-time and
+  // runtime flags are on. Every intl edge function re-checks server-side.
+  const { flags } = useFeatureFlags();
+  const intlVisible = isIntlEnabled(flags);
+
 
   // Analytics date filter state
   const [preset, setPreset] = useState<DatePreset>("30d");
@@ -349,9 +361,16 @@ export default function AdminDashboard() {
             <TabsTrigger value="credits" className="gap-2"><DollarSign className="h-4 w-4" />Credits</TabsTrigger>
             <TabsTrigger value="credit-economics" className="gap-2"><Scale className="h-4 w-4" />Credit Economics Dashboard</TabsTrigger>
             <TabsTrigger value="audit" className="gap-2"><Shield className="h-4 w-4" />Audit Log</TabsTrigger>
+            {intlVisible && (
+              <TabsTrigger value="intl-consultations" className="gap-2"><Globe className="h-4 w-4" />International</TabsTrigger>
+            )}
             {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2"><Settings className="h-4 w-4" />User Management</TabsTrigger>
             )}
+            {adminUser?.role === "super_admin" && (
+              <TabsTrigger value="platform-flags" className="gap-2"><Flag className="h-4 w-4" />Feature Flags</TabsTrigger>
+            )}
+
           </TabsList>
           <TabsContent value="patients"><PatientsTab /></TabsContent>
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
@@ -368,9 +387,16 @@ export default function AdminDashboard() {
             />
           </TabsContent>
           <TabsContent value="audit"><AuditLogTab /></TabsContent>
+          {intlVisible && (
+            <TabsContent value="intl-consultations"><ConsultationsTab /></TabsContent>
+          )}
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
           )}
+          {adminUser?.role === "super_admin" && (
+            <TabsContent value="platform-flags"><FeatureFlagsTab /></TabsContent>
+          )}
+
         </Tabs>
       </main>
     </div>

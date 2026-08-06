@@ -32,3 +32,12 @@ verify_jwt = false
 
 [functions.sync-enrollment-statuses]
 verify_jwt = false
+
+[functions.intl-get-consultation]
+verify_jwt = false
+
+[functions.intl-create-payment]
+verify_jwt = false
+
+[functions.intl-payment-webhook]
+verify_jwt = false
