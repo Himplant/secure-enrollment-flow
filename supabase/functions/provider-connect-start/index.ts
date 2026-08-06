@@ -25,6 +25,10 @@ import {
 } from "../_shared/provider-crypto.ts";
 import { mpAuthorizationUrl } from "../_shared/providers/mercado-pago.ts";
 import { paypalCreatePartnerReferral } from "../_shared/providers/paypal.ts";
+import {
+  stripeCreateAccountLink,
+  stripeCreateConnectedAccount,
+} from "../_shared/providers/stripe-connect.ts";
 
 const CURRENCY_BY_COUNTRY: Record<string, string> = { MX: "MXN", CO: "COP", CL: "CLP" };
 
@@ -39,7 +43,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const provider = String(body.provider ?? "mercado_pago");
-    if (provider !== "mercado_pago" && provider !== "paypal") {
+    if (provider !== "mercado_pago" && provider !== "paypal" && provider !== "stripe_connect") {
       return json({ error: "Unsupported provider" }, 400);
     }
 
