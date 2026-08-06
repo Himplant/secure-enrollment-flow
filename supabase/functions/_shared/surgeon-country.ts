@@ -5,7 +5,7 @@ export type IntlCountry = "MX" | "CO" | "CL";
 const NAME_TO_CODE: Record<string, IntlCountry> = {
   mexico: "MX",
   méxico: "MX",
-  mexico city: "MX",
+  "mexico city": "MX",
   mx: "MX",
   mex: "MX",
   colombia: "CO",
