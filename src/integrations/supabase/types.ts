@@ -1549,10 +1549,13 @@ export type Database = {
       }
       surgeons: {
         Row: {
+          city: string | null
+          country: string | null
           created_at: string
           email: string | null
           id: string
           is_active: boolean
+          is_international: boolean
           name: string
           phone: string | null
           specialty: string | null
@@ -1560,10 +1563,13 @@ export type Database = {
           zoho_id: string
         }
         Insert: {
+          city?: string | null
+          country?: string | null
           created_at?: string
           email?: string | null
           id?: string
           is_active?: boolean
+          is_international?: boolean
           name: string
           phone?: string | null
           specialty?: string | null
@@ -1571,10 +1577,13 @@ export type Database = {
           zoho_id: string
         }
         Update: {
+          city?: string | null
+          country?: string | null
           created_at?: string
           email?: string | null
           id?: string
           is_active?: boolean
+          is_international?: boolean
           name?: string
           phone?: string | null
           specialty?: string | null
