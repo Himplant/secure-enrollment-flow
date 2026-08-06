@@ -69,6 +69,97 @@ Deno.serve(async (req) => {
       }, 400);
     }
 
+    // ---- Stripe Connect: hosted Standard-account onboarding ----------------
+    if (provider === "stripe_connect") {
+      const { data: surgeon } = await db
+        .from("surgeons")
+        .select("id, country, currency, email")
+        .eq("id", surgeonId)
+        .maybeSingle();
+      const country = String(surgeon?.country ?? "").toUpperCase();
+      if (!CURRENCY_BY_COUNTRY[country]) {
+        return json({ error: "Surgeon country is not supported" }, 400);
+      }
+      const currency = String(surgeon?.currency ?? "").toUpperCase() || CURRENCY_BY_COUNTRY[country];
+
+      const { data: existing } = await db
+        .from("provider_accounts")
+        .select("id, external_merchant_id")
+        .eq("surgeon_id", surgeonId)
+        .eq("provider", provider)
+        .eq("environment", environment)
+        .maybeSingle();
+
+      let accountId = existing?.id as string | undefined;
+      if (!accountId) {
+        const { data: created, error: createErr } = await db
+          .from("provider_accounts")
+          .insert({
+            surgeon_id: surgeonId,
+            provider,
+            country,
+            currency,
+            environment,
+            connection_method: "partner_onboarding",
+            status: "onboarding",
+            onboarding_status: "account_created",
+            platform_config_id: config.id,
+            connected_by: actor.userId,
+            is_active: false,
+          })
+          .select("id")
+          .single();
+        if (createErr) return json({ error: createErr.message }, 500);
+        accountId = created.id as string;
+      }
+
+      // Reuse the surgeon's connected account whenever one already exists —
+      // creating a second Stripe account would split their payouts.
+      let stripeAccountId = existing?.external_merchant_id as string | null | undefined;
+      if (!stripeAccountId) {
+        stripeAccountId = await stripeCreateConnectedAccount({
+          environment,
+          country,
+          email: (surgeon?.email as string | null) ?? null,
+          surgeonId,
+          providerAccountId: accountId!,
+        });
+      }
+
+      const returnUrl = String(body.redirectAfter ?? providerReturnUrl());
+      const url = await stripeCreateAccountLink({
+        environment,
+        accountId: stripeAccountId,
+        refreshUrl: returnUrl,
+        returnUrl,
+      });
+
+      await db
+        .from("provider_accounts")
+        .update({
+          external_merchant_id: stripeAccountId,
+          status: "onboarding",
+          onboarding_status: "awaiting_merchant",
+          onboarding_url: url,
+          connection_error: null,
+          platform_config_id: config.id,
+          live_mode: environment === "live",
+        })
+        .eq("id", accountId!);
+
+      await logProviderAudit(db, {
+        provider,
+        action: "connect_start",
+        entityType: "provider_account",
+        entityId: accountId!,
+        actorId: actor.userId,
+        summary: { surgeon_id: surgeonId, environment, method: "stripe_account_link" },
+        responseStatus: 200,
+      });
+
+      return json({ url, accountId, method: "partner_onboarding" });
+    }
+
 
     // ---- PayPal: partner onboarding referral -------------------------------
     if (provider === "paypal") {
