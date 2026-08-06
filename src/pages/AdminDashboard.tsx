@@ -349,9 +349,16 @@ export default function AdminDashboard() {
             <TabsTrigger value="credits" className="gap-2"><DollarSign className="h-4 w-4" />Credits</TabsTrigger>
             <TabsTrigger value="credit-economics" className="gap-2"><Scale className="h-4 w-4" />Credit Economics Dashboard</TabsTrigger>
             <TabsTrigger value="audit" className="gap-2"><Shield className="h-4 w-4" />Audit Log</TabsTrigger>
+            {intlVisible && (
+              <TabsTrigger value="intl-consultations" className="gap-2"><Globe className="h-4 w-4" />International</TabsTrigger>
+            )}
             {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2"><Settings className="h-4 w-4" />User Management</TabsTrigger>
             )}
+            {INTL_BUILD_ENABLED && adminUser?.role === "super_admin" && (
+              <TabsTrigger value="platform-flags" className="gap-2"><Flag className="h-4 w-4" />Feature Flags</TabsTrigger>
+            )}
+
           </TabsList>
           <TabsContent value="patients"><PatientsTab /></TabsContent>
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
