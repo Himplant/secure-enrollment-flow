@@ -94,6 +94,15 @@ const App = () => (
               <Route path="/portal/login" element={
                 <Suspense fallback={<AdminFallback />}><PortalLogin /></Suspense>
               } />
+              <Route path="/portal/accept-invite" element={
+                <Suspense fallback={<AdminFallback />}><PortalAcceptInvite /></Suspense>
+              } />
+              <Route path="/portal/reset-password" element={
+                <Suspense fallback={<AdminFallback />}><PortalResetPassword /></Suspense>
+              } />
+              <Route path="/portal/mfa" element={
+                <Suspense fallback={<AdminFallback />}><PortalMfa /></Suspense>
+              } />
               <Route path="/portal" element={
                 <Suspense fallback={<AdminFallback />}>
                   <PortalProtectedRoute><PortalDashboard /></PortalProtectedRoute>
