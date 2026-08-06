@@ -116,161 +116,6 @@ export type Database = {
         }
         Relationships: []
       }
-      clinic_distributors: {
-        Row: {
-          clinic_id: string
-          created_at: string
-          distributor_id: string
-          id: string
-          is_primary: boolean
-        }
-        Insert: {
-          clinic_id: string
-          created_at?: string
-          distributor_id: string
-          id?: string
-          is_primary?: boolean
-        }
-        Update: {
-          clinic_id?: string
-          created_at?: string
-          distributor_id?: string
-          id?: string
-          is_primary?: boolean
-        }
-        Relationships: [
-          {
-            foreignKeyName: "clinic_distributors_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "clinic_distributors_distributor_id_fkey"
-            columns: ["distributor_id"]
-            isOneToOne: false
-            referencedRelation: "distributors"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      clinic_surgeons: {
-        Row: {
-          clinic_id: string
-          consultation_fee_minor: number
-          created_at: string
-          currency: string
-          id: string
-          is_active: boolean
-          surgeon_id: string
-          updated_at: string
-        }
-        Insert: {
-          clinic_id: string
-          consultation_fee_minor?: number
-          created_at?: string
-          currency?: string
-          id?: string
-          is_active?: boolean
-          surgeon_id: string
-          updated_at?: string
-        }
-        Update: {
-          clinic_id?: string
-          consultation_fee_minor?: number
-          created_at?: string
-          currency?: string
-          id?: string
-          is_active?: boolean
-          surgeon_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "clinic_surgeons_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "clinic_surgeons_surgeon_id_fkey"
-            columns: ["surgeon_id"]
-            isOneToOne: false
-            referencedRelation: "surgeons"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      clinics: {
-        Row: {
-          active_provider:
-            | Database["public"]["Enums"]["payment_provider"]
-            | null
-          address: string | null
-          city: string | null
-          contact_email: string | null
-          contact_phone: string | null
-          country: Database["public"]["Enums"]["intl_country"]
-          created_at: string
-          default_currency: string
-          id: string
-          is_active: boolean
-          name: string
-          region_id: string | null
-          timezone: string
-          updated_at: string
-          zoho_id: string | null
-        }
-        Insert: {
-          active_provider?:
-            | Database["public"]["Enums"]["payment_provider"]
-            | null
-          address?: string | null
-          city?: string | null
-          contact_email?: string | null
-          contact_phone?: string | null
-          country: Database["public"]["Enums"]["intl_country"]
-          created_at?: string
-          default_currency?: string
-          id?: string
-          is_active?: boolean
-          name: string
-          region_id?: string | null
-          timezone?: string
-          updated_at?: string
-          zoho_id?: string | null
-        }
-        Update: {
-          active_provider?:
-            | Database["public"]["Enums"]["payment_provider"]
-            | null
-          address?: string | null
-          city?: string | null
-          contact_email?: string | null
-          contact_phone?: string | null
-          country?: Database["public"]["Enums"]["intl_country"]
-          created_at?: string
-          default_currency?: string
-          id?: string
-          is_active?: boolean
-          name?: string
-          region_id?: string | null
-          timezone?: string
-          updated_at?: string
-          zoho_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "clinics_region_id_fkey"
-            columns: ["region_id"]
-            isOneToOne: false
-            referencedRelation: "regions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       consultation_events: {
         Row: {
           actor_email: string | null
@@ -356,51 +201,51 @@ export type Database = {
       }
       consultation_tasks: {
         Row: {
-          clinic_id: string
           completed_at: string | null
           completed_by: string | null
           consultation_id: string
           created_at: string
           due_at: string | null
           id: string
+          surgeon_id: string
           task_type: string
           updated_at: string
         }
         Insert: {
-          clinic_id: string
           completed_at?: string | null
           completed_by?: string | null
           consultation_id: string
           created_at?: string
           due_at?: string | null
           id?: string
+          surgeon_id: string
           task_type: string
           updated_at?: string
         }
         Update: {
-          clinic_id?: string
           completed_at?: string | null
           completed_by?: string | null
           consultation_id?: string
           created_at?: string
           due_at?: string | null
           id?: string
+          surgeon_id?: string
           task_type?: string
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "consultation_tasks_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "consultation_tasks_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: false
             referencedRelation: "consultations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultation_tasks_surgeon_id_fkey"
+            columns: ["surgeon_id"]
+            isOneToOne: false
+            referencedRelation: "surgeons"
             referencedColumns: ["id"]
           },
         ]
@@ -410,7 +255,6 @@ export type Database = {
           agent_email: string | null
           agent_zoho_id: string | null
           amount_minor: number
-          clinic_id: string
           closed_at: string | null
           consultation_status: Database["public"]["Enums"]["intl_consultation_status"]
           consulted_at: string | null
@@ -440,12 +284,11 @@ export type Database = {
           provider_payment_id: string | null
           recipient_external_merchant_id: string | null
           refunded_at: string | null
-          region_id: string | null
           rescheduled_count: number
           scheduled_at: string | null
           sent_at: string | null
           signature_data: string | null
-          surgeon_id: string | null
+          surgeon_id: string
           surgery_completed_at: string | null
           surgery_recommended_at: string | null
           surgery_scheduled_at: string | null
@@ -465,7 +308,6 @@ export type Database = {
           agent_email?: string | null
           agent_zoho_id?: string | null
           amount_minor: number
-          clinic_id: string
           closed_at?: string | null
           consultation_status?: Database["public"]["Enums"]["intl_consultation_status"]
           consulted_at?: string | null
@@ -495,12 +337,11 @@ export type Database = {
           provider_payment_id?: string | null
           recipient_external_merchant_id?: string | null
           refunded_at?: string | null
-          region_id?: string | null
           rescheduled_count?: number
           scheduled_at?: string | null
           sent_at?: string | null
           signature_data?: string | null
-          surgeon_id?: string | null
+          surgeon_id: string
           surgery_completed_at?: string | null
           surgery_recommended_at?: string | null
           surgery_scheduled_at?: string | null
@@ -520,7 +361,6 @@ export type Database = {
           agent_email?: string | null
           agent_zoho_id?: string | null
           amount_minor?: number
-          clinic_id?: string
           closed_at?: string | null
           consultation_status?: Database["public"]["Enums"]["intl_consultation_status"]
           consulted_at?: string | null
@@ -550,12 +390,11 @@ export type Database = {
           provider_payment_id?: string | null
           recipient_external_merchant_id?: string | null
           refunded_at?: string | null
-          region_id?: string | null
           rescheduled_count?: number
           scheduled_at?: string | null
           sent_at?: string | null
           signature_data?: string | null
-          surgeon_id?: string | null
+          surgeon_id?: string
           surgery_completed_at?: string | null
           surgery_recommended_at?: string | null
           surgery_scheduled_at?: string | null
@@ -572,13 +411,6 @@ export type Database = {
           zoho_record_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "consultations_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "consultations_distributor_id_fkey"
             columns: ["distributor_id"]
@@ -608,13 +440,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "consultations_region_id_fkey"
-            columns: ["region_id"]
-            isOneToOne: false
-            referencedRelation: "regions"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "consultations_surgeon_id_fkey"
             columns: ["surgeon_id"]
             isOneToOne: false
@@ -623,38 +448,38 @@ export type Database = {
           },
         ]
       }
-      distributor_regions: {
+      distributor_surgeons: {
         Row: {
           created_at: string
           distributor_id: string
           id: string
-          region_id: string
+          surgeon_id: string
         }
         Insert: {
           created_at?: string
           distributor_id: string
           id?: string
-          region_id: string
+          surgeon_id: string
         }
         Update: {
           created_at?: string
           distributor_id?: string
           id?: string
-          region_id?: string
+          surgeon_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "distributor_regions_distributor_id_fkey"
+            foreignKeyName: "distributor_surgeons_distributor_id_fkey"
             columns: ["distributor_id"]
             isOneToOne: false
             referencedRelation: "distributors"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "distributor_regions_region_id_fkey"
-            columns: ["region_id"]
+            foreignKeyName: "distributor_surgeons_surgeon_id_fkey"
+            columns: ["surgeon_id"]
             isOneToOne: false
-            referencedRelation: "regions"
+            referencedRelation: "surgeons"
             referencedColumns: ["id"]
           },
         ]
@@ -961,7 +786,6 @@ export type Database = {
       international_policies: {
         Row: {
           cancellation_policy: string | null
-          clinic_id: string | null
           content_sha256: string
           country: Database["public"]["Enums"]["intl_country"]
           created_at: string
@@ -973,6 +797,7 @@ export type Database = {
           privacy_url: string | null
           provider: Database["public"]["Enums"]["payment_provider"] | null
           refund_exceptions: string | null
+          surgeon_id: string | null
           terms_text: string
           terms_url: string | null
           updated_at: string
@@ -980,7 +805,6 @@ export type Database = {
         }
         Insert: {
           cancellation_policy?: string | null
-          clinic_id?: string | null
           content_sha256: string
           country: Database["public"]["Enums"]["intl_country"]
           created_at?: string
@@ -992,6 +816,7 @@ export type Database = {
           privacy_url?: string | null
           provider?: Database["public"]["Enums"]["payment_provider"] | null
           refund_exceptions?: string | null
+          surgeon_id?: string | null
           terms_text: string
           terms_url?: string | null
           updated_at?: string
@@ -999,7 +824,6 @@ export type Database = {
         }
         Update: {
           cancellation_policy?: string | null
-          clinic_id?: string | null
           content_sha256?: string
           country?: Database["public"]["Enums"]["intl_country"]
           created_at?: string
@@ -1011,6 +835,7 @@ export type Database = {
           privacy_url?: string | null
           provider?: Database["public"]["Enums"]["payment_provider"] | null
           refund_exceptions?: string | null
+          surgeon_id?: string | null
           terms_text?: string
           terms_url?: string | null
           updated_at?: string
@@ -1018,10 +843,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "international_policies_clinic_id_fkey"
-            columns: ["clinic_id"]
+            foreignKeyName: "international_policies_surgeon_id_fkey"
+            columns: ["surgeon_id"]
             isOneToOne: false
-            referencedRelation: "clinics"
+            referencedRelation: "surgeons"
             referencedColumns: ["id"]
           },
         ]
@@ -1191,7 +1016,6 @@ export type Database = {
       }
       portal_memberships: {
         Row: {
-          clinic_id: string | null
           created_at: string
           distributor_id: string | null
           granted_at: string
@@ -1202,10 +1026,10 @@ export type Database = {
           portal_user_id: string
           revoked_at: string | null
           role: Database["public"]["Enums"]["portal_role"]
+          surgeon_id: string | null
           updated_at: string
         }
         Insert: {
-          clinic_id?: string | null
           created_at?: string
           distributor_id?: string | null
           granted_at?: string
@@ -1216,10 +1040,10 @@ export type Database = {
           portal_user_id: string
           revoked_at?: string | null
           role: Database["public"]["Enums"]["portal_role"]
+          surgeon_id?: string | null
           updated_at?: string
         }
         Update: {
-          clinic_id?: string | null
           created_at?: string
           distributor_id?: string | null
           granted_at?: string
@@ -1230,16 +1054,10 @@ export type Database = {
           portal_user_id?: string
           revoked_at?: string | null
           role?: Database["public"]["Enums"]["portal_role"]
+          surgeon_id?: string | null
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "portal_memberships_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "portal_memberships_distributor_id_fkey"
             columns: ["distributor_id"]
@@ -1252,6 +1070,13 @@ export type Database = {
             columns: ["portal_user_id"]
             isOneToOne: false
             referencedRelation: "portal_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_memberships_surgeon_id_fkey"
+            columns: ["surgeon_id"]
+            isOneToOne: false
+            referencedRelation: "surgeons"
             referencedColumns: ["id"]
           },
         ]
@@ -1349,7 +1174,6 @@ export type Database = {
       provider_accounts: {
         Row: {
           capabilities: Json
-          clinic_id: string
           connected_at: string | null
           connected_by: string | null
           connection_method: Database["public"]["Enums"]["provider_connection_method"]
@@ -1365,12 +1189,11 @@ export type Database = {
           onboarding_status: string | null
           provider: Database["public"]["Enums"]["payment_provider"]
           status: Database["public"]["Enums"]["provider_account_status"]
-          surgeon_id: string | null
+          surgeon_id: string
           updated_at: string
         }
         Insert: {
           capabilities?: Json
-          clinic_id: string
           connected_at?: string | null
           connected_by?: string | null
           connection_method?: Database["public"]["Enums"]["provider_connection_method"]
@@ -1386,12 +1209,11 @@ export type Database = {
           onboarding_status?: string | null
           provider: Database["public"]["Enums"]["payment_provider"]
           status?: Database["public"]["Enums"]["provider_account_status"]
-          surgeon_id?: string | null
+          surgeon_id: string
           updated_at?: string
         }
         Update: {
           capabilities?: Json
-          clinic_id?: string
           connected_at?: string | null
           connected_by?: string | null
           connection_method?: Database["public"]["Enums"]["provider_connection_method"]
@@ -1407,17 +1229,10 @@ export type Database = {
           onboarding_status?: string | null
           provider?: Database["public"]["Enums"]["payment_provider"]
           status?: Database["public"]["Enums"]["provider_account_status"]
-          surgeon_id?: string | null
+          surgeon_id?: string
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "provider_accounts_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "provider_accounts_surgeon_id_fkey"
             columns: ["surgeon_id"]
@@ -1426,36 +1241,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      regions: {
-        Row: {
-          code: string
-          country: Database["public"]["Enums"]["intl_country"]
-          created_at: string
-          id: string
-          is_active: boolean
-          name: string
-          updated_at: string
-        }
-        Insert: {
-          code: string
-          country: Database["public"]["Enums"]["intl_country"]
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          name: string
-          updated_at?: string
-        }
-        Update: {
-          code?: string
-          country?: Database["public"]["Enums"]["intl_country"]
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          name?: string
-          updated_at?: string
-        }
-        Relationships: []
       }
       surgeon_credits: {
         Row: {
@@ -1549,9 +1334,14 @@ export type Database = {
       }
       surgeons: {
         Row: {
+          active_provider:
+            | Database["public"]["Enums"]["payment_provider"]
+            | null
           city: string | null
+          consultation_fee_minor: number
           country: string | null
           created_at: string
+          currency: string | null
           email: string | null
           id: string
           is_active: boolean
@@ -1559,13 +1349,19 @@ export type Database = {
           name: string
           phone: string | null
           specialty: string | null
+          timezone: string | null
           updated_at: string
           zoho_id: string
         }
         Insert: {
+          active_provider?:
+            | Database["public"]["Enums"]["payment_provider"]
+            | null
           city?: string | null
+          consultation_fee_minor?: number
           country?: string | null
           created_at?: string
+          currency?: string | null
           email?: string | null
           id?: string
           is_active?: boolean
@@ -1573,13 +1369,19 @@ export type Database = {
           name: string
           phone?: string | null
           specialty?: string | null
+          timezone?: string | null
           updated_at?: string
           zoho_id: string
         }
         Update: {
+          active_provider?:
+            | Database["public"]["Enums"]["payment_provider"]
+            | null
           city?: string | null
+          consultation_fee_minor?: number
           country?: string | null
           created_at?: string
+          currency?: string | null
           email?: string | null
           id?: string
           is_active?: boolean
@@ -1587,6 +1389,7 @@ export type Database = {
           name?: string
           phone?: string | null
           specialty?: string | null
+          timezone?: string | null
           updated_at?: string
           zoho_id?: string
         }
@@ -1647,14 +1450,14 @@ export type Database = {
         | "declined"
       payment_method_type: "card" | "ach"
       payment_provider: "mercado_pago" | "paypal" | "test" | "stripe_connect"
-      portal_org_type: "distributor" | "clinic"
+      portal_org_type: "surgeon" | "distributor"
       portal_role:
+        | "surgeon_admin"
+        | "surgeon_staff"
+        | "surgeon_analyst"
         | "distributor_admin"
         | "distributor_staff"
         | "distributor_analyst"
-        | "clinic_admin"
-        | "clinic_staff"
-        | "clinic_analyst"
       provider_account_status:
         | "pending"
         | "onboarding"
@@ -1844,14 +1647,14 @@ export const Constants = {
       ],
       payment_method_type: ["card", "ach"],
       payment_provider: ["mercado_pago", "paypal", "test", "stripe_connect"],
-      portal_org_type: ["distributor", "clinic"],
+      portal_org_type: ["surgeon", "distributor"],
       portal_role: [
+        "surgeon_admin",
+        "surgeon_staff",
+        "surgeon_analyst",
         "distributor_admin",
         "distributor_staff",
         "distributor_analyst",
-        "clinic_admin",
-        "clinic_staff",
-        "clinic_analyst",
       ],
       provider_account_status: [
         "pending",
