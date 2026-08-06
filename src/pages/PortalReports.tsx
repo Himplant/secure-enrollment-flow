@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { usePortalMetrics, type PortalMetricGroup } from "@/hooks/usePortalMetrics";
-import { formatMinor } from "@/lib/intlMoney";
+import { formatIntlMoney } from "@/lib/intlMoney";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const hours = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)} h`);
@@ -28,7 +28,7 @@ const hours = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)} h`);
 function money(byCurrency: Record<string, number>) {
   const entries = Object.entries(byCurrency ?? {});
   if (!entries.length) return "—";
-  return entries.map(([c, minor]) => formatMinor(minor, c)).join(" · ");
+  return entries.map(([c, minor]) => formatIntlMoney(minor, c)).join(" · ");
 }
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
