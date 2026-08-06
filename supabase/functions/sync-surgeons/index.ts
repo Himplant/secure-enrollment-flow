@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { surgeonLocationFields } from "../_shared/surgeon-country.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +14,13 @@ interface ZohoSurgeon {
   Email?: string;
   Phone?: string;
   Specialty?: string;
+  Country?: string;
+  Mailing_Country?: string;
+  Billing_Country?: string;
+  Shipping_Country?: string;
+  City?: string;
+  Mailing_City?: string;
+  Billing_City?: string;
 }
 
 async function getZohoAccessToken(): Promise<string> {
@@ -147,6 +155,7 @@ serve(async (req) => {
         phone: surgeon.Phone || null,
         specialty: surgeon.Specialty || null,
         is_active: true,
+        ...surgeonLocationFields(surgeon),
       };
 
       const { data: existing } = await supabaseAdmin
