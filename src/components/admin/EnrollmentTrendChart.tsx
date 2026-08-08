@@ -78,13 +78,19 @@ export function EnrollmentTrendChart({ enrollments, isLoading, dateFrom, dateTo 
       }
     });
 
-    return Array.from(buckets.entries()).map(([key, val]) => ({
-      date: key,
-      label: format(new Date(key), formatStr),
-      created: val.created,
-      paid: val.paid,
-      revenue: val.revenue,
-    }));
+    return Array.from(buckets.entries()).map(([key, val]) => {
+      // Parse the bucket key as a LOCAL date (new Date("2026-08") would be UTC
+      // and shift back a month in negative-offset timezones).
+      const [y, m, d] = key.split("-").map(Number);
+      const localDate = new Date(y, (m ?? 1) - 1, d ?? 1);
+      return {
+        date: key,
+        label: format(localDate, formatStr),
+        created: val.created,
+        paid: val.paid,
+        revenue: val.revenue,
+      };
+    });
   }, [enrollments, dateFrom, dateTo, granularity]);
 
   if (isLoading) {
