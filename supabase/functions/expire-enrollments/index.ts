@@ -1,11 +1,13 @@
 import { jwtHasAal2 } from "../_shared/admin-auth.ts";
+import { isCronRequest } from "../_shared/cron-auth.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
+
 
 // Helper to refresh Zoho access token
 async function getZohoAccessToken(): Promise<string> {
@@ -78,7 +80,7 @@ async function addZohoNote(
     },
     body: JSON.stringify({
       data: [{
-        Parent_Id: recordId,
+        Parent_Id: { id: recordId },
         se_module: module,
         Note_Title: title,
         Note_Content: content,
@@ -98,9 +100,8 @@ serve(async (req) => {
   }
 
   // SECURITY: this endpoint is cron-only. Require the shared cron secret or an admin JWT (AAL2).
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  const providedCron = req.headers.get("x-cron-secret") ?? "";
-  const isCron = !!cronSecret && providedCron === cronSecret;
+  const isCron = isCronRequest(req);
+
   if (!isCron) {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
