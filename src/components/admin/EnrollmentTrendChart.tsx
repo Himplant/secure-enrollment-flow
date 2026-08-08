@@ -175,9 +175,10 @@ export function EnrollmentTrendChart({ enrollments, isLoading, dateFrom, dateTo 
                   borderRadius: "8px",
                   fontSize: "12px",
                 }}
-                formatter={(value: number, name: string) => {
-                  if (name === "revenue") return [`$${value.toLocaleString()}`, "Revenue"];
-                  return [value, name === "created" ? "Created" : "Paid"];
+                formatter={(value: number, _name: string, item: { dataKey?: string | number }) => {
+                  const key = String(item?.dataKey ?? "");
+                  if (key === "revenue") return [`$${value.toLocaleString()}`, "Revenue"];
+                  return [value, key === "created" ? "Created" : "Paid"];
                 }}
               />
               <Legend
