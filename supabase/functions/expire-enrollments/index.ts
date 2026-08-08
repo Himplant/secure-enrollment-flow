@@ -80,7 +80,7 @@ async function addZohoNote(
     },
     body: JSON.stringify({
       data: [{
-        Parent_Id: recordId,
+        Parent_Id: { id: recordId },
         se_module: module,
         Note_Title: title,
         Note_Content: content,
