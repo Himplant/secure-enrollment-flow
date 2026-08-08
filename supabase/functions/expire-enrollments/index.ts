@@ -100,9 +100,8 @@ serve(async (req) => {
   }
 
   // SECURITY: this endpoint is cron-only. Require the shared cron secret or an admin JWT (AAL2).
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  const providedCron = req.headers.get("x-cron-secret") ?? "";
-  const isCron = !!cronSecret && providedCron === cronSecret;
+  const isCron = isCronRequest(req);
+
   if (!isCron) {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {

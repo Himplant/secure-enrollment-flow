@@ -1,4 +1,5 @@
 import { jwtHasAal2 } from "../_shared/admin-auth.ts";
+import { isCronRequest } from "../_shared/cron-auth.ts";
 // Pulls Zoho Deal Enrollment_Status changes back into our enrollments table.
 // Specifically handles when a deal is marked Canceled / Expired in the CRM
 // after the link was sent — we update the local status so the dashboard reflects reality.
@@ -6,8 +7,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
+
 
 async function getZohoAccessToken(): Promise<string> {
   const clientId = Deno.env.get("ZOHO_CLIENT_ID");
