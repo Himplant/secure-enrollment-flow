@@ -56,9 +56,8 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     // Allow cron/service call via shared secret; otherwise require admin + AAL2.
-    const cronSecret = Deno.env.get("CRON_SECRET");
-    const providedCron = req.headers.get("x-cron-secret") ?? "";
-    const isCron = !!cronSecret && providedCron === cronSecret;
+    const isCron = isCronRequest(req);
+
 
     if (!isCron) {
       const authHeader = req.headers.get("Authorization");
