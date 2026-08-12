@@ -345,7 +345,15 @@ export const mercadoPagoProvider: PaymentProvider = {
       },
       auto_return: "approved",
       binary_mode: false,
-      notification_url: `${Deno.env.get("SUPABASE_URL")!.replace(/\/$/, "")}/functions/v1/intl-payment-webhook?provider=mercado_pago`,
+      // Per-payment notification_url (takes precedence over the application
+      // level URL). The extra query params are ROUTING HINTS ONLY — they pick
+      // the right platform webhook secret and the right seller access token.
+      // Nothing about approval is ever trusted from them.
+      notification_url: mercadoPagoNotificationUrl({
+        baseUrl: Deno.env.get("SUPABASE_URL")!,
+        environment: account.environment,
+        providerAccountId: account.accountId,
+      }),
       ...(req.payerEmail || req.payerName
         ? { payer: { email: req.payerEmail ?? undefined, name: req.payerName ?? undefined } }
         : {}),
