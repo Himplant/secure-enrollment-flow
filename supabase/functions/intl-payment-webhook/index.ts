@@ -115,7 +115,25 @@ Deno.serve(async (req) => {
     // external_reference and the account id is then handed to the adapter.
     const hintedConsultationId = extractExternalReference(rawBody, url);
     let providerAccountId: string | null = null;
-    if (hintedConsultationId) {
+
+    // Mercado Pago multiple-seller routing hint: the per-payment
+    // notification_url carries the seller account id so we know which access
+    // token can read the payment. It is validated and used ONLY for the
+    // re-fetch — approval still depends entirely on the authoritative payment.
+    if (providerName === "mercado_pago") {
+      const hintedAccountId = url.searchParams.get("provider_account_id");
+      if (hintedAccountId) {
+        const { data: hintedAccount } = await admin
+          .from("provider_accounts")
+          .select("id, provider")
+          .eq("id", hintedAccountId)
+          .eq("provider", "mercado_pago")
+          .maybeSingle();
+        providerAccountId = (hintedAccount?.id as string | null) ?? null;
+      }
+    }
+
+    if (!providerAccountId && hintedConsultationId) {
       const { data: hinted } = await admin
         .from("consultations")
         .select("provider_account_id")
@@ -134,6 +152,7 @@ Deno.serve(async (req) => {
         .limit(2);
       if ((candidate ?? []).length === 1) providerAccountId = candidate![0].id as string;
     }
+
 
     const payment = await provider.getPayment(verification.lookupId, { providerAccountId });
     const consultationId = payment.externalReference;

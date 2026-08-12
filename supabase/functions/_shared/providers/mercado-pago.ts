@@ -295,6 +295,49 @@ function minorFromMajor(value: unknown, currency: string): number | null {
 }
 
 // ---------------------------------------------------------------------------
+// Webhook routing helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-payment notification URL. Mercado Pago supports dynamic query params on
+ * `notification_url` for payment-platform / multiple-seller setups, and the
+ * per-payment URL takes precedence over the application-level one.
+ *
+ * The params are ROUTING HINTS: which platform webhook secret to verify with,
+ * and which seller access token to re-fetch the payment with. They never
+ * influence approval, which is always decided from the authoritative payment
+ * fetched back from Mercado Pago.
+ */
+export function mercadoPagoNotificationUrl(params: {
+  baseUrl: string;
+  environment: ProviderEnvironment;
+  providerAccountId: string;
+}): string {
+  const url = new URL(
+    `${params.baseUrl.replace(/\/$/, "")}/functions/v1/intl-payment-webhook`,
+  );
+  url.protocol = "https:";
+  url.searchParams.set("provider", "mercado_pago");
+  url.searchParams.set("environment", params.environment);
+  url.searchParams.set("provider_account_id", params.providerAccountId);
+  return url.toString();
+}
+
+/**
+ * Environments to attempt signature verification against. An explicit param
+ * pins exactly one — a live event is never checked against a sandbox secret.
+ * Legacy URLs without the param fall back to trying both (live first).
+ */
+export function mercadoPagoWebhookEnvironments(
+  environmentParam: string | null,
+): ProviderEnvironment[] {
+  if (environmentParam === "live") return ["live"];
+  if (environmentParam === "sandbox") return ["sandbox"];
+  return ["live", "sandbox"];
+}
+
+
+// ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
 
@@ -345,7 +388,15 @@ export const mercadoPagoProvider: PaymentProvider = {
       },
       auto_return: "approved",
       binary_mode: false,
-      notification_url: `${Deno.env.get("SUPABASE_URL")!.replace(/\/$/, "")}/functions/v1/intl-payment-webhook?provider=mercado_pago`,
+      // Per-payment notification_url (takes precedence over the application
+      // level URL). The extra query params are ROUTING HINTS ONLY — they pick
+      // the right platform webhook secret and the right seller access token.
+      // Nothing about approval is ever trusted from them.
+      notification_url: mercadoPagoNotificationUrl({
+        baseUrl: Deno.env.get("SUPABASE_URL")!,
+        environment: account.environment,
+        providerAccountId: account.accountId,
+      }),
       ...(req.payerEmail || req.payerName
         ? { payer: { email: req.payerEmail ?? undefined, name: req.payerName ?? undefined } }
         : {}),
@@ -418,12 +469,12 @@ export const mercadoPagoProvider: PaymentProvider = {
 
   async verifyWebhook(req: Request, rawBody: string): Promise<WebhookVerification> {
     const url = new URL(req.url);
-    const environment = normalizeEnvironment(url.searchParams.get("environment") ?? "sandbox");
+    // The environment is taken from the explicit query param so that a LIVE
+    // event is always verified with the LIVE webhook secret. When the param is
+    // absent (legacy application-level URL) we try each configured
+    // environment; a secret can only ever validate its own signatures.
+    const environments = mercadoPagoWebhookEnvironments(url.searchParams.get("environment"));
     const db = serviceClient();
-    const config = await getPlatformConfig(db, "mercado_pago", environment);
-    if (!config) return { ok: false, eventId: null, lookupId: null, reason: "platform not configured" };
-    const platform = await loadPlatformCredentials(db, config.id);
-    const secret = (platform?.webhook_secret as string | undefined) ?? "";
 
     let parsed: Record<string, unknown> = {};
     try {
@@ -438,15 +489,32 @@ export const mercadoPagoProvider: PaymentProvider = {
         ? String((parsed.data as { id?: unknown }).id)
         : null);
 
-    const verification = await verifyMercadoPagoSignature({
-      xSignature: req.headers.get("x-signature"),
-      xRequestId: req.headers.get("x-request-id"),
-      dataId,
-      secret,
-    });
-    if (!verification.ok) {
-      return { ok: false, eventId: null, lookupId: null, reason: verification.reason };
+    let lastReason = "platform not configured";
+    let verified = false;
+
+    for (const environment of environments) {
+      const config = await getPlatformConfig(db, "mercado_pago", environment);
+      if (!config) continue;
+      const platform = await loadPlatformCredentials(db, config.id);
+      const secret = (platform?.webhook_secret as string | undefined) ?? "";
+
+      const verification = await verifyMercadoPagoSignature({
+        xSignature: req.headers.get("x-signature"),
+        xRequestId: req.headers.get("x-request-id"),
+        dataId,
+        secret,
+      });
+      if (verification.ok) {
+        verified = true;
+        break;
+      }
+      lastReason = verification.reason ?? "signature mismatch";
     }
+
+    if (!verified) {
+      return { ok: false, eventId: null, lookupId: null, reason: lastReason };
+    }
+
 
     return {
       ok: true,
