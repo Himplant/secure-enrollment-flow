@@ -426,12 +426,12 @@ export const mercadoPagoProvider: PaymentProvider = {
 
   async verifyWebhook(req: Request, rawBody: string): Promise<WebhookVerification> {
     const url = new URL(req.url);
-    const environment = normalizeEnvironment(url.searchParams.get("environment") ?? "sandbox");
+    // The environment is taken from the explicit query param so that a LIVE
+    // event is always verified with the LIVE webhook secret. When the param is
+    // absent (legacy application-level URL) we try each configured
+    // environment; a secret can only ever validate its own signatures.
+    const environments = mercadoPagoWebhookEnvironments(url.searchParams.get("environment"));
     const db = serviceClient();
-    const config = await getPlatformConfig(db, "mercado_pago", environment);
-    if (!config) return { ok: false, eventId: null, lookupId: null, reason: "platform not configured" };
-    const platform = await loadPlatformCredentials(db, config.id);
-    const secret = (platform?.webhook_secret as string | undefined) ?? "";
 
     let parsed: Record<string, unknown> = {};
     try {
@@ -446,15 +446,32 @@ export const mercadoPagoProvider: PaymentProvider = {
         ? String((parsed.data as { id?: unknown }).id)
         : null);
 
-    const verification = await verifyMercadoPagoSignature({
-      xSignature: req.headers.get("x-signature"),
-      xRequestId: req.headers.get("x-request-id"),
-      dataId,
-      secret,
-    });
-    if (!verification.ok) {
-      return { ok: false, eventId: null, lookupId: null, reason: verification.reason };
+    let lastReason = "platform not configured";
+    let verified = false;
+
+    for (const environment of environments) {
+      const config = await getPlatformConfig(db, "mercado_pago", environment);
+      if (!config) continue;
+      const platform = await loadPlatformCredentials(db, config.id);
+      const secret = (platform?.webhook_secret as string | undefined) ?? "";
+
+      const verification = await verifyMercadoPagoSignature({
+        xSignature: req.headers.get("x-signature"),
+        xRequestId: req.headers.get("x-request-id"),
+        dataId,
+        secret,
+      });
+      if (verification.ok) {
+        verified = true;
+        break;
+      }
+      lastReason = verification.reason ?? "signature mismatch";
     }
+
+    if (!verified) {
+      return { ok: false, eventId: null, lookupId: null, reason: lastReason };
+    }
+
 
     return {
       ok: true,
