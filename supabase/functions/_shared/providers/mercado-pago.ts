@@ -295,6 +295,49 @@ function minorFromMajor(value: unknown, currency: string): number | null {
 }
 
 // ---------------------------------------------------------------------------
+// Webhook routing helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-payment notification URL. Mercado Pago supports dynamic query params on
+ * `notification_url` for payment-platform / multiple-seller setups, and the
+ * per-payment URL takes precedence over the application-level one.
+ *
+ * The params are ROUTING HINTS: which platform webhook secret to verify with,
+ * and which seller access token to re-fetch the payment with. They never
+ * influence approval, which is always decided from the authoritative payment
+ * fetched back from Mercado Pago.
+ */
+export function mercadoPagoNotificationUrl(params: {
+  baseUrl: string;
+  environment: ProviderEnvironment;
+  providerAccountId: string;
+}): string {
+  const url = new URL(
+    `${params.baseUrl.replace(/\/$/, "")}/functions/v1/intl-payment-webhook`,
+  );
+  url.protocol = "https:";
+  url.searchParams.set("provider", "mercado_pago");
+  url.searchParams.set("environment", params.environment);
+  url.searchParams.set("provider_account_id", params.providerAccountId);
+  return url.toString();
+}
+
+/**
+ * Environments to attempt signature verification against. An explicit param
+ * pins exactly one — a live event is never checked against a sandbox secret.
+ * Legacy URLs without the param fall back to trying both (live first).
+ */
+export function mercadoPagoWebhookEnvironments(
+  environmentParam: string | null,
+): ProviderEnvironment[] {
+  if (environmentParam === "live") return ["live"];
+  if (environmentParam === "sandbox") return ["sandbox"];
+  return ["live", "sandbox"];
+}
+
+
+// ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
 
