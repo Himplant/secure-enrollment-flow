@@ -189,3 +189,32 @@ describe("protected U.S. enrollment behaviour is untouched", () => {
     }
   });
 });
+
+describe("every international entry point is flag-gated on the server", () => {
+  it("gates the Zoho create path through the shared consultation service", () => {
+    const svc = read("supabase/functions/_shared/intl-consultation-service.ts");
+    expect(svc).toMatch(/requireIntlEnabled\(\{ country, provider \}\)/);
+    expect(read("supabase/functions/intl-create-consultation-from-zoho/index.ts")).toMatch(
+      /createIntlConsultation/,
+    );
+  });
+
+  it("keeps the QA fixture tooling behind its own super-admin + QA flag gate", () => {
+    const src = read("supabase/functions/intl-qa-fixtures/index.ts");
+    expect(src).toMatch(/super_admin/);
+    expect(src).toMatch(/international_portal_qa_enabled/);
+  });
+
+  it("gates the reminder, reconciliation and portal paths", () => {
+    for (const fn of [
+      "intl-process-reminders",
+      "intl-reconcile-payments",
+      "intl-portal-resend-link",
+      "intl-send-consultation-link",
+      "intl-portal-consultations",
+      "intl-portal-update-consultation",
+    ]) {
+      expect(read(`supabase/functions/${fn}/index.ts`)).toMatch(/requireIntlEnabled/);
+    }
+  });
+});
