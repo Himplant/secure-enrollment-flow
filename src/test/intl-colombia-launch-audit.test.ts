@@ -65,9 +65,9 @@ describe("live consultations can never use a sandbox or test account", () => {
 
   it("keeps the Mercado Pago notification URL environment routing", () => {
     const src = read("supabase/functions/_shared/providers/mercado-pago.ts");
-    expect(src).toMatch(/provider=mercado_pago/);
-    expect(src).toMatch(/environment/);
-    expect(src).toMatch(/provider_account_id/);
+    expect(src).toMatch(/searchParams\.set\("provider", "mercado_pago"\)/);
+    expect(src).toMatch(/searchParams\.set\("environment"/);
+    expect(src).toMatch(/searchParams\.set\("provider_account_id"/);
   });
 });
 
