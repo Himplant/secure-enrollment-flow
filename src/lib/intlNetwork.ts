@@ -71,6 +71,8 @@ export interface NetworkCountrySetting {
   country: string;
   is_enabled: boolean;
   allowed_providers: string[];
+  /** Country default currency (e.g. COP for Colombia). Never assume USD. */
+  default_currency?: string | null;
 }
 
 export interface NetworkPolicy {
