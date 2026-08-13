@@ -23,12 +23,29 @@ const COUNTRY_FLAG: Record<string, FeatureFlagKey> = {
   CL: "international_chile_enabled",
 };
 
-const PROVIDER_FLAG: Record<string, FeatureFlagKey> = {
+export const PROVIDER_FLAG: Record<string, FeatureFlagKey> = {
   mercado_pago: "mercado_pago_enabled",
   paypal: "paypal_enabled",
   stripe_connect: "stripe_connect_enabled",
   test: "test_provider_enabled",
 };
+
+/** Providers whose runtime flag is currently on (module master gate included). */
+export async function enabledProviders(): Promise<string[]> {
+  const flags = await getFlags();
+  if (!flags.international_module_enabled) return [];
+  return Object.keys(PROVIDER_FLAG).filter((p) => !!flags[PROVIDER_FLAG[p]]);
+}
+
+/**
+ * Guard for every provider setup / connection endpoint. A disabled provider
+ * must not be connectable by calling the endpoint directly — hiding the tab is
+ * never the only control.
+ */
+export async function requireProviderEnabled(provider: string): Promise<Response | null> {
+  return await requireIntlEnabled({ provider });
+}
+
 
 
 function serviceClient() {
