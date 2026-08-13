@@ -4,13 +4,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Flag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { FEATURE_FLAG_KEYS, INTL_BUILD_ENABLED } from "@/lib/featureFlags";
+import { FEATURE_FLAG_KEYS, INTL_BUILD_ENABLED, COUNTRY_FLAG } from "@/lib/featureFlags";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+const COUNTRY_FLAG_KEYS = Object.values(COUNTRY_FLAG) as string[];
 
 const LABELS: Record<string, string> = {
   international_module_enabled: "International module (master switch)",
-  international_mexico_enabled: "Mexico",
-  international_colombia_enabled: "Colombia",
-  international_chile_enabled: "Chile",
+  international_mexico_enabled: "Mexico — availability",
+  international_colombia_enabled: "Colombia — availability",
+  international_chile_enabled: "Chile — availability",
   mercado_pago_enabled: "Mercado Pago provider",
   paypal_enabled: "PayPal provider",
   stripe_connect_enabled: "Stripe Connect provider (international only)",
@@ -80,11 +84,30 @@ export function FeatureFlagsTab() {
           </CardDescription>
         </CardHeader>
         <CardContent className="divide-y">
+          <Alert className="mb-3">
+            <AlertTitle>Country switches here are not the launch switch</AlertTitle>
+            <AlertDescription>
+              A country flag only makes that country <em>available</em>, and acts as the emergency
+              off switch. A country is opened to real patients in International → Advanced setup →
+              Launch readiness, which also lists everything still missing.
+            </AlertDescription>
+          </Alert>
           {rows.map(({ key, row }) => (
             <div key={key} className="flex items-center justify-between gap-4 py-3">
               <div>
-                <p className="text-sm font-medium">{LABELS[key] ?? key}</p>
-                <p className="text-xs text-muted-foreground">{row?.description ?? key}</p>
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  {LABELS[key] ?? key}
+                  {COUNTRY_FLAG_KEYS.includes(key) && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      availability gate
+                    </Badge>
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {COUNTRY_FLAG_KEYS.includes(key)
+                    ? "Availability / emergency gate — open the country in International → Advanced setup → Launch readiness."
+                    : (row?.description ?? key)}
+                </p>
               </div>
               <Switch
                 checked={!!row?.enabled}

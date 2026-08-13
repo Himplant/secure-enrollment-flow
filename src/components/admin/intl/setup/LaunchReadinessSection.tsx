@@ -11,7 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { INTL_BUILD_ENABLED } from "@/lib/featureFlags";
+import { INTL_BUILD_ENABLED, PROVIDER_FLAG } from "@/lib/featureFlags";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 
 type CheckStatus = "green" | "warning" | "blocked";
@@ -69,6 +70,21 @@ const STATUS_META: Record<CheckStatus, { icon: typeof CheckCircle2; className: s
 /** The only providers a country may be configured to accept. */
 export const SELECTABLE_PROVIDERS = ["test", "mercado_pago", "paypal", "stripe_connect"] as const;
 
+const PROVIDER_LABEL: Record<string, string> = {
+  test: "Simulated test provider (QA only)",
+  mercado_pago: "Mercado Pago",
+  paypal: "PayPal",
+  stripe_connect: "Stripe Connect",
+};
+
+/**
+ * A provider that is switched off in Platform → Feature flags can never be
+ * added to a country. The server rejects it too, so this is not the only gate.
+ */
+export function selectableProvidersFor(flags: Record<string, boolean>): string[] {
+  return SELECTABLE_PROVIDERS.filter((p) => !!flags[PROVIDER_FLAG[p]]);
+}
+
 /**
  * Build-time gate. The edge function cannot see Vite's build flags, so this row
  * is evaluated in the browser from the compiled bundle.
@@ -94,6 +110,7 @@ export function buildGateCheck(): ReadinessCheck {
  */
 export function LaunchReadinessSection() {
   const qc = useQueryClient();
+  const { flags } = useFeatureFlags();
   const [country, setCountry] = useState("CO");
   const [environment, setEnvironment] = useState("live");
 
@@ -249,8 +266,10 @@ export function LaunchReadinessSection() {
         <CardHeader>
           <CardTitle className="text-base">Country availability</CardTitle>
           <CardDescription>
-            A country that is switched off here blocks consultation creation even when its feature
-            flag is on. Only Himplant super admins can change these settings.
+            This is the single launch control. The Platform feature flag only makes a country
+            <em> available</em> (and acts as the emergency off switch) — a country is not open to
+            patients until it is switched on here. Only Himplant super admins can change these
+            settings. Providers that are switched off in Platform → Feature flags are not listed.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -279,7 +298,7 @@ export function LaunchReadinessSection() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={s.is_enabled ? "default" : "secondary"}>
-                      {s.is_enabled ? "Enabled" : "Disabled"}
+                      {s.is_enabled ? "Live for patients" : "Available — not live"}
                     </Badge>
                     <Switch
                       checked={s.is_enabled}
@@ -297,7 +316,7 @@ export function LaunchReadinessSection() {
 
                 <div className="flex flex-wrap items-center gap-4">
                   <span className="text-sm font-medium">Allowed providers</span>
-                  {SELECTABLE_PROVIDERS.map((p) => (
+                  {selectableProvidersFor(flags).map((p) => (
                     <label key={p} className="flex items-center gap-2 text-sm">
                       <Checkbox
                         checked={allowed.includes(p)}
@@ -312,7 +331,7 @@ export function LaunchReadinessSection() {
                           })
                         }
                       />
-                      {p}
+                      {PROVIDER_LABEL[p] ?? p}
                     </label>
                   ))}
                 </div>
