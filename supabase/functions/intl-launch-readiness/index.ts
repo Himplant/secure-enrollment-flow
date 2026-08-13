@@ -43,6 +43,57 @@ Deno.serve(async (req) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const country = String(body.country ?? "CO").toUpperCase();
     const environment = body.environment === "sandbox" ? "sandbox" : "live";
+    const action = String(body.action ?? "status");
+
+    // ------------------------------------------------------------------
+    // Mutations: Himplant SUPER ADMIN + AAL2 only. Ops admins may read this
+    // report but must never be able to switch a country on or change which
+    // payment providers it accepts.
+    // ------------------------------------------------------------------
+    if (action !== "status") {
+      const { data: adminRow } = await db
+        .from("admin_users")
+        .select("role")
+        .eq("user_id", auth.userId)
+        .maybeSingle();
+      if ((adminRow as { role?: string } | null)?.role !== "super_admin") {
+        return json({ error: "Super admin access required" }, 403);
+      }
+
+      if (!VALID_COUNTRIES.includes(country)) {
+        return json({ error: "Unsupported country" }, 400);
+      }
+
+      if (action === "set_country_enabled") {
+        if (typeof body.enabled !== "boolean") {
+          return json({ error: "`enabled` must be a boolean" }, 400);
+        }
+        // Never auto-enable: enabling only ever happens through this explicit
+        // super-admin request.
+        const { error } = await db
+          .from("international_country_settings")
+          .update({ is_enabled: body.enabled })
+          .eq("country", country);
+        if (error) return json({ error: error.message }, 400);
+      } else if (action === "set_allowed_providers") {
+        const raw = body.providers;
+        if (!Array.isArray(raw)) return json({ error: "`providers` must be an array" }, 400);
+        const providers = [...new Set(raw.map((p) => String(p)))];
+        const invalid = providers.filter((p) => !VALID_PROVIDERS.includes(p));
+        if (invalid.length) {
+          return json({ error: `Unsupported provider(s): ${invalid.join(", ")}` }, 400);
+        }
+        const { error } = await db
+          .from("international_country_settings")
+          .update({ allowed_providers: providers })
+          .eq("country", country);
+        if (error) return json({ error: error.message }, 400);
+      } else {
+        return json({ error: "Unknown action" }, 400);
+      }
+    }
+
+
 
     const [
       { data: flagRows },
