@@ -283,7 +283,20 @@ export function PortalTestCenter() {
             <TableBody>
               {(data?.demo_users ?? []).map((u) => (
                 <TableRow key={u.email}>
-                  <TableCell className="font-mono text-xs">{u.email}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      {u.email}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label={`Copy ${u.email}`}
+                        onClick={() => copyEmail(u.email)}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </span>
+                  </TableCell>
                   <TableCell>
                     {!u.exists ? (
                       <Badge variant="secondary">Not created</Badge>
@@ -293,14 +306,20 @@ export function PortalTestCenter() {
                       <Badge variant="outline">Disabled</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="space-x-1">
+                  <TableCell className="space-y-1">
                     {u.memberships.length === 0 && <span className="text-muted-foreground">—</span>}
                     {u.memberships.map((m, i) => (
-                      <Badge key={i} variant={m.is_active ? "secondary" : "outline"} className="text-[10px]">
-                        {m.role}
-                      </Badge>
+                      <div key={i} className="flex items-center gap-1">
+                        <Badge variant={m.is_active ? "secondary" : "outline"} className="text-[10px]">
+                          {m.role}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {m.org_name ?? m.org_type}
+                        </span>
+                      </div>
                     ))}
                   </TableCell>
+
                   <TableCell className="text-sm text-muted-foreground">
                     {u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "—"}
                   </TableCell>
