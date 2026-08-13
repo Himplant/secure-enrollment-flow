@@ -68,7 +68,7 @@ export function PortalLayout({ children }: { children: ReactNode }) {
                 <SelectContent>
                   {workspaces.map((w) => (
                     <SelectItem key={w.key} value={w.key}>
-                      {w.name} · {w.role.replace(/_/g, " ")}
+                      {w.name} · {friendlyRoleLabel(w.role)}
                     </SelectItem>
                   ))}
                 </SelectContent>
