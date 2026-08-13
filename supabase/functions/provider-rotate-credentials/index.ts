@@ -2,6 +2,7 @@
 //  * OAuth accounts: force a refresh-token exchange, replacing both tokens.
 //  * Manual accounts: accept freshly typed values and overwrite the blob.
 // Existing values are never returned.
+import { requireProviderEnabled } from "../_shared/flags.ts";
 import {
   accountMasks,
   actorMayManageSurgeon,
@@ -49,6 +50,8 @@ Deno.serve(async (req) => {
     return json({ error: "Surgeon is outside your scope" }, 403);
   }
   if (account.provider !== "mercado_pago") return json({ error: "Unsupported provider" }, 400);
+  const providerBlock = await requireProviderEnabled(String(account.provider));
+  if (providerBlock) return providerBlock;
 
   const environment = normalizeEnvironment(account.environment);
 
