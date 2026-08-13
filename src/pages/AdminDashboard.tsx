@@ -36,9 +36,9 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { isIntlEnabled } from "@/lib/featureFlags";
-import { ConsultationsTab } from "@/components/admin/intl/ConsultationsTab";
 import { FeatureFlagsTab } from "@/components/admin/platform/FeatureFlagsTab";
-import { IntlSetupTab } from "@/components/admin/intl/setup/IntlSetupTab";
+import { InternationalHub } from "@/components/admin/intl/InternationalHub";
+
 
 
 export default function AdminDashboard() {
