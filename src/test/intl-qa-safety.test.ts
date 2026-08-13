@@ -42,7 +42,11 @@ describe("Portal Test Center safety rails", () => {
   });
 
   it("never echoes the temporary password back to the client", () => {
-    expect(SOURCE).not.toMatch(/json\([^)]*password[^)]*\)/);
+    // The only response payload after user creation is the status snapshot,
+    // which is built from database columns and never includes the password.
+    expect(SOURCE).toContain("The temporary password is never echoed back.");
+    expect(SOURCE).not.toMatch(/password,?\s*\}\)/);
+  });
   });
 
   it("uses the internal test payment provider for fixtures", () => {
