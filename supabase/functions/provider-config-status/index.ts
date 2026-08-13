@@ -12,6 +12,7 @@ import {
   providerWebhookUrl,
   resolveProviderActor,
 } from "../_shared/provider-config.ts";
+import { enabledProviders } from "../_shared/flags.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -24,6 +25,12 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const environment = normalizeEnvironment(body.environment);
 
+  // Only providers whose runtime feature flag is ON are ever described here.
+  // A disabled provider must not appear as a connectable option anywhere in
+  // the UI, and the mutation endpoints reject it as well.
+  const enabled = await enabledProviders();
+  const visibleProviders = Object.keys(PLATFORM_FIELDS).filter((p) => enabled.includes(p));
+
   const platform: Record<string, unknown>[] = [];
   if (actor.kind === "admin") {
     const { data: configs } = await db
@@ -33,7 +40,7 @@ Deno.serve(async (req) => {
       )
       .eq("environment", environment);
 
-    for (const provider of Object.keys(PLATFORM_FIELDS)) {
+    for (const provider of visibleProviders) {
       const existing = (configs ?? []).find((c) => c.provider === provider) ?? null;
       platform.push({
         provider,
@@ -60,7 +67,7 @@ Deno.serve(async (req) => {
       .select("provider, is_complete")
       .eq("environment", environment);
 
-    for (const provider of Object.keys(PLATFORM_FIELDS)) {
+    for (const provider of visibleProviders) {
       const existing = (configs ?? []).find((c) => c.provider === provider) ?? null;
       platform.push({
         provider,
@@ -109,6 +116,7 @@ Deno.serve(async (req) => {
   return json({
     actor: { kind: actor.kind, canManagePlatform: actor.kind === "admin" },
     environment,
+    enabled_providers: visibleProviders,
     platform,
     surgeons: scopedSurgeons ?? [],
 
