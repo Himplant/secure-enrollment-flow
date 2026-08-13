@@ -49,10 +49,13 @@ export function PortalLayout({ children }: { children: ReactNode }) {
               <Building2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold leading-tight">{orgLabel}</p>
-              <p className="text-xs text-muted-foreground">
-                {orgKind} · {portalUser?.full_name || portalUser?.email}
+              <p className="text-sm font-semibold leading-tight">
+                {orgLabel} — {roleLabel}
               </p>
+              <p className="text-xs text-muted-foreground">
+                {portalUser?.full_name || portalUser?.email}
+              </p>
+
             </div>
           </div>
 
