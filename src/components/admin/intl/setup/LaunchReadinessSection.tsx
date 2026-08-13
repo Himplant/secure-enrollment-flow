@@ -5,11 +5,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { INTL_BUILD_ENABLED } from "@/lib/featureFlags";
+
 
 type CheckStatus = "green" | "warning" | "blocked";
 
@@ -63,10 +66,31 @@ const STATUS_META: Record<CheckStatus, { icon: typeof CheckCircle2; className: s
   blocked: { icon: XCircle, className: "text-destructive", label: "Blocked" },
 };
 
+/** The only providers a country may be configured to accept. */
+export const SELECTABLE_PROVIDERS = ["test", "mercado_pago", "paypal", "stripe_connect"] as const;
+
 /**
- * Launch readiness for the international module. Read-only gates plus the one
- * setting that silently blocks a country (`is_enabled`) so an operator can fix
- * it without leaving the page.
+ * Build-time gate. The edge function cannot see Vite's build flags, so this row
+ * is evaluated in the browser from the compiled bundle.
+ */
+export function buildGateCheck(): ReadinessCheck {
+  return {
+    id: "intl_build_flag",
+    label: "International bundle compiled (VITE_ENABLE_INTL)",
+    status: INTL_BUILD_ENABLED ? "green" : "blocked",
+    detail: INTL_BUILD_ENABLED
+      ? "Enabled — the international UI is present in this build."
+      : "Disabled — this build excludes the international portal and consultation screens.",
+    next_action: INTL_BUILD_ENABLED
+      ? null
+      : "Set VITE_ENABLE_INTL=true and rebuild/redeploy the frontend before launch.",
+  };
+}
+
+/**
+ * Launch readiness for the international module. Read-only gates plus the
+ * super-admin-only country controls (`is_enabled`, allowed providers) so an
+ * operator can fix a silent blocker without leaving the page.
  */
 export function LaunchReadinessSection() {
   const qc = useQueryClient();
@@ -88,20 +112,26 @@ export function LaunchReadinessSection() {
     },
   });
 
-  const toggleCountry = useMutation({
-    mutationFn: async ({ code, enabled }: { code: string; enabled: boolean }) => {
-      const { error } = await supabase
-        .from("international_country_settings")
-        .update({ is_enabled: enabled })
-        .eq("country", code as "CO" | "MX" | "CL");
+  // Every country mutation goes through the edge function, which re-checks
+  // super_admin + AAL2 server-side and returns refreshed readiness.
+  const mutateCountry = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const { data, error } = await supabase.functions.invoke<ReadinessPayload & { error?: string }>(
+        "intl-launch-readiness",
+        { body: { country, environment, ...payload } },
+      );
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as ReadinessPayload;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({ title: "Country settings updated" });
+      qc.setQueryData(["intl-launch-readiness", country, environment], result);
       qc.invalidateQueries({ queryKey: ["intl-launch-readiness"] });
     },
     onError: (e: Error) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
   });
+
 
   if (isLoading) {
     return (
@@ -121,7 +151,10 @@ export function LaunchReadinessSection() {
     );
   }
 
-  const blocked = (data?.checks ?? []).filter((c) => c.status === "blocked").length;
+  // The build gate is client-side only, but it counts as a real blocker.
+  const checks: ReadinessCheck[] = [buildGateCheck(), ...(data?.checks ?? [])];
+  const blocked = checks.filter((c) => c.status === "blocked").length;
+
 
   return (
     <div className="space-y-4">
@@ -190,7 +223,7 @@ export function LaunchReadinessSection() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(data?.checks ?? []).map((c) => {
+              {checks.map((c) => {
                 const meta = STATUS_META[c.status];
                 const Icon = meta.icon;
                 return (
@@ -217,48 +250,79 @@ export function LaunchReadinessSection() {
           <CardTitle className="text-base">Country availability</CardTitle>
           <CardDescription>
             A country that is switched off here blocks consultation creation even when its feature
-            flag is on.
+            flag is on. Only Himplant super admins can change these settings.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Country</TableHead>
-                <TableHead>Currency</TableHead>
-                <TableHead>Language</TableHead>
-                <TableHead>Allowed providers</TableHead>
-                <TableHead>Link expiry</TableHead>
-                <TableHead className="text-right">Enabled</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(data?.country_settings ?? []).map((s) => (
-                <TableRow key={s.country}>
-                  <TableCell className="font-medium">{s.country}</TableCell>
-                  <TableCell>{s.default_currency}</TableCell>
-                  <TableCell>{s.default_language}</TableCell>
-                  <TableCell className="space-x-1">
-                    {(s.allowed_providers ?? []).map((p) => (
-                      <Badge key={p} variant="secondary" className="text-[10px]">
-                        {p}
-                      </Badge>
-                    ))}
-                  </TableCell>
-                  <TableCell>{s.link_expiry_hours}h</TableCell>
-                  <TableCell className="text-right">
+        <CardContent className="space-y-4">
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Removing a provider only affects new links</AlertTitle>
+            <AlertDescription>
+              Unchecking a provider stops NEW consultation links from being created with it. Existing
+              consultations keep the provider and terms they were frozen with.
+            </AlertDescription>
+          </Alert>
+
+          {(data?.country_settings ?? []).map((s) => {
+            const allowed = s.allowed_providers ?? [];
+            return (
+              <div key={s.country} className="rounded-md border p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">
+                      {COUNTRIES.find((c) => c.value === s.country)?.label ?? s.country}{" "}
+                      <span className="text-muted-foreground">({s.country})</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {s.default_currency} · {s.default_language} · link expiry {s.link_expiry_hours}h
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={s.is_enabled ? "default" : "secondary"}>
+                      {s.is_enabled ? "Enabled" : "Disabled"}
+                    </Badge>
                     <Switch
                       checked={s.is_enabled}
-                      disabled={toggleCountry.isPending}
-                      onCheckedChange={(v) => toggleCountry.mutate({ code: s.country, enabled: v })}
+                      disabled={mutateCountry.isPending}
+                      onCheckedChange={(v) =>
+                        mutateCountry.mutate({
+                          country: s.country,
+                          action: "set_country_enabled",
+                          enabled: v,
+                        })
+                      }
                     />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="text-sm font-medium">Allowed providers</span>
+                  {SELECTABLE_PROVIDERS.map((p) => (
+                    <label key={p} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={allowed.includes(p)}
+                        disabled={mutateCountry.isPending}
+                        onCheckedChange={(v) =>
+                          mutateCountry.mutate({
+                            country: s.country,
+                            action: "set_allowed_providers",
+                            providers: v
+                              ? [...allowed, p]
+                              : allowed.filter((x) => x !== p),
+                          })
+                        }
+                      />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
+
+
 
       <Card>
         <CardHeader>

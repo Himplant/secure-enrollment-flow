@@ -5,6 +5,7 @@ import { usePortalAuth } from "@/hooks/usePortalAuth";
 import { usePortalWorkspace } from "@/hooks/usePortalWorkspace";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { isSurgeonPortalEnabled, isDistributorPortalEnabled } from "@/lib/featureFlags";
+import { resolvePortalRoute } from "@/lib/portalAccess";
 import { Card, CardContent } from "@/components/ui/card";
 
 /** Guards every /portal route: portal identity + the relevant portal flag. */
@@ -24,23 +25,25 @@ export function PortalProtectedRoute({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) return <Navigate to="/portal/login" replace />;
+  const decision = resolvePortalRoute({
+    isAuthenticated,
+    isPortalUser,
+    needsChoice,
+    activeRole: active?.role ?? null,
+    mfaRequired: !!portalUser?.mfa_required,
+    mfaVerified,
+    pathname,
+  });
 
-  if (needsChoice && pathname !== "/portal/select-workspace") {
-    return <Navigate to="/portal/select-workspace" replace />;
-  }
+  if (decision.type === "login") return <Navigate to="/portal/login" replace />;
+  // Workspace choice ALWAYS precedes MFA: without an active workspace there is
+  // no role to base the MFA policy on.
+  if (decision.type === "choose-workspace") return <Navigate to="/portal/select-workspace" replace />;
+  if (decision.type === "mfa") return <Navigate to="/portal/mfa" replace />;
+  if (needsChoice) return <>{children}</>;
 
-  // AAL2 is mandatory for administrator roles in the ACTIVE workspace, and for
-  // any account explicitly flagged as mfa_required.
-  const activeRoleNeedsMfa = active?.role === "surgeon_admin" || active?.role === "distributor_admin";
-  if (
-    isPortalUser &&
-    (activeRoleNeedsMfa || portalUser?.mfa_required) &&
-    !mfaVerified &&
-    pathname !== "/portal/mfa"
-  ) {
-    return <Navigate to="/portal/mfa" replace />;
-  }
+
+
 
 
   // Feature enablement is evaluated for the ACTIVE workspace only: a surgeon

@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface QaDemoUser {
@@ -27,7 +27,7 @@ interface QaDemoUser {
   is_active: boolean;
   accepted: boolean;
   last_login_at: string | null;
-  memberships: { org_type: string; role: string; is_active: boolean }[];
+  memberships: { org_type: string; role: string; is_active: boolean; org_name?: string | null }[];
 }
 
 interface QaStatus {
@@ -36,6 +36,71 @@ interface QaStatus {
   counts: Record<string, number>;
   demo_users: QaDemoUser[];
 }
+
+/** Role-by-role acceptance script for the deterministic demo identities. */
+export const ROLE_TEST_GUIDE = [
+  {
+    email: "qa.multi.admin@himplant.com",
+    workspace: "Surgeon workspace (chosen at the workspace picker, then MFA)",
+    navigation: "Consultations, Reports, Team, Payment account",
+    allowed: "Update a consultation status and manage the surgeon's team members",
+    forbidden: "Seeing consultations of unmapped or other surgeons",
+  },
+  {
+    email: "qa.multi.admin@himplant.com",
+    workspace: "Distributor workspace (switch workspace, then MFA)",
+    navigation: "Overview, Consultations, Team",
+    allowed: "Manage the distributor's team members",
+    forbidden: "Editing a consultation or any payment credentials",
+  },
+  {
+    email: "qa.surgeon.staff@himplant.com",
+    workspace: "Own surgeon workspace (no workspace picker)",
+    navigation: "Consultations, Reports",
+    allowed: "Operational consultation updates (contacted, scheduled, resend link)",
+    forbidden: "Team management and payment account configuration",
+  },
+  {
+    email: "qa.surgeon.analyst@himplant.com",
+    workspace: "Own surgeon workspace",
+    navigation: "Consultations, Reports (read-only)",
+    allowed: "Viewing consultations and reports",
+    forbidden: "Any write — status updates, resend link, team, payment config",
+  },
+  {
+    email: "qa.distributor.staff@himplant.com",
+    workspace: "Distributor workspace",
+    navigation: "Overview, Consultations",
+    allowed: "Viewing distributor rollups and in-scope consultations",
+    forbidden: "Consultation updates and payment account configuration",
+  },
+  {
+    email: "qa.distributor.analyst@himplant.com",
+    workspace: "Distributor workspace",
+    navigation: "Overview, Consultations, Reports (read-only)",
+    allowed: "Reading distributor reporting",
+    forbidden: "Any write of any kind",
+  },
+] as const;
+
+/** Guidance-only checklist — no step here is simulated or auto-approved. */
+export const REAL_PAYMENT_SMOKE_TEST = [
+  "Configure LIVE Mercado Pago platform credentials (production application).",
+  "Configure the production webhook URL and webhook secret in the platform config.",
+  "Connect and verify a LIVE Colombian surgeon seller account (Test connection must pass).",
+  "Set Mercado Pago as the active provider for that surgeon.",
+  "Turn the CO runtime feature flag ON.",
+  "Turn the CO country setting ON — only when everything above is ready.",
+  "Ensure mercado_pago is in the CO allowed providers list.",
+  "Ensure an active Spanish-language CO policy is published.",
+  "Create a small real COP consultation for a real test patient.",
+  "Open the patient link, accept the terms, sign, and pay with a real method.",
+  "Confirm the money actually reached the seller's Mercado Pago account.",
+  "Confirm the webhook was processed and the Himplant payment status becomes approved.",
+  "Confirm the portal moves the consultation to awaiting clinic contact.",
+  "Confirm the Zoho outbox drains and the CRM record syncs.",
+] as const;
+
 
 const call = async (payload: Record<string, unknown>): Promise<QaStatus> => {
   const { data, error } = await supabase.functions.invoke<QaStatus & { error?: string }>(
@@ -93,6 +158,11 @@ export function PortalTestCenter() {
 
   const busy = run.isPending || isFetching;
 
+  const copyEmail = async (email: string) => {
+    await navigator.clipboard.writeText(email);
+    toast({ title: "Email copied", description: email });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -102,11 +172,33 @@ export function PortalTestCenter() {
             Deterministic demo accounts and consultation fixtures for international QA.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={busy}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`${window.location.origin}/portal/login`, "_blank", "noopener")}
+          >
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Open portal login
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={busy}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      <Alert>
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Use a private / incognito window</AlertTitle>
+        <AlertDescription>
+          The portal shares this origin's session storage, so signing in as a demo user in this
+          browser profile will replace your admin session. Open the portal login in a private window
+          for testing.
+        </AlertDescription>
+      </Alert>
+
+
 
       {!data?.qa_enabled && (
         <Alert variant="destructive">
@@ -191,7 +283,20 @@ export function PortalTestCenter() {
             <TableBody>
               {(data?.demo_users ?? []).map((u) => (
                 <TableRow key={u.email}>
-                  <TableCell className="font-mono text-xs">{u.email}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      {u.email}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label={`Copy ${u.email}`}
+                        onClick={() => copyEmail(u.email)}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </span>
+                  </TableCell>
                   <TableCell>
                     {!u.exists ? (
                       <Badge variant="secondary">Not created</Badge>
@@ -201,14 +306,20 @@ export function PortalTestCenter() {
                       <Badge variant="outline">Disabled</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="space-x-1">
+                  <TableCell className="space-y-1">
                     {u.memberships.length === 0 && <span className="text-muted-foreground">—</span>}
                     {u.memberships.map((m, i) => (
-                      <Badge key={i} variant={m.is_active ? "secondary" : "outline"} className="text-[10px]">
-                        {m.role}
-                      </Badge>
+                      <div key={i} className="flex items-center gap-1">
+                        <Badge variant={m.is_active ? "secondary" : "outline"} className="text-[10px]">
+                          {m.role}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {m.org_name ?? m.org_type}
+                        </span>
+                      </div>
                     ))}
                   </TableCell>
+
                   <TableCell className="text-sm text-muted-foreground">
                     {u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "—"}
                   </TableCell>
@@ -263,6 +374,76 @@ export function PortalTestCenter() {
           </ol>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Role-by-role test guide</CardTitle>
+          <CardDescription>
+            Sign out between accounts. Also verify that “QA Unmapped Surgeon Colombia” is invisible
+            from every distributor account.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Expected landing / workspace</TableHead>
+                <TableHead>Expected navigation</TableHead>
+                <TableHead>Allowed action</TableHead>
+                <TableHead>Forbidden action</TableHead>
+                <TableHead>Sign out</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ROLE_TEST_GUIDE.map((r, i) => (
+                <TableRow key={i}>
+                  <TableCell className="font-mono text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      {r.email}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label={`Copy ${r.email}`}
+                        onClick={() => copyEmail(r.email)}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-sm">{r.workspace}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.navigation}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.allowed}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.forbidden}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    Use the account menu → Sign out, then close the private window.
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Real Mercado Pago payment smoke test</CardTitle>
+          <CardDescription>
+            Guidance only — nothing here is simulated, bypassed or auto-approved. Each step must be
+            confirmed manually with the real provider.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+            {REAL_PAYMENT_SMOKE_TEST.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
+
+
 
       <AlertDialog open={confirmCleanup} onOpenChange={setConfirmCleanup}>
         <AlertDialogContent>
