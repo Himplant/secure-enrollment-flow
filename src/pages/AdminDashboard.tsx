@@ -2,8 +2,9 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale, Globe, Flag, Building2
+  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale, Globe, Flag
 } from "lucide-react";
+
 
 import { Button } from "@/components/ui/button";
 import {
@@ -36,9 +37,9 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { isIntlEnabled } from "@/lib/featureFlags";
-import { ConsultationsTab } from "@/components/admin/intl/ConsultationsTab";
 import { FeatureFlagsTab } from "@/components/admin/platform/FeatureFlagsTab";
-import { IntlSetupTab } from "@/components/admin/intl/setup/IntlSetupTab";
+import { InternationalHub } from "@/components/admin/intl/InternationalHub";
+
 
 
 export default function AdminDashboard() {
@@ -365,9 +366,7 @@ export default function AdminDashboard() {
             {intlVisible && (
               <TabsTrigger value="intl-consultations" className="gap-2"><Globe className="h-4 w-4" />International</TabsTrigger>
             )}
-            {intlVisible && (adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
-              <TabsTrigger value="intl-setup" className="gap-2"><Building2 className="h-4 w-4" />International Setup</TabsTrigger>
-            )}
+
             {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2"><Settings className="h-4 w-4" />User Management</TabsTrigger>
             )}
@@ -392,11 +391,11 @@ export default function AdminDashboard() {
           </TabsContent>
           <TabsContent value="audit"><AuditLogTab /></TabsContent>
           {intlVisible && (
-            <TabsContent value="intl-consultations"><ConsultationsTab /></TabsContent>
+            <TabsContent value="intl-consultations">
+              <InternationalHub adminRole={adminUser?.role} />
+            </TabsContent>
           )}
-          {intlVisible && (adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
-            <TabsContent value="intl-setup"><IntlSetupTab /></TabsContent>
-          )}
+
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
           )}

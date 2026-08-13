@@ -42,6 +42,23 @@ Deno.serve(async (req) => {
     const scrubConsultation = <T extends Record<string, unknown>>(c: T) =>
       isDistributorWorkspace ? { ...c, outcome_notes: null } : c;
 
+    /** "Maria Lopez" -> "M. L." — enough to track a case, not to contact a patient. */
+    const maskName = (name: unknown) =>
+      String(name ?? "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => `${part[0].toUpperCase()}.`)
+        .join(" ") || "Patient";
+
+    /** Distributors never receive patient contact details. */
+    const scrubPatient = (p: Record<string, unknown> | null) => {
+      if (!p) return p;
+      if (!isDistributorWorkspace) return p;
+      return { id: p.id ?? null, full_name: maskName(p.full_name), email: null, phone: null };
+    };
+
+
     if (auth.surgeonIds.length === 0) {
       return json({ consultations: [], surgeons: [] });
     }
@@ -68,7 +85,7 @@ Deno.serve(async (req) => {
           .from("consultation_patients")
           .select(
             isDistributorWorkspace
-              ? "full_name, email, phone, preferred_language"
+              ? "full_name, preferred_language"
               : "full_name, email, phone, preferred_language, notes",
           )
           .eq("id", c.patient_id as string)
@@ -95,7 +112,7 @@ Deno.serve(async (req) => {
 
       return json({
         consultation: scrubConsultation(c),
-        patient,
+        patient: scrubPatient(patient as Record<string, unknown> | null),
         surgeon,
         events: safeEvents,
       });
@@ -137,7 +154,7 @@ Deno.serve(async (req) => {
     return json({
       consultations: consultations.map((c) => ({
         ...scrubConsultation(c),
-        patient: patientMap[c.patient_id as string] ?? null,
+        patient: scrubPatient((patientMap[c.patient_id as string] as Record<string, unknown>) ?? null),
         surgeon: surgeonMap[c.surgeon_id as string] ?? null,
       })),
 

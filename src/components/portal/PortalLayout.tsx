@@ -12,6 +12,8 @@ import {
 import { usePortalAuth } from "@/hooks/usePortalAuth";
 import { usePortalWorkspace } from "@/hooks/usePortalWorkspace";
 import { cn } from "@/lib/utils";
+import { friendlyRoleLabel } from "@/lib/portalAccessLevels";
+
 
 export function PortalLayout({ children }: { children: ReactNode }) {
   const { portalUser, signOut } = usePortalAuth();
@@ -20,7 +22,8 @@ export function PortalLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
 
   const orgLabel = active?.name ?? (isDistributor ? "Distributor portal" : "Surgeon portal");
-  const orgKind = isDistributor ? "Distributor portal" : "Surgeon portal";
+  const roleLabel = active ? friendlyRoleLabel(active.role) : isDistributor ? "Distributor" : "Surgeon";
+
 
   const nav = [
     ...(isDistributor ? [{ to: "/portal/distributor", label: "Overview", icon: BarChart3 }] : []),
@@ -46,10 +49,13 @@ export function PortalLayout({ children }: { children: ReactNode }) {
               <Building2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold leading-tight">{orgLabel}</p>
-              <p className="text-xs text-muted-foreground">
-                {orgKind} · {portalUser?.full_name || portalUser?.email}
+              <p className="text-sm font-semibold leading-tight">
+                {orgLabel} — {roleLabel}
               </p>
+              <p className="text-xs text-muted-foreground">
+                {portalUser?.full_name || portalUser?.email}
+              </p>
+
             </div>
           </div>
 
@@ -62,7 +68,7 @@ export function PortalLayout({ children }: { children: ReactNode }) {
                 <SelectContent>
                   {workspaces.map((w) => (
                     <SelectItem key={w.key} value={w.key}>
-                      {w.name} · {w.role.replace(/_/g, " ")}
+                      {w.name} · {friendlyRoleLabel(w.role)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -91,7 +97,15 @@ export function PortalLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        <p className="mb-4 text-xs text-muted-foreground">
+          {isDistributor
+            ? `Showing only the surgeons assigned to ${orgLabel}.`
+            : `Showing only ${orgLabel}.`}
+        </p>
+        {children}
+      </main>
+
     </div>
   );
 }
