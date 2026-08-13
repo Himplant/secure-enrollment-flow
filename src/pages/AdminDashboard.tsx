@@ -365,9 +365,7 @@ export default function AdminDashboard() {
             {intlVisible && (
               <TabsTrigger value="intl-consultations" className="gap-2"><Globe className="h-4 w-4" />International</TabsTrigger>
             )}
-            {intlVisible && (adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
-              <TabsTrigger value="intl-setup" className="gap-2"><Building2 className="h-4 w-4" />International Setup</TabsTrigger>
-            )}
+
             {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
               <TabsTrigger value="users" className="gap-2"><Settings className="h-4 w-4" />User Management</TabsTrigger>
             )}
