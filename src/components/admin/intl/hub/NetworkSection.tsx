@@ -34,7 +34,12 @@ interface Props {
   onSync: () => void;
   syncing: boolean;
   canManage: boolean;
-  onInvite: (target: { orgType: "surgeon" | "distributor"; orgId: string }) => void;
+  onInvite: (target: {
+    orgType: "surgeon" | "distributor";
+    orgId: string;
+    email?: string | null;
+    fullName?: string | null;
+  }) => void;
 }
 
 const emptyDistributor: DistributorInput = {
@@ -129,8 +134,11 @@ export function NetworkSection({ onSync, syncing, canManage, onInvite }: Props) 
       const newId = res.id;
       const email = (editing.primary_contact_email ?? "").trim();
       const shouldInvite = !editing.id && inviteContact && email && newId;
+      const inviteName = (editing.legal_name ?? "").trim() || (editing.name ?? "").trim();
       setEditing(null);
-      if (shouldInvite) onInvite({ orgType: "distributor", orgId: newId! });
+      if (shouldInvite) {
+        onInvite({ orgType: "distributor", orgId: newId!, email, fullName: inviteName || null });
+      }
     } catch (e) {
       toast({
         title: "Could not save",
@@ -254,7 +262,14 @@ export function NetworkSection({ onSync, syncing, canManage, onInvite }: Props) 
                               variant="ghost"
                               size="sm"
                               className="h-7 px-2"
-                              onClick={() => onInvite({ orgType: "surgeon", orgId: r.surgeon.id })}
+                              onClick={() =>
+                                onInvite({
+                                  orgType: "surgeon",
+                                  orgId: r.surgeon.id,
+                                  email: r.surgeon.email ?? null,
+                                  fullName: r.surgeon.name ?? null,
+                                })
+                              }
                             >
                               <UserPlus className="mr-1 h-3.5 w-3.5" />
                               {r.access === "none" ? "Invite" : "Manage"}
@@ -380,7 +395,14 @@ export function NetworkSection({ onSync, syncing, canManage, onInvite }: Props) 
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onInvite({ orgType: "distributor", orgId: d.id })}
+                      onClick={() =>
+                        onInvite({
+                          orgType: "distributor",
+                          orgId: d.id,
+                          email: d.primary_contact_email ?? null,
+                          fullName: (d.legal_name ?? d.name) || null,
+                        })
+                      }
                     >
                       Invite admin
                     </Button>

@@ -34,6 +34,9 @@ interface MembershipRow {
 export interface InviteTarget {
   orgType: PortalOrgKind;
   orgId: string;
+  /** Optional prefill so the operator never retypes a known contact. */
+  email?: string | null;
+  fullName?: string | null;
 }
 
 interface Props {
@@ -61,8 +64,8 @@ export function PortalAccessSection({ inviteTarget, onInviteHandled }: Props) {
   useEffect(() => {
     if (!inviteTarget) return;
     setForm({
-      email: "",
-      full_name: "",
+      email: (inviteTarget.email ?? "").trim(),
+      full_name: (inviteTarget.fullName ?? "").trim(),
       org_type: inviteTarget.orgType,
       org_id: inviteTarget.orgId,
       level: "admin",
