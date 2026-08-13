@@ -146,13 +146,6 @@ export function computeSurgeonReadiness(i: ReadinessInput): ReadinessResult {
       hint: "Add a supported country to this surgeon in Zoho CRM, then sync again.",
     };
   }
-  if (!i.countrySetting || !i.countrySetting.is_enabled) {
-    return {
-      tone: "warning",
-      label: "Country not live",
-      hint: "This country is not open for consultations yet.",
-    };
-  }
   if (!i.distributorId) {
     return {
       tone: "warning",
@@ -179,6 +172,15 @@ export function computeSurgeonReadiness(i: ReadinessInput): ReadinessResult {
       tone: "warning",
       label: "Needs portal access",
       hint: "Invite someone from this practice to the portal.",
+    };
+  }
+  // Country gating comes last: the operator can finish onboarding while a
+  // country stays safely closed, but "Ready" still requires it to be open.
+  if (!i.countrySetting || !i.countrySetting.is_enabled) {
+    return {
+      tone: "warning",
+      label: "Country not live",
+      hint: "Setup is complete — this country is not open for consultations yet.",
     };
   }
   return { tone: "ready", label: "Ready", hint: "This surgeon can take live consultations." };

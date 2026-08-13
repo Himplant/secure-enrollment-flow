@@ -75,9 +75,21 @@ describe("intl-admin-network edge function", () => {
     expect(fn).toContain("super_admin");
   });
 
-  it("replaces any previous distributor so assignment stays singular", () => {
+  it("assigns with an atomic upsert keyed by surgeon_id", () => {
     expect(fn).toContain('from("distributor_surgeons")');
-    expect(fn).toMatch(/\.delete\(\)/);
+    expect(fn).toMatch(/\.upsert\(/);
+    expect(fn).toContain('onConflict: "surgeon_id"');
+    // The old delete-then-insert path must be gone.
+    expect(fn).not.toMatch(/\.delete\(\)[\s\S]{0,200}\.insert\(\{\s*surgeon_id/);
+  });
+
+  it("only deletes the mapping on an explicit unassign", () => {
+    const assignBlock = fn.slice(
+      fn.indexOf('action === "assign_surgeon_distributor"'),
+      fn.indexOf('action === "save_distributor"'),
+    );
+    expect(assignBlock).toMatch(/Explicit unassign/);
+    expect(assignBlock).toMatch(/\.delete\(\)\s*\n\s*\.eq\("surgeon_id"/);
   });
 
   it("audits mutations", () => {
@@ -93,6 +105,15 @@ describe("intl-admin-network edge function", () => {
 
 describe("friendly portal access levels", () => {
   const access = read("src/components/admin/intl/hub/PortalAccessSection.tsx");
+
+  it("prefills a known contact into the invite dialog", () => {
+    expect(access).toContain("email?: string | null");
+    expect(access).toContain('email: (inviteTarget.email ?? "").trim()');
+    expect(access).toContain('full_name: (inviteTarget.fullName ?? "").trim()');
+    const net = read("src/components/admin/intl/hub/NetworkSection.tsx");
+    expect(net).toContain("onInvite({ orgType: \"distributor\", orgId: newId!, email");
+    expect(net).toContain("email: d.primary_contact_email ?? null");
+  });
 
   it("invites through the existing identity lifecycle", () => {
     expect(access).toContain('supabase.functions.invoke("intl-portal-identity"');

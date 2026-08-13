@@ -102,24 +102,29 @@ Deno.serve(async (req) => {
           if (!distributor.is_active) return json({ error: "That distributor is inactive" }, 400);
         }
 
-        // Singular model: replace any existing mapping for this surgeon.
+        // Singular model: one row per surgeon, enforced by a unique index on
+        // distributor_surgeons(surgeon_id). Assign is an atomic upsert so a
+        // failure can never leave the surgeon temporarily unassigned.
         const { data: existing } = await db
           .from("distributor_surgeons")
           .select("id, distributor_id")
           .eq("surgeon_id", surgeonId as string);
 
-        const { error: delErr } = await db
-          .from("distributor_surgeons")
-          .delete()
-          .eq("surgeon_id", surgeonId as string);
-        if (delErr) return json({ error: delErr.message }, 400);
-
         if (distributor) {
-          const { error: insErr } = await db.from("distributor_surgeons").insert({
-            surgeon_id: surgeonId as string,
-            distributor_id: distributor.id,
-          });
-          if (insErr) return json({ error: insErr.message }, 400);
+          const { error: upErr } = await db
+            .from("distributor_surgeons")
+            .upsert(
+              { surgeon_id: surgeonId as string, distributor_id: distributor.id },
+              { onConflict: "surgeon_id" },
+            );
+          if (upErr) return json({ error: upErr.message }, 400);
+        } else {
+          // Explicit unassign removes the surgeon's mapping.
+          const { error: delErr } = await db
+            .from("distributor_surgeons")
+            .delete()
+            .eq("surgeon_id", surgeonId as string);
+          if (delErr) return json({ error: delErr.message }, 400);
         }
 
         await audit("intl_assign_surgeon_distributor", surgeonId as string, {
