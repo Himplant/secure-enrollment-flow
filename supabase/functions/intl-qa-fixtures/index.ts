@@ -163,9 +163,11 @@ Deno.serve(async (req) => {
         .select("id, email, full_name, is_active, accepted_at, last_login_at")
         .in("email", emails);
 
+      // Organisation names are included so the tester can see exactly which
+      // workspace each demo identity lands in.
       const { data: memberships } = await db
         .from("portal_memberships")
-        .select("portal_user_id, org_type, role, is_active")
+        .select("portal_user_id, org_type, role, is_active, surgeons(name), distributors(name)")
         .in("portal_user_id", (users ?? []).map((u: { id: string }) => u.id));
 
       return json({
@@ -182,14 +184,18 @@ Deno.serve(async (req) => {
             last_login_at: u?.last_login_at ?? null,
             memberships: (memberships ?? [])
               .filter((m: { portal_user_id: string }) => m.portal_user_id === u?.id)
-              .map((m: { org_type: string; role: string; is_active: boolean }) => ({
-                org_type: m.org_type,
-                role: m.role,
-                is_active: m.is_active,
+              .map((m: Record<string, unknown>) => ({
+                org_type: m.org_type as string,
+                role: m.role as string,
+                is_active: m.is_active as boolean,
+                org_name:
+                  ((m.surgeons as { name?: string } | null)?.name ??
+                    (m.distributors as { name?: string } | null)?.name) ?? null,
               })),
           };
         }),
       });
+
     };
 
     if (action === "status") return await loadStatus();
