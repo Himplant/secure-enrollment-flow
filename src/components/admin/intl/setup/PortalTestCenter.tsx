@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface QaDemoUser {
@@ -27,7 +27,7 @@ interface QaDemoUser {
   is_active: boolean;
   accepted: boolean;
   last_login_at: string | null;
-  memberships: { org_type: string; role: string; is_active: boolean }[];
+  memberships: { org_type: string; role: string; is_active: boolean; org_name?: string | null }[];
 }
 
 interface QaStatus {
@@ -36,6 +36,71 @@ interface QaStatus {
   counts: Record<string, number>;
   demo_users: QaDemoUser[];
 }
+
+/** Role-by-role acceptance script for the deterministic demo identities. */
+export const ROLE_TEST_GUIDE = [
+  {
+    email: "qa.multi.admin@himplant.com",
+    workspace: "Surgeon workspace (chosen at the workspace picker, then MFA)",
+    navigation: "Consultations, Reports, Team, Payment account",
+    allowed: "Update a consultation status and manage the surgeon's team members",
+    forbidden: "Seeing consultations of unmapped or other surgeons",
+  },
+  {
+    email: "qa.multi.admin@himplant.com",
+    workspace: "Distributor workspace (switch workspace, then MFA)",
+    navigation: "Overview, Consultations, Team",
+    allowed: "Manage the distributor's team members",
+    forbidden: "Editing a consultation or any payment credentials",
+  },
+  {
+    email: "qa.surgeon.staff@himplant.com",
+    workspace: "Own surgeon workspace (no workspace picker)",
+    navigation: "Consultations, Reports",
+    allowed: "Operational consultation updates (contacted, scheduled, resend link)",
+    forbidden: "Team management and payment account configuration",
+  },
+  {
+    email: "qa.surgeon.analyst@himplant.com",
+    workspace: "Own surgeon workspace",
+    navigation: "Consultations, Reports (read-only)",
+    allowed: "Viewing consultations and reports",
+    forbidden: "Any write — status updates, resend link, team, payment config",
+  },
+  {
+    email: "qa.distributor.staff@himplant.com",
+    workspace: "Distributor workspace",
+    navigation: "Overview, Consultations",
+    allowed: "Viewing distributor rollups and in-scope consultations",
+    forbidden: "Consultation updates and payment account configuration",
+  },
+  {
+    email: "qa.distributor.analyst@himplant.com",
+    workspace: "Distributor workspace",
+    navigation: "Overview, Consultations, Reports (read-only)",
+    allowed: "Reading distributor reporting",
+    forbidden: "Any write of any kind",
+  },
+] as const;
+
+/** Guidance-only checklist — no step here is simulated or auto-approved. */
+export const REAL_PAYMENT_SMOKE_TEST = [
+  "Configure LIVE Mercado Pago platform credentials (production application).",
+  "Configure the production webhook URL and webhook secret in the platform config.",
+  "Connect and verify a LIVE Colombian surgeon seller account (Test connection must pass).",
+  "Set Mercado Pago as the active provider for that surgeon.",
+  "Turn the CO runtime feature flag ON.",
+  "Turn the CO country setting ON — only when everything above is ready.",
+  "Ensure mercado_pago is in the CO allowed providers list.",
+  "Ensure an active Spanish-language CO policy is published.",
+  "Create a small real COP consultation for a real test patient.",
+  "Open the patient link, accept the terms, sign, and pay with a real method.",
+  "Confirm the money actually reached the seller's Mercado Pago account.",
+  "Confirm the webhook was processed and the Himplant payment status becomes approved.",
+  "Confirm the portal moves the consultation to awaiting clinic contact.",
+  "Confirm the Zoho outbox drains and the CRM record syncs.",
+] as const;
+
 
 const call = async (payload: Record<string, unknown>): Promise<QaStatus> => {
   const { data, error } = await supabase.functions.invoke<QaStatus & { error?: string }>(
