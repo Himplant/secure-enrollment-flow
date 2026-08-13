@@ -33,6 +33,8 @@ export interface PlatformEntry {
   provider: string;
   environment: ProviderEnvironment;
   implemented: boolean;
+  /** Portal-safe signal: Himplant has completed platform setup for this provider. */
+  platformReady?: boolean;
   fields: PlatformFieldSpec[];
   callbackUrl: string;
   webhookUrl: string;
@@ -69,6 +71,8 @@ export interface ProviderStatusResponse {
   actor: { kind: string; canManagePlatform: boolean };
   environment: ProviderEnvironment;
   platform: PlatformEntry[];
+  /** Surgeons the caller may connect an account for (server-derived scope). */
+  surgeons: { id: string; name: string; country: string | null }[];
   accounts: ProviderAccount[];
 }
 

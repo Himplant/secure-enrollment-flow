@@ -6,6 +6,8 @@ import { ProviderSetupPanel } from "@/components/providers/ProviderSetupPanel";
 import { DistributorsSection } from "./DistributorsSection";
 import { IntlTermsSection } from "./IntlTermsSection";
 import { PortalUsersSection } from "./PortalUsersSection";
+import { LaunchReadinessSection } from "./LaunchReadinessSection";
+import { PortalTestCenter } from "./PortalTestCenter";
 
 function HowItWorks() {
   return (
@@ -52,6 +54,8 @@ export function IntlSetupTab() {
           <TabsTrigger value="distributors">Distributors</TabsTrigger>
           <TabsTrigger value="terms">Terms</TabsTrigger>
           <TabsTrigger value="portal">Portal users</TabsTrigger>
+          <TabsTrigger value="readiness">Launch readiness</TabsTrigger>
+          <TabsTrigger value="qa">Portal Test Center</TabsTrigger>
         </TabsList>
         <TabsContent value="surgeons" className="mt-4">
           <IntlSurgeonsSection />
@@ -67,6 +71,12 @@ export function IntlSetupTab() {
         </TabsContent>
         <TabsContent value="portal" className="mt-4">
           <PortalUsersSection />
+        </TabsContent>
+        <TabsContent value="readiness" className="mt-4">
+          <LaunchReadinessSection />
+        </TabsContent>
+        <TabsContent value="qa" className="mt-4">
+          <PortalTestCenter />
         </TabsContent>
       </Tabs>
     </div>

@@ -18,6 +18,7 @@ const PROVIDERS = [
   { value: "test", label: "Simulated test provider" },
   { value: "mercado_pago", label: "Mercado Pago" },
   { value: "paypal", label: "PayPal" },
+  { value: "stripe_connect", label: "Stripe Connect" },
 ] as const;
 
 interface SurgeonRow {
@@ -101,7 +102,7 @@ export function IntlSurgeonsSection() {
         is_international: form.is_international,
         currency,
         timezone: form.timezone || (form.country ? TZ_BY_COUNTRY[form.country] ?? null : null),
-        active_provider: form.active_provider as "test" | "mercado_pago" | "paypal",
+        active_provider: form.active_provider as "test" | "mercado_pago" | "paypal" | "stripe_connect",
         consultation_fee_minor: form.fee && currency ? toMinor(Number(form.fee), currency) : null,
       })
       .eq("id", editing.id);

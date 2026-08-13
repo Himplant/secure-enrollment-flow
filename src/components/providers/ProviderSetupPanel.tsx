@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,25 +26,10 @@ export function ProviderSetupPanel({ scope }: { scope: "admin" | "portal" }) {
   const [tab, setTab] = useState("mercado_pago");
   const { data, isLoading, isFetching, error, refresh } = useProviderSetup(environment);
 
-  const { data: surgeons } = useQuery({
-    queryKey: ["intl-surgeons-min"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("surgeons")
-        .select("id, name, country")
-        .eq("is_international", true)
-        .order("name");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+  // The server returns the caller's validated scope. Never derive it here —
+  // that is what previously hid surgeons with zero connected accounts.
+  const allowedSurgeons = data?.surgeons ?? [];
 
-  const allowedSurgeons = (surgeons ?? []).filter(
-    (s) =>
-      scope === "admin" ||
-      (data?.accounts ?? []).some((a) => a.surgeon_id === s.id) ||
-      data?.actor.canManagePlatform,
-  );
 
   if (isLoading) {
     return (
@@ -129,6 +112,17 @@ export function ProviderSetupPanel({ scope }: { scope: "admin" | "portal" }) {
                   {data?.actor.canManagePlatform && entry && (
                     <PlatformConfigCard entry={entry} environment={environment} onSaved={refresh} />
                   )}
+                  {scope === "portal" && entry?.platformReady === false && (
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>{p.label} is not ready yet</AlertTitle>
+                      <AlertDescription>
+                        Himplant has not finished the {p.label} platform setup for the{" "}
+                        {environment === "live" ? "production" : "test"} environment. You can connect
+                        your account as soon as that is complete.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">Surgeon accounts</CardTitle>
@@ -140,6 +134,8 @@ export function ProviderSetupPanel({ scope }: { scope: "admin" | "portal" }) {
                     <CardContent>
                       <SurgeonAccountsTable
                         provider={p.id}
+                        providerLabel={p.label}
+                        scope={scope}
                         environment={environment}
                         accounts={data?.accounts ?? []}
                         surgeons={allowedSurgeons}
@@ -149,6 +145,7 @@ export function ProviderSetupPanel({ scope }: { scope: "admin" | "portal" }) {
                   </Card>
                 </>
               )}
+
             </TabsContent>
           );
         })}

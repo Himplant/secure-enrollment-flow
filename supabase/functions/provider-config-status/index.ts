@@ -51,7 +51,31 @@ Deno.serve(async (req) => {
         config: existing,
       });
     }
+  } else {
+    // Portal surgeons get NON-SECRET provider metadata only: which providers
+    // exist and whether Himplant has finished platform setup. No credential
+    // values, masks, URLs or config rows are exposed here.
+    const { data: configs } = await db
+      .from("provider_platform_configs")
+      .select("provider, is_complete")
+      .eq("environment", environment);
+
+    for (const provider of Object.keys(PLATFORM_FIELDS)) {
+      const existing = (configs ?? []).find((c) => c.provider === provider) ?? null;
+      platform.push({
+        provider,
+        environment,
+        implemented: IMPLEMENTED_PROVIDERS.includes(provider as never),
+        platformReady: !!existing?.is_complete,
+        fields: [],
+        callbackUrl: "",
+        webhookUrl: "",
+        returnUrl: "",
+        config: null,
+      });
+    }
   }
+
 
   let accountQuery = db
     .from("provider_accounts")
@@ -67,10 +91,27 @@ Deno.serve(async (req) => {
   const { data: accounts, error } = await accountQuery;
   if (error) return json({ error: error.message }, 400);
 
+  // Surgeons the caller may connect an account FOR. Returned explicitly so a
+  // portal surgeon with zero provider_accounts can still make a first
+  // connection (the client must never derive this list itself).
+  let surgeonQuery = db
+    .from("surgeons")
+    .select("id, name, country")
+    .eq("is_international", true)
+    .order("name");
+  if (actor.surgeonIds !== null) {
+    surgeonQuery = actor.surgeonIds.length
+      ? surgeonQuery.in("id", actor.surgeonIds)
+      : surgeonQuery.eq("id", "00000000-0000-0000-0000-000000000000");
+  }
+  const { data: scopedSurgeons } = await surgeonQuery;
+
   return json({
     actor: { kind: actor.kind, canManagePlatform: actor.kind === "admin" },
     environment,
     platform,
+    surgeons: scopedSurgeons ?? [],
+
     accounts: accounts ?? [],
   });
 });

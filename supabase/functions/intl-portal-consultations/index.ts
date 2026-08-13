@@ -32,6 +32,16 @@ Deno.serve(async (req) => {
     const consultationId = body.consultation_id ? String(body.consultation_id) : null;
     const admin = auth.supabaseAdmin;
 
+    // Distributors get operational + payment visibility only. Internal patient
+    // notes, clinical outcome notes and raw event payloads never leave the
+    // clinic's own workspace.
+    const isDistributorWorkspace = body.workspace_org_type
+      ? body.workspace_org_type === "distributor"
+      : auth.memberships.length > 0 && auth.memberships.every((m) => m.org_type === "distributor");
+
+    const scrubConsultation = <T extends Record<string, unknown>>(c: T) =>
+      isDistributorWorkspace ? { ...c, outcome_notes: null } : c;
+
     if (auth.surgeonIds.length === 0) {
       return json({ consultations: [], surgeons: [] });
     }
@@ -56,7 +66,11 @@ Deno.serve(async (req) => {
       const [{ data: patient }, { data: surgeon }, { data: events }] = await Promise.all([
         admin
           .from("consultation_patients")
-          .select("full_name, email, phone, preferred_language, notes")
+          .select(
+            isDistributorWorkspace
+              ? "full_name, email, phone, preferred_language"
+              : "full_name, email, phone, preferred_language, notes",
+          )
           .eq("id", c.patient_id as string)
           .maybeSingle(),
         admin
@@ -72,8 +86,21 @@ Deno.serve(async (req) => {
           .limit(100),
       ]);
 
-      return json({ consultation: c, patient, surgeon, events: events ?? [] });
+      // Distributors see WHAT happened and WHEN, never the payload.
+      const safeEvents = (events ?? []).map((e) =>
+        isDistributorWorkspace
+          ? { event_type: e.event_type, created_at: e.created_at }
+          : e
+      );
+
+      return json({
+        consultation: scrubConsultation(c),
+        patient,
+        surgeon,
+        events: safeEvents,
+      });
     }
+
 
     // ---- List ----------------------------------------------------------
     let query = admin
@@ -109,10 +136,11 @@ Deno.serve(async (req) => {
 
     return json({
       consultations: consultations.map((c) => ({
-        ...c,
+        ...scrubConsultation(c),
         patient: patientMap[c.patient_id as string] ?? null,
         surgeon: surgeonMap[c.surgeon_id as string] ?? null,
       })),
+
       surgeons: surgeons ?? [],
       memberships: auth.memberships,
     });

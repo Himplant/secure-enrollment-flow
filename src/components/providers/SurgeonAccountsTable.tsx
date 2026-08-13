@@ -42,6 +42,18 @@ const MANUAL_FIELDS = [
   { key: "webhook_secret", label: "Webhook secret", required: false },
 ];
 
+const PROVIDER_LABEL: Record<string, string> = {
+  mercado_pago: "Mercado Pago",
+  paypal: "PayPal",
+  stripe_connect: "Stripe",
+};
+
+const CONNECT_LABEL: Record<string, string> = {
+  mercado_pago: "Connect with Mercado Pago",
+  paypal: "Start PayPal onboarding",
+  stripe_connect: "Start Stripe onboarding",
+};
+
 const fmt = (v: string | null) => (v ? new Date(v).toLocaleString() : "—");
 
 function statusVariant(status: string) {
@@ -52,17 +64,29 @@ function statusVariant(status: string) {
 
 export function SurgeonAccountsTable({
   provider,
+  providerLabel,
+  scope = "admin",
   environment,
   accounts,
   surgeons,
   onChanged,
 }: {
   provider: string;
+  providerLabel?: string;
+  scope?: "admin" | "portal";
   environment: ProviderEnvironment;
   accounts: ProviderAccount[];
   surgeons: { id: string; name: string; country: string | null }[];
   onChanged: () => void;
 }) {
+  const label = providerLabel ?? PROVIDER_LABEL[provider] ?? provider;
+  // Manual credential entry is an admin-managed escape hatch for Mercado Pago
+  // only. PayPal and Stripe onboard through their own hosted flows, and portal
+  // surgeons always self-connect.
+  const allowManualCredentials = scope === "admin" && provider === "mercado_pago";
+  const connectLabel = CONNECT_LABEL[provider]
+    ? CONNECT_LABEL[provider]
+    : `Connect with ${label}`;
   const { toast } = useToast();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [manualFor, setManualFor] = useState<{ surgeonId: string } | null>(null);
@@ -94,6 +118,7 @@ export function SurgeonAccountsTable({
         provider,
         surgeonId: connectSurgeon,
         environment,
+        origin: scope,
       });
       window.location.href = res.url;
     });
@@ -156,21 +181,23 @@ export function SurgeonAccountsTable({
         </div>
         <Button onClick={connect} disabled={busyId === "global"}>
           {busyId === "global" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Connect with Mercado Pago
+          {connectLabel}
         </Button>
-        <Button
-          variant="outline"
-          onClick={() => {
-            if (!connectSurgeon) {
-              toast({ title: "Pick a surgeon first", variant: "destructive" });
-              return;
-            }
-            setCreds({});
-            setManualFor({ surgeonId: connectSurgeon });
-          }}
-        >
-          Enter credentials manually
-        </Button>
+        {allowManualCredentials && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (!connectSurgeon) {
+                toast({ title: "Pick a surgeon first", variant: "destructive" });
+                return;
+              }
+              setCreds({});
+              setManualFor({ surgeonId: connectSurgeon });
+            }}
+          >
+            Enter credentials manually
+          </Button>
+        )}
       </div>
 
       <Table>
@@ -259,7 +286,7 @@ export function SurgeonAccountsTable({
       <Dialog open={!!manualFor} onOpenChange={(v) => !v && setManualFor(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Enter Mercado Pago credentials</DialogTitle>
+            <DialogTitle>Enter {label} credentials</DialogTitle>
             <DialogDescription>
               Values are encrypted immediately and never shown again. Only an indicator such as
               ••••1234 is displayed afterwards.

@@ -13,10 +13,13 @@ const LABELS: Record<string, string> = {
   international_chile_enabled: "Chile",
   mercado_pago_enabled: "Mercado Pago provider",
   paypal_enabled: "PayPal provider",
+  stripe_connect_enabled: "Stripe Connect provider (international only)",
   surgeon_portal_enabled: "Clinic / surgeon portal",
   distributor_portal_enabled: "Distributor portal",
   test_provider_enabled: "Simulated test provider",
+  international_portal_qa_enabled: "Portal Test Center (QA tooling)",
 };
+
 
 /**
  * Super-admin only. Every flag is enforced again server-side inside the
