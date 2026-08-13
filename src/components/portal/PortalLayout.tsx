@@ -97,7 +97,15 @@ export function PortalLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        <p className="mb-4 text-xs text-muted-foreground">
+          {isDistributor
+            ? `Showing only the surgeons assigned to ${orgLabel}.`
+            : `Showing only ${orgLabel}.`}
+        </p>
+        {children}
+      </main>
+
     </div>
   );
 }
