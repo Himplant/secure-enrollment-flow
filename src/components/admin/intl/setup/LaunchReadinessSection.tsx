@@ -151,7 +151,10 @@ export function LaunchReadinessSection() {
     );
   }
 
-  const blocked = (data?.checks ?? []).filter((c) => c.status === "blocked").length;
+  // The build gate is client-side only, but it counts as a real blocker.
+  const checks: ReadinessCheck[] = [buildGateCheck(), ...(data?.checks ?? [])];
+  const blocked = checks.filter((c) => c.status === "blocked").length;
+
 
   return (
     <div className="space-y-4">
