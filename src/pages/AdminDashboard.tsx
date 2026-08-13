@@ -390,11 +390,11 @@ export default function AdminDashboard() {
           </TabsContent>
           <TabsContent value="audit"><AuditLogTab /></TabsContent>
           {intlVisible && (
-            <TabsContent value="intl-consultations"><ConsultationsTab /></TabsContent>
+            <TabsContent value="intl-consultations">
+              <InternationalHub adminRole={adminUser?.role} />
+            </TabsContent>
           )}
-          {intlVisible && (adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
-            <TabsContent value="intl-setup"><IntlSetupTab /></TabsContent>
-          )}
+
           {(adminUser?.role === "admin" || adminUser?.role === "super_admin") && (
             <TabsContent value="users"><UserManagement /></TabsContent>
           )}
