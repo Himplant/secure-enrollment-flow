@@ -32,6 +32,12 @@ const COUNTRY_FLAG: Record<string, string> = {
   CL: "international_chile_enabled",
 };
 
+const VALID_COUNTRIES = ["MX", "CO", "CL"];
+
+/** The only payment providers a country may ever be configured to accept. */
+const VALID_PROVIDERS = ["test", "mercado_pago", "paypal", "stripe_connect"];
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
