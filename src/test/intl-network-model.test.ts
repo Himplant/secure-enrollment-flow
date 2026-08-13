@@ -59,13 +59,43 @@ describe("surgeon readiness gives one next action", () => {
     expect(r.tone).toBe("blocked");
   });
 
-  it("flags a closed country before anything else operational", () => {
+  it("lets onboarding continue while a country is still disabled", () => {
+    const closed = { country: "MX", is_enabled: false, allowed_providers: [] };
+    expect(
+      computeSurgeonReadiness({ ...base, countrySetting: closed, distributorId: null }).label,
+    ).toBe("Needs distributor");
+    expect(computeSurgeonReadiness({ ...base, countrySetting: closed, hasPolicy: false }).label).toBe(
+      "Needs terms",
+    );
+    expect(
+      computeSurgeonReadiness({
+        ...base,
+        countrySetting: closed,
+        payment: { connected: false, provider: null, label: "Needs setup" },
+      }).label,
+    ).toBe("Needs payment account");
+    expect(computeSurgeonReadiness({ ...base, countrySetting: closed, access: "none" }).label).toBe(
+      "Needs portal access",
+    );
+  });
+
+  it("only shows country-not-live once everything else is done, and never Ready", () => {
     const r = computeSurgeonReadiness({
       ...base,
       countrySetting: { country: "MX", is_enabled: false, allowed_providers: [] },
-      distributorId: null,
     });
     expect(r.label).toBe("Country not live");
+    expect(r.tone).not.toBe("ready");
+  });
+
+  it("still flags an unsupported CRM country ahead of everything", () => {
+    const r = computeSurgeonReadiness({
+      ...base,
+      surgeon: surgeon({ country: "US" }),
+      countrySetting: { country: "MX", is_enabled: false, allowed_providers: [] },
+      distributorId: null,
+    });
+    expect(r.label).toBe("Needs CRM country");
   });
 
   it("flags a missing distributor", () => {
