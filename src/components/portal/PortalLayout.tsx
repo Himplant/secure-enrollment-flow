@@ -12,6 +12,8 @@ import {
 import { usePortalAuth } from "@/hooks/usePortalAuth";
 import { usePortalWorkspace } from "@/hooks/usePortalWorkspace";
 import { cn } from "@/lib/utils";
+import { friendlyRoleLabel } from "@/lib/portalAccessLevels";
+
 
 export function PortalLayout({ children }: { children: ReactNode }) {
   const { portalUser, signOut } = usePortalAuth();
