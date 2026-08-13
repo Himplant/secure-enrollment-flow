@@ -1,5 +1,6 @@
 // Make one connected provider account the surgeon's active payment rail.
 // Only a verified, connected account can be activated.
+import { requireProviderEnabled } from "../_shared/flags.ts";
 import {
   actorMayManageSurgeon,
   corsHeaders,
@@ -29,6 +30,8 @@ Deno.serve(async (req) => {
   if (!actorMayManageSurgeon(actor, account.surgeon_id as string)) {
     return json({ error: "Surgeon is outside your scope" }, 403);
   }
+  const providerBlock = await requireProviderEnabled(String(account.provider));
+  if (providerBlock) return providerBlock;
   if (account.status !== "connected") {
     return json({ error: "Test the connection before making it active" }, 400);
   }

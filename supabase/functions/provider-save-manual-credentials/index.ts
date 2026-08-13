@@ -2,6 +2,7 @@
 // fallback when OAuth is not used. Callable by a Himplant admin or by the
 // surgeon_admin who owns the surgeon. Values are write-only: they are
 // encrypted immediately and never redisplayed.
+import { requireProviderEnabled } from "../_shared/flags.ts";
 import {
   accountMasks,
   actorMayManageSurgeon,
@@ -38,6 +39,8 @@ Deno.serve(async (req) => {
     const surgeonId = String(body.surgeonId ?? "");
     const provider = String(body.provider ?? "mercado_pago");
     if (provider !== "mercado_pago") return json({ error: "Unsupported provider" }, 400);
+    const providerBlock = await requireProviderEnabled(provider);
+    if (providerBlock) return providerBlock;
     if (!surgeonId) return json({ error: "surgeonId is required" }, 400);
     if (!actorMayManageSurgeon(actor, surgeonId)) {
       return json({ error: "Surgeon is outside your scope" }, 403);

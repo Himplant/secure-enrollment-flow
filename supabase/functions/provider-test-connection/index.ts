@@ -2,6 +2,7 @@
 // verifies the returned seller identity matches what we recorded, and updates
 // connected/last_verified metadata. Saving credentials alone never marks an
 // account connected — only this check does.
+import { requireProviderEnabled } from "../_shared/flags.ts";
 import {
   actorMayManageSurgeon,
   corsHeaders,
@@ -34,6 +35,8 @@ Deno.serve(async (req) => {
     return json({ error: "Surgeon is outside your scope" }, 403);
   }
   if (account.provider !== "mercado_pago") return json({ error: "Unsupported provider" }, 400);
+  const providerBlock = await requireProviderEnabled(String(account.provider));
+  if (providerBlock) return providerBlock;
 
   try {
     const resolved = await resolveMercadoPagoAccount(accountId);
