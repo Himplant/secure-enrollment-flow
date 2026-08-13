@@ -20,7 +20,8 @@ export function PortalLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
 
   const orgLabel = active?.name ?? (isDistributor ? "Distributor portal" : "Surgeon portal");
-  const orgKind = isDistributor ? "Distributor portal" : "Surgeon portal";
+  const roleLabel = active ? friendlyRoleLabel(active.role) : isDistributor ? "Distributor" : "Surgeon";
+
 
   const nav = [
     ...(isDistributor ? [{ to: "/portal/distributor", label: "Overview", icon: BarChart3 }] : []),
