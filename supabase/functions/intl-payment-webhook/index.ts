@@ -115,6 +115,7 @@ Deno.serve(async (req) => {
     // external_reference and the account id is then handed to the adapter.
     const hintedConsultationId = extractExternalReference(rawBody, url);
     let providerAccountId: string | null = null;
+    let hintedAccountFromUrl: string | null = null;
 
     // Mercado Pago multiple-seller routing hint: the per-payment
     // notification_url carries the seller account id so we know which access
@@ -130,6 +131,7 @@ Deno.serve(async (req) => {
           .eq("provider", "mercado_pago")
           .maybeSingle();
         providerAccountId = (hintedAccount?.id as string | null) ?? null;
+        hintedAccountFromUrl = providerAccountId;
       }
     }
 
@@ -164,7 +166,7 @@ Deno.serve(async (req) => {
     const { data: c } = await admin
       .from("consultations")
       .select(
-        "id, amount_minor, currency, provider, recipient_external_merchant_id, payment_status, surgeon_id",
+        "id, amount_minor, currency, provider, recipient_external_merchant_id, payment_status, surgeon_id, provider_account_id",
       )
       .eq("id", consultationId)
       .maybeSingle();
@@ -176,6 +178,16 @@ Deno.serve(async (req) => {
 
     const mismatches: string[] = [];
     if (c.provider !== providerName) mismatches.push("provider");
+    // Cross-seller guard: the routing hint in the notification URL must point
+    // at the very account frozen on this consultation. A hint for another
+    // surgeon's account can never approve this payment.
+    if (
+      hintedAccountFromUrl &&
+      c.provider_account_id &&
+      hintedAccountFromUrl !== c.provider_account_id
+    ) {
+      mismatches.push("provider_account");
+    }
     if (payment.amountMinor !== null && Number(payment.amountMinor) !== Number(c.amount_minor)) {
       mismatches.push("amount");
     }
