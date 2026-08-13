@@ -375,6 +375,76 @@ export function PortalTestCenter() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Role-by-role test guide</CardTitle>
+          <CardDescription>
+            Sign out between accounts. Also verify that “QA Unmapped Surgeon Colombia” is invisible
+            from every distributor account.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Expected landing / workspace</TableHead>
+                <TableHead>Expected navigation</TableHead>
+                <TableHead>Allowed action</TableHead>
+                <TableHead>Forbidden action</TableHead>
+                <TableHead>Sign out</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ROLE_TEST_GUIDE.map((r, i) => (
+                <TableRow key={i}>
+                  <TableCell className="font-mono text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      {r.email}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label={`Copy ${r.email}`}
+                        onClick={() => copyEmail(r.email)}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-sm">{r.workspace}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.navigation}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.allowed}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.forbidden}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    Use the account menu → Sign out, then close the private window.
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Real Mercado Pago payment smoke test</CardTitle>
+          <CardDescription>
+            Guidance only — nothing here is simulated, bypassed or auto-approved. Each step must be
+            confirmed manually with the real provider.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+            {REAL_PAYMENT_SMOKE_TEST.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
+
+
+
       <AlertDialog open={confirmCleanup} onOpenChange={setConfirmCleanup}>
         <AlertDialogContent>
           <AlertDialogHeader>
