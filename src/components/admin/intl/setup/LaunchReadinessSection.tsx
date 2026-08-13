@@ -250,48 +250,79 @@ export function LaunchReadinessSection() {
           <CardTitle className="text-base">Country availability</CardTitle>
           <CardDescription>
             A country that is switched off here blocks consultation creation even when its feature
-            flag is on.
+            flag is on. Only Himplant super admins can change these settings.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Country</TableHead>
-                <TableHead>Currency</TableHead>
-                <TableHead>Language</TableHead>
-                <TableHead>Allowed providers</TableHead>
-                <TableHead>Link expiry</TableHead>
-                <TableHead className="text-right">Enabled</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(data?.country_settings ?? []).map((s) => (
-                <TableRow key={s.country}>
-                  <TableCell className="font-medium">{s.country}</TableCell>
-                  <TableCell>{s.default_currency}</TableCell>
-                  <TableCell>{s.default_language}</TableCell>
-                  <TableCell className="space-x-1">
-                    {(s.allowed_providers ?? []).map((p) => (
-                      <Badge key={p} variant="secondary" className="text-[10px]">
-                        {p}
-                      </Badge>
-                    ))}
-                  </TableCell>
-                  <TableCell>{s.link_expiry_hours}h</TableCell>
-                  <TableCell className="text-right">
+        <CardContent className="space-y-4">
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Removing a provider only affects new links</AlertTitle>
+            <AlertDescription>
+              Unchecking a provider stops NEW consultation links from being created with it. Existing
+              consultations keep the provider and terms they were frozen with.
+            </AlertDescription>
+          </Alert>
+
+          {(data?.country_settings ?? []).map((s) => {
+            const allowed = s.allowed_providers ?? [];
+            return (
+              <div key={s.country} className="rounded-md border p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">
+                      {COUNTRIES.find((c) => c.value === s.country)?.label ?? s.country}{" "}
+                      <span className="text-muted-foreground">({s.country})</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {s.default_currency} · {s.default_language} · link expiry {s.link_expiry_hours}h
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={s.is_enabled ? "default" : "secondary"}>
+                      {s.is_enabled ? "Enabled" : "Disabled"}
+                    </Badge>
                     <Switch
                       checked={s.is_enabled}
-                      disabled={toggleCountry.isPending}
-                      onCheckedChange={(v) => toggleCountry.mutate({ code: s.country, enabled: v })}
+                      disabled={mutateCountry.isPending}
+                      onCheckedChange={(v) =>
+                        mutateCountry.mutate({
+                          country: s.country,
+                          action: "set_country_enabled",
+                          enabled: v,
+                        })
+                      }
                     />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="text-sm font-medium">Allowed providers</span>
+                  {SELECTABLE_PROVIDERS.map((p) => (
+                    <label key={p} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={allowed.includes(p)}
+                        disabled={mutateCountry.isPending}
+                        onCheckedChange={(v) =>
+                          mutateCountry.mutate({
+                            country: s.country,
+                            action: "set_allowed_providers",
+                            providers: v
+                              ? [...allowed, p]
+                              : allowed.filter((x) => x !== p),
+                          })
+                        }
+                      />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
+
+
 
       <Card>
         <CardHeader>
