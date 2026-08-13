@@ -66,10 +66,31 @@ const STATUS_META: Record<CheckStatus, { icon: typeof CheckCircle2; className: s
   blocked: { icon: XCircle, className: "text-destructive", label: "Blocked" },
 };
 
+/** The only providers a country may be configured to accept. */
+export const SELECTABLE_PROVIDERS = ["test", "mercado_pago", "paypal", "stripe_connect"] as const;
+
 /**
- * Launch readiness for the international module. Read-only gates plus the one
- * setting that silently blocks a country (`is_enabled`) so an operator can fix
- * it without leaving the page.
+ * Build-time gate. The edge function cannot see Vite's build flags, so this row
+ * is evaluated in the browser from the compiled bundle.
+ */
+export function buildGateCheck(): ReadinessCheck {
+  return {
+    id: "intl_build_flag",
+    label: "International bundle compiled (VITE_ENABLE_INTL)",
+    status: INTL_BUILD_ENABLED ? "green" : "blocked",
+    detail: INTL_BUILD_ENABLED
+      ? "Enabled — the international UI is present in this build."
+      : "Disabled — this build excludes the international portal and consultation screens.",
+    next_action: INTL_BUILD_ENABLED
+      ? null
+      : "Set VITE_ENABLE_INTL=true and rebuild/redeploy the frontend before launch.",
+  };
+}
+
+/**
+ * Launch readiness for the international module. Read-only gates plus the
+ * super-admin-only country controls (`is_enabled`, allowed providers) so an
+ * operator can fix a silent blocker without leaving the page.
  */
 export function LaunchReadinessSection() {
   const qc = useQueryClient();
@@ -91,20 +112,26 @@ export function LaunchReadinessSection() {
     },
   });
 
-  const toggleCountry = useMutation({
-    mutationFn: async ({ code, enabled }: { code: string; enabled: boolean }) => {
-      const { error } = await supabase
-        .from("international_country_settings")
-        .update({ is_enabled: enabled })
-        .eq("country", code as "CO" | "MX" | "CL");
+  // Every country mutation goes through the edge function, which re-checks
+  // super_admin + AAL2 server-side and returns refreshed readiness.
+  const mutateCountry = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const { data, error } = await supabase.functions.invoke<ReadinessPayload & { error?: string }>(
+        "intl-launch-readiness",
+        { body: { country, environment, ...payload } },
+      );
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as ReadinessPayload;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({ title: "Country settings updated" });
+      qc.setQueryData(["intl-launch-readiness", country, environment], result);
       qc.invalidateQueries({ queryKey: ["intl-launch-readiness"] });
     },
     onError: (e: Error) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
   });
+
 
   if (isLoading) {
     return (
