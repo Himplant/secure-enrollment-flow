@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -22,6 +21,13 @@ import {
 import { Copy, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { toMinor, fromMinor, COUNTRY_LABEL } from "@/lib/intlMoney";
+import { useIntlNetwork } from "./hub/useIntlNetwork";
+import {
+  computeSurgeonReadiness,
+  paymentState,
+  portalAccessState,
+  type NetworkSurgeon,
+} from "@/lib/intlNetwork";
 
 interface Props {
   open: boolean;
@@ -29,8 +35,17 @@ interface Props {
   onCreated: () => void;
 }
 
+interface SurgeonOption {
+  surgeon: NetworkSurgeon;
+  /** Country default currency resolved from country settings, never USD. */
+  currency: string;
+  ready: boolean;
+  reason: string;
+}
+
 export function CreateConsultationModal({ open, onOpenChange, onCreated }: Props) {
   const { toast } = useToast();
+  const { data } = useIntlNetwork();
   const [surgeonId, setSurgeonId] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -39,29 +54,50 @@ export function CreateConsultationModal({ open, onOpenChange, onCreated }: Props
   const [submitting, setSubmitting] = useState(false);
   const [link, setLink] = useState<string | null>(null);
 
-  const { data: surgeons } = useQuery({
-    queryKey: ["intl-surgeons-active"],
-    enabled: open,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("surgeons")
-        .select("id, name, country, currency, consultation_fee_minor")
-        .eq("is_international", true)
-        .eq("is_active", true)
-        .order("name");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+  const options = useMemo<SurgeonOption[]>(() => {
+    if (!data) return [];
+    const settings = Object.fromEntries(data.country_settings.map((c) => [c.country, c]));
+    return data.surgeons
+      .filter((s) => s.is_active)
+      .map((s) => {
+        const setting = settings[s.country ?? ""] ?? null;
+        const payment = paymentState(
+          data.provider_accounts.filter((a) => a.surgeon_id === s.id),
+          setting?.allowed_providers ?? [],
+          s.country,
+        );
+        const readiness = computeSurgeonReadiness({
+          surgeon: s,
+          distributorId: data.assignments.find((a) => a.surgeon_id === s.id)?.distributor_id ?? null,
+          countrySetting: setting,
+          hasPolicy: data.policies.some(
+            (p) => p.country === s.country && (p.surgeon_id === null || p.surgeon_id === s.id),
+          ),
+          payment,
+          access: portalAccessState(data.memberships.filter((m) => m.surgeon_id === s.id)),
+        });
+        return {
+          surgeon: s,
+          // The surgeon's own currency wins; otherwise the country default.
+          // A supported international country never falls back to USD.
+          currency: (s.currency ?? setting?.default_currency ?? "USD").toUpperCase(),
+          ready: readiness.tone === "ready",
+          reason: readiness.label,
+        };
+      })
+      .sort((a, b) => Number(b.ready) - Number(a.ready) || a.surgeon.name.localeCompare(b.surgeon.name));
+  }, [data]);
 
-  const surgeon = (surgeons ?? []).find((s) => s.id === surgeonId);
-  const currency = surgeon?.currency ?? "USD";
+  const selected = options.find((o) => o.surgeon.id === surgeonId) ?? null;
+  const currency = selected?.currency ?? "";
 
   const pickSurgeon = (id: string) => {
     setSurgeonId(id);
-    const s = (surgeons ?? []).find((x) => x.id === id);
-    if (s?.consultation_fee_minor != null && s.currency) {
-      setAmount(String(fromMinor(s.consultation_fee_minor, s.currency)));
+    const o = options.find((x) => x.surgeon.id === id);
+    if (o?.surgeon.consultation_fee_minor) {
+      setAmount(String(fromMinor(o.surgeon.consultation_fee_minor, o.currency)));
+    } else {
+      setAmount("");
     }
   };
 
@@ -80,7 +116,7 @@ export function CreateConsultationModal({ open, onOpenChange, onCreated }: Props
       return;
     }
     setSubmitting(true);
-    const { data, error } = await supabase.functions.invoke("intl-create-consultation", {
+    const { data: result, error } = await supabase.functions.invoke("intl-create-consultation", {
       body: {
         surgeon_id: surgeonId,
         patient_name: name.trim(),
@@ -92,7 +128,7 @@ export function CreateConsultationModal({ open, onOpenChange, onCreated }: Props
     });
     setSubmitting(false);
 
-    const payload = data as { payment_url?: string; error?: string } | null;
+    const payload = result as { payment_url?: string; error?: string } | null;
     if (error || payload?.error) {
       toast({
         title: "Could not create the link",
@@ -149,13 +185,20 @@ export function CreateConsultationModal({ open, onOpenChange, onCreated }: Props
                   <SelectValue placeholder="Select a surgeon" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(surgeons ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} — {(s.country && COUNTRY_LABEL[s.country]) || s.country || "—"}
+                  {options.map((o) => (
+                    <SelectItem key={o.surgeon.id} value={o.surgeon.id} disabled={!o.ready}>
+                      {o.surgeon.name} —{" "}
+                      {(o.surgeon.country && COUNTRY_LABEL[o.surgeon.country]) ||
+                        o.surgeon.country ||
+                        "—"}
+                      {o.ready ? "" : ` · ${o.reason}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Surgeons that are not ready are shown with the reason and cannot be selected.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -172,12 +215,13 @@ export function CreateConsultationModal({ open, onOpenChange, onCreated }: Props
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Amount ({currency})</Label>
+                <Label>Amount {currency ? `(${currency})` : ""}</Label>
                 <Input
                   type="number"
                   min="0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  disabled={!surgeonId}
                 />
               </div>
             </div>
@@ -195,7 +239,7 @@ export function CreateConsultationModal({ open, onOpenChange, onCreated }: Props
               Done
             </Button>
           ) : (
-            <Button onClick={submit} disabled={submitting}>
+            <Button onClick={submit} disabled={submitting || !selected?.ready}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create link"}
             </Button>
           )}

@@ -70,15 +70,32 @@ Deno.serve(async (req) => {
       return json({ error: "This payment link is no longer active" }, 409);
     }
 
-    // Re-verify the recipient account is still connected at payment time.
+    // Re-verify the frozen recipient account at payment time. It must still be
+    // connected AND still be the same surgeon / provider / merchant / live
+    // environment that the consultation was created against — a swapped or
+    // sandbox account must never be able to collect a real patient payment.
     const { data: account } = await admin
       .from("provider_accounts")
-      .select("id, provider, external_merchant_id, status, is_active, environment")
+      .select(
+        "id, surgeon_id, provider, external_merchant_id, status, is_active, environment, live_mode",
+      )
       .eq("id", c.provider_account_id)
       .maybeSingle();
 
     if (!account || account.status !== "connected" || !account.is_active) {
       return json({ error: "The surgeon's payment account is currently unavailable" }, 409);
+    }
+    if (
+      account.surgeon_id !== c.surgeon_id ||
+      account.provider !== c.provider ||
+      (c.recipient_external_merchant_id &&
+        account.external_merchant_id !== c.recipient_external_merchant_id)
+    ) {
+      return json({ error: "The payment account for this consultation has changed" }, 409);
+    }
+    const testProvider = String(c.provider) === "test";
+    if (!testProvider && (account.environment !== "live" || account.live_mode !== true)) {
+      return json({ error: "This consultation cannot be paid through a test account" }, 409);
     }
 
     const provider = getProvider(c.provider as string);

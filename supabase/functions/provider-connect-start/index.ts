@@ -5,6 +5,7 @@
 //  * PayPal — Commerce Platform partner onboarding; creates (or reuses) the
 //    surgeon's pending provider account and returns the referral action URL.
 //    Its tracking id is the account id, which the status poll reads back.
+import { requireProviderEnabled } from "../_shared/flags.ts";
 import {
   actorMayManageSurgeon,
   corsHeaders,
@@ -46,6 +47,11 @@ Deno.serve(async (req) => {
     if (provider !== "mercado_pago" && provider !== "paypal" && provider !== "stripe_connect") {
       return json({ error: "Unsupported provider" }, 400);
     }
+
+    // Runtime feature flag, enforced server-side: a provider that is switched
+    // off cannot be connected even by calling this endpoint directly.
+    const providerBlock = await requireProviderEnabled(provider);
+    if (providerBlock) return providerBlock;
 
     const connectReturnUrl = resolveConnectReturnUrl(actor.kind, body.origin);
 

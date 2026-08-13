@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
       db
         .from("provider_accounts")
         .select("id, surgeon_id, provider, status, is_active, live_mode, environment, country"),
-      db.from("international_country_settings").select("country, is_enabled, allowed_providers"),
+      db.from("international_country_settings").select("country, is_enabled, allowed_providers, default_currency"),
       db
         .from("international_policies")
         .select("id, country, surgeon_id, is_active")

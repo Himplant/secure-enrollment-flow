@@ -4,7 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, CircleDashed, Loader2, RefreshCw, Settings2, UserPlus, Users } from "lucide-react";
 import { AccessCard } from "./AccessCard";
 import { useIntlNetwork } from "./useIntlNetwork";
-import { summarise, portalAccessState, paymentState } from "@/lib/intlNetwork";
+import { summarise, portalAccessState, countryLaunchState, SUPPORTED_COUNTRIES } from "@/lib/intlNetwork";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import { COUNTRY_FLAG, isCountryEnabled } from "@/lib/featureFlags";
+
+const COUNTRY_NAME: Record<string, string> = { MX: "Mexico", CO: "Colombia", CL: "Chile" };
 
 interface Props {
   onNavigate: (tab: string) => void;
@@ -43,6 +47,16 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
 
 export function OverviewSection({ onNavigate, onSync, syncing }: Props) {
   const { data, isLoading } = useIntlNetwork();
+  const { flags } = useFeatureFlags();
+
+  // One plain-English line per country: availability (feature flag) and the
+  // real launch switch are combined so the operator never has to reason about
+  // two separate toggles.
+  const countryStates = data
+    ? SUPPORTED_COUNTRIES.filter((c) => !!COUNTRY_FLAG[c]).map((c) =>
+        countryLaunchState(data, c, isCountryEnabled(flags, c)),
+      )
+    : [];
 
   const s = data
     ? summarise(data)
@@ -91,6 +105,37 @@ export function OverviewSection({ onNavigate, onSync, syncing }: Props) {
 
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle className="text-base">Countries</CardTitle>
+          <CardDescription>
+            A country is only open to real patients once it is switched on in Advanced setup →
+            Launch readiness.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {countryStates.length === 0 && (
+            <p className="text-sm text-muted-foreground">Loading country status…</p>
+          )}
+          {countryStates.map((c) => (
+            <div key={c.country} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{COUNTRY_NAME[c.country] ?? c.country}</p>
+                <p className="text-xs text-muted-foreground">
+                  {c.blockers.length ? c.blockers.join(" · ") : "Nothing outstanding."}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={c.live && !c.blockers.length ? "default" : "secondary"}>{c.label}</Badge>
+                <Button size="sm" variant="ghost" onClick={() => onNavigate("advanced")}>
+                  Launch readiness
+                </Button>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">Getting set up</CardTitle>
           <CardDescription>
             <Badge variant="secondary" className="mr-2">
@@ -135,7 +180,7 @@ export function OverviewSection({ onNavigate, onSync, syncing }: Props) {
             detail={
               s.countriesLive > 0
                 ? `${s.countriesLive} country/countries open.`
-                : "No country is open yet — see Advanced setup."
+                : "No country is open yet — see International → Advanced setup → Launch readiness."
             }
           />
         </CardContent>

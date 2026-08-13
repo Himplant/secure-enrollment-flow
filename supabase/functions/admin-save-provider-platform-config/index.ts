@@ -1,6 +1,7 @@
 // Super-admin: save/update the Himplant platform application credentials for a
 // payment provider (currently Mercado Pago). Credentials are encrypted at rest
 // and never returned. Responses contain masks and completeness only.
+import { requireProviderEnabled } from "../_shared/flags.ts";
 import {
   corsHeaders,
   getPlatformConfig,
@@ -32,6 +33,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const provider = String(body.provider ?? "") as SupportedProvider;
     if (!PLATFORM_FIELDS[provider]) return json({ error: "Unsupported provider" }, 400);
+    // A provider whose runtime flag is off cannot have platform credentials
+    // saved, tested or re-enabled through this endpoint.
+    const providerBlock = await requireProviderEnabled(provider);
+    if (providerBlock) return providerBlock;
 
     const environment = normalizeEnvironment(body.environment);
     const action = String(body.action ?? "save");

@@ -140,12 +140,19 @@ export async function createIntlConsultation(
 
   const { data: accounts } = await admin
     .from("provider_accounts")
-    .select("id, provider, external_merchant_id, currency, status, is_active")
+    .select("id, provider, external_merchant_id, currency, status, is_active, environment, live_mode")
     .eq("surgeon_id", surgeonId)
     .eq("status", "connected")
     .eq("is_active", true);
 
-  const account = (accounts ?? []).find(
+  // A real patient-facing consultation may only ever settle through a LIVE
+  // merchant account. Sandbox credentials are QA-only and are accepted solely
+  // for the deliberately simulated `test` provider.
+  const isLiveUsable = (a: Record<string, unknown>) =>
+    String(a.provider) === "test" ||
+    (String(a.environment) === "live" && a.live_mode === true);
+
+  const candidates = (accounts ?? []).filter(
     (a: Record<string, unknown>) =>
       allowed.includes(String(a.provider)) &&
       String(a.currency).toUpperCase() === currency &&
@@ -153,9 +160,18 @@ export async function createIntlConsultation(
       (requested || !surgeon!.active_provider || a.provider === surgeon!.active_provider),
   );
 
+  const account = candidates.find(isLiveUsable);
+
   if (!account) {
+    if (candidates.length > 0) {
+      return fail(
+        409,
+        "This surgeon only has a test/sandbox payment account. Connect and verify a LIVE account before creating real consultation links.",
+      );
+    }
     return fail(409, "This surgeon has no connected payment account for the requested provider and currency");
   }
+
 
   const provider = String(account.provider);
 

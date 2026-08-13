@@ -4,6 +4,7 @@
 // every gate that must be satisfied before a country can go live. It never
 // returns credential values and never changes anything.
 import { requireAdmin } from "../_shared/admin-auth.ts";
+import { PROVIDER_FLAG } from "../_shared/flags.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,6 +90,20 @@ Deno.serve(async (req) => {
         if (invalid.length) {
           return json({ error: `Unsupported provider(s): ${invalid.join(", ")}` }, 400);
         }
+        // A provider whose runtime feature flag is off may not be added to a
+        // country, even by a super admin calling this endpoint directly.
+        const { data: flagRowsForCheck } = await db
+          .from("app_feature_flags")
+          .select("key, enabled");
+        const enabledFlags: Record<string, boolean> = {};
+        for (const r of flagRowsForCheck ?? []) enabledFlags[r.key as string] = !!r.enabled;
+        const disabled = providers.filter((p) => !enabledFlags[PROVIDER_FLAG[p] ?? ""]);
+        if (disabled.length) {
+          return json(
+            { error: `Provider(s) not enabled in Platform → Feature flags: ${disabled.join(", ")}` },
+            400,
+          );
+        }
         const { error } = await db
           .from("international_country_settings")
           .update({ allowed_providers: providers })
@@ -107,6 +122,7 @@ Deno.serve(async (req) => {
       { data: policies },
       { data: platformConfigs },
       { data: accounts },
+      { data: countrySurgeons },
       { data: mappings },
       { data: portalUsers },
       { data: providerEvents },
@@ -116,14 +132,21 @@ Deno.serve(async (req) => {
       db.from("international_country_settings").select("*"),
       db
         .from("international_policies")
-        .select("id, country, language, is_active, published_at, version")
+        .select("id, country, language, is_active, published_at, retired_at, effective_at, version")
         .eq("is_active", true),
       db
         .from("provider_platform_configs")
         .select("provider, environment, is_complete, missing_fields, last_verified_at, webhook_url, credential_masks, status"),
       db
         .from("provider_accounts")
-        .select("id, surgeon_id, provider, environment, status, is_active, live_mode, last_verified_at, country, surgeons(name)"),
+        .select(
+          "id, surgeon_id, provider, environment, status, is_active, live_mode, currency, last_verified_at, country, surgeons(name, is_active, is_international, country)",
+        ),
+      db
+        .from("surgeons")
+        .select("id, name, country, is_active, is_international")
+        .eq("is_international", true)
+        .eq("is_active", true),
       db.from("distributor_surgeons").select("id, distributor_id, surgeon_id"),
       db.from("portal_memberships").select("id, org_type, role, is_active"),
       db
@@ -186,19 +209,30 @@ Deno.serve(async (req) => {
       countrySetting
         ? "Country settings row exists but is_enabled is false — this silently blocks every consultation."
         : "No country settings row exists.",
-      "Enable the country in International Setup → Launch readiness.",
+      "Enable the country in International → Advanced setup → Launch readiness.",
     );
 
+    // `is_active` + `retired_at` + `effective_at` are the real publication
+    // controls used by policy resolution and the Terms screen. `published_at`
+    // is informational metadata only and is never read at resolution time, so
+    // it must not gate launch.
+    const nowIso = new Date().toISOString();
     const activePolicy = (policies ?? []).find(
-      (p) => p.country === country && String(p.language ?? "").startsWith("es"),
+      (p) =>
+        p.country === country &&
+        String(p.language ?? "").startsWith("es") &&
+        !p.retired_at &&
+        (!p.effective_at || String(p.effective_at) <= nowIso),
     );
     add(
       "policy",
       `Active Spanish policy for ${country}`,
       !!activePolicy,
-      `Version ${activePolicy?.version ?? ""}`,
-      "No active Spanish-language policy is published.",
-      "Publish a policy in International Setup → Terms.",
+      `Version ${activePolicy?.version ?? ""} — active and in effect`,
+      (policies ?? []).some((p) => p.country === country && String(p.language ?? "").startsWith("es"))
+        ? "A Spanish policy exists but is retired or not yet in effect."
+        : "No active Spanish-language policy exists.",
+      "Create and activate the consultation terms in International → Advanced setup → Terms.",
     );
 
     const mpConfig = (platformConfigs ?? []).find(
@@ -212,7 +246,7 @@ Deno.serve(async (req) => {
       mpConfig
         ? `Incomplete — missing: ${(mpConfig.missing_fields as string[] | null)?.join(", ") || "unknown"}`
         : `No ${environment} configuration saved.`,
-      "Save the platform credentials in International Setup → Payment accounts.",
+      "Save the platform credentials in International → Advanced setup → Payment providers.",
     );
 
     const mpMasks = (mpConfig?.credential_masks ?? {}) as Record<string, { present?: boolean }>;
@@ -230,17 +264,67 @@ Deno.serve(async (req) => {
         a.provider === "mercado_pago" &&
         a.environment === environment &&
         a.status === "connected" &&
-        a.is_active,
+        a.is_active &&
+        (environment !== "live" || a.live_mode === true) &&
+        // The account must belong to an ACTIVE international surgeon in this
+        // very country, and settle in the country's currency. A Mexican or
+        // Chilean seller can never make Colombia ready.
+        String(a.country ?? (a.surgeons as { country?: string } | null)?.country ?? "").toUpperCase() ===
+          country &&
+        (a.surgeons as { is_active?: boolean } | null)?.is_active !== false &&
+        (!countrySetting?.default_currency ||
+          String(a.currency ?? "").toUpperCase() ===
+            String(countrySetting.default_currency).toUpperCase()) &&
+        ((countrySetting?.allowed_providers as string[] | null) ?? []).includes("mercado_pago") &&
+        !!flags.mercado_pago_enabled,
     );
+    const readySurgeonIds = new Set(liveMpAccounts.map((a) => String(a.surgeon_id)));
+    const notReadySurgeons = (countrySurgeons ?? [])
+      .filter((sg) => String(sg.country ?? "").toUpperCase() === country)
+      .filter((sg) => !readySurgeonIds.has(String(sg.id)));
     add(
       "mp_seller",
-      `Connected ${environment} Mercado Pago surgeon account`,
+      `${country} surgeon with a connected ${environment} Mercado Pago account`,
       liveMpAccounts.length > 0,
-      `${liveMpAccounts.length} connected: ${
+      `${liveMpAccounts.length} ready: ${
         liveMpAccounts.map((a) => (a.surgeons as { name?: string } | null)?.name ?? a.surgeon_id).join(", ")
+      }${notReadySurgeons.length ? ` — still not ready: ${notReadySurgeons.map((sg) => sg.name).join(", ")}` : ""}`,
+      `No ${country} surgeon has a connected, verified ${
+        environment === "live" ? "live" : "sandbox"
+      } Mercado Pago account in ${countrySetting?.default_currency ?? "the country currency"}.${
+        notReadySurgeons.length ? ` Waiting on: ${notReadySurgeons.map((sg) => sg.name).join(", ")}.` : ""
       }`,
-      "No surgeon has a connected, verified account in this environment.",
-      "Connect a surgeon in International Setup → Payment accounts, then run 'Test connection'.",
+      "Connect the surgeon in International → Advanced setup → Payment providers, then run 'Test connection'.",
+    );
+
+    // A simulated provider must never be reachable by a real patient.
+    const allowsTestProvider = (
+      (countrySetting?.allowed_providers as string[] | null) ?? []
+    ).includes("test");
+    add(
+      "test_provider_excluded",
+      `Simulated test provider not accepted by ${country}`,
+      !allowsTestProvider,
+      "Only real payment providers are accepted.",
+      "The simulated test provider is still an allowed provider — a real patient link could be created against it.",
+      `Uncheck "test" for ${country} under Country availability before going live.`,
+      environment !== "live",
+    );
+
+    // Allowed providers must all be switched on at runtime, otherwise the
+    // country looks configured while every new link is rejected.
+    const disabledAllowed = (
+      ((countrySetting?.allowed_providers as string[] | null) ?? []).filter(
+        (p) => p !== "test" && !flags[PROVIDER_FLAG[p] ?? ""],
+      )
+    );
+    add(
+      "allowed_providers_enabled",
+      `${country} allowed providers are switched on`,
+      disabledAllowed.length === 0,
+      "Every allowed provider is enabled at runtime.",
+      `Allowed but disabled: ${disabledAllowed.join(", ")}`,
+      "Enable the provider in Platform → Feature flags, or remove it from the country.",
     );
 
     add(
@@ -249,7 +333,7 @@ Deno.serve(async (req) => {
       (mappings ?? []).length > 0,
       `${(mappings ?? []).length} mapping(s)`,
       "No distributor is mapped to any surgeon.",
-      "Assign surgeons in International Setup → Distributors.",
+      "Assign surgeons in International → Network.",
       true,
     );
 

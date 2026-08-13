@@ -135,7 +135,7 @@ describe("payment state", () => {
     expect(paymentState([acct], ["mercado_pago"]).connected).toBe(true);
     expect(paymentState([{ ...acct, live_mode: false }], ["mercado_pago"]).connected).toBe(false);
     expect(paymentState([acct], ["paypal"]).connected).toBe(false);
-    expect(paymentState([], []).label).toBe("Needs setup");
+    expect(paymentState([], []).label).toBe("Needs payment account");
   });
 });
 
