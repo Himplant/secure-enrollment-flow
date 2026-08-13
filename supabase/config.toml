@@ -1,5 +1,8 @@
 project_id = "aygfraqvempqexlplofu"
 
+[functions.zoho-generate-enrollment-link]
+verify_jwt = false
+
 [functions.zoho-oauth-callback]
 verify_jwt = false
 
