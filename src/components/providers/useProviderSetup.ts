@@ -70,11 +70,14 @@ export interface ProviderAccount {
 export interface ProviderStatusResponse {
   actor: { kind: string; canManagePlatform: boolean };
   environment: ProviderEnvironment;
+  /** Providers whose runtime feature flag is on. Disabled ones are omitted. */
+  enabled_providers: string[];
   platform: PlatformEntry[];
   /** Surgeons the caller may connect an account for (server-derived scope). */
   surgeons: { id: string; name: string; country: string | null }[];
   accounts: ProviderAccount[];
 }
+
 
 /** Surfaces the real edge-function error body instead of "non-2xx status code". */
 export async function callProviderFn<T = Record<string, unknown>>(
