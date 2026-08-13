@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
           .from("consultation_patients")
           .select(
             isDistributorWorkspace
-              ? "full_name, email, phone, preferred_language"
+              ? "full_name, preferred_language"
               : "full_name, email, phone, preferred_language, notes",
           )
           .eq("id", c.patient_id as string)
@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
 
       return json({
         consultation: scrubConsultation(c),
-        patient,
+        patient: scrubPatient(patient as Record<string, unknown> | null),
         surgeon,
         events: safeEvents,
       });
@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
     return json({
       consultations: consultations.map((c) => ({
         ...scrubConsultation(c),
-        patient: patientMap[c.patient_id as string] ?? null,
+        patient: scrubPatient((patientMap[c.patient_id as string] as Record<string, unknown>) ?? null),
         surgeon: surgeonMap[c.surgeon_id as string] ?? null,
       })),
 
