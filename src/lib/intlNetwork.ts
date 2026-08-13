@@ -63,6 +63,7 @@ export interface NetworkProviderAccount {
   status: string;
   is_active: boolean;
   live_mode: boolean;
+  environment?: string | null;
   country: string | null;
 }
 
@@ -108,21 +109,31 @@ export interface PaymentState {
   label: string;
 }
 
+/**
+ * "Connected" means a REAL, live merchant account that this surgeon's country
+ * is allowed to use. A sandbox/test account or an account registered in
+ * another country never counts — otherwise an operator would believe a
+ * surgeon can be paid when only QA credentials exist.
+ */
 export function paymentState(
   accounts: NetworkProviderAccount[],
   allowedProviders: string[],
+  country?: string | null,
 ): PaymentState {
   const live = accounts.find(
     (a) =>
       a.is_active &&
-      a.live_mode &&
+      a.live_mode === true &&
       a.status === "connected" &&
+      a.provider !== "test" &&
+      (a.environment ?? "live") === "live" &&
+      (!country || !a.country || a.country.toUpperCase() === country.toUpperCase()) &&
       (allowedProviders.length === 0 || allowedProviders.includes(a.provider)),
   );
   if (live) return { connected: true, provider: live.provider, label: "Connected" };
   const any = accounts.find((a) => a.status === "connected");
   if (any) return { connected: false, provider: any.provider, label: "Test account only" };
-  return { connected: false, provider: null, label: "Needs setup" };
+  return { connected: false, provider: null, label: "Needs payment account" };
 }
 
 export interface ReadinessInput {
@@ -216,6 +227,7 @@ export function summarise(payload: NetworkPayload): NetworkSummary {
     paymentState(
       payload.provider_accounts.filter((a) => a.surgeon_id === s.id),
       allowedByCountry[s.country ?? ""] ?? [],
+      s.country,
     ).connected,
   ).length;
 
@@ -229,4 +241,66 @@ export function summarise(payload: NetworkPayload): NetworkSummary {
     paymentReady,
     countriesLive: payload.country_settings.filter((c) => c.is_enabled).length,
   };
+}
+
+
+export interface CountryLaunchState {
+  country: string;
+  /** The runtime feature flag makes the country available to be launched. */
+  available: boolean;
+  /** The country settings switch is the real "open for patients" control. */
+  live: boolean;
+  blockers: string[];
+  label: string;
+}
+
+/**
+ * Plain-English status for one country, combining the availability flag with
+ * the country launch switch so an operator never has to reason about two
+ * separate toggles.
+ */
+export function countryLaunchState(
+  payload: NetworkPayload,
+  country: string,
+  available: boolean,
+): CountryLaunchState {
+  const setting = payload.country_settings.find((c) => c.country === country) ?? null;
+  const surgeons = payload.surgeons.filter((s) => s.country === country);
+  const assigned = new Set(payload.assignments.map((a) => a.surgeon_id));
+  const blockers: string[] = [];
+
+  if (!setting) blockers.push("no country settings");
+  if (!payload.policies.some((p) => p.country === country && p.is_active)) {
+    blockers.push("no active terms");
+  }
+  if (!surgeons.length) blockers.push("no surgeons synced");
+  if (surgeons.length && !surgeons.some((s) => assigned.has(s.id))) {
+    blockers.push("no surgeon has a distributor");
+  }
+  const paymentReady = surgeons.filter(
+    (s) =>
+      paymentState(
+        payload.provider_accounts.filter((a) => a.surgeon_id === s.id),
+        setting?.allowed_providers ?? [],
+        country,
+      ).connected,
+  ).length;
+  if (!paymentReady) blockers.push("no live payment account");
+  if (!surgeons.some((s) => payload.memberships.some((m) => m.surgeon_id === s.id))) {
+    blockers.push("no portal access");
+  }
+  if ((setting?.allowed_providers ?? []).includes("test")) {
+    blockers.push("simulated test provider still allowed");
+  }
+
+  const live = !!setting?.is_enabled;
+  const label = !available
+    ? "Not available"
+    : live
+      ? blockers.length
+        ? `Live — ${blockers.length} warning${blockers.length === 1 ? "" : "s"}`
+        : "Live"
+      : `Available, not live — ${blockers.length} blocker${blockers.length === 1 ? "" : "s"}`;
+
+  return { country, available, live, blockers, label };
 }
