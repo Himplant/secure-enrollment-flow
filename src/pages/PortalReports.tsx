@@ -22,7 +22,9 @@ import {
 import { usePortalMetrics, type PortalMetricGroup } from "@/hooks/usePortalMetrics";
 import { formatIntlMoney } from "@/lib/intlMoney";
 
-const pct = (v: number) => `${Math.round(v * 100)}%`;
+// intl-portal-metrics already returns percentages (50 = 50%).
+const pct = (v: number) => `${(v ?? 0).toFixed(1)}%`;
+
 const hours = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)} h`);
 
 function money(byCurrency: Record<string, number>) {

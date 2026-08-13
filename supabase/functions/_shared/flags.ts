@@ -11,9 +11,11 @@ export type FeatureFlagKey =
   | "international_chile_enabled"
   | "mercado_pago_enabled"
   | "paypal_enabled"
+  | "stripe_connect_enabled"
   | "surgeon_portal_enabled"
   | "distributor_portal_enabled"
-  | "test_provider_enabled";
+  | "test_provider_enabled"
+  | "international_portal_qa_enabled";
 
 const COUNTRY_FLAG: Record<string, FeatureFlagKey> = {
   MX: "international_mexico_enabled",
@@ -24,8 +26,10 @@ const COUNTRY_FLAG: Record<string, FeatureFlagKey> = {
 const PROVIDER_FLAG: Record<string, FeatureFlagKey> = {
   mercado_pago: "mercado_pago_enabled",
   paypal: "paypal_enabled",
+  stripe_connect: "stripe_connect_enabled",
   test: "test_provider_enabled",
 };
+
 
 function serviceClient() {
   return createClient(

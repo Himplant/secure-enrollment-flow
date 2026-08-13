@@ -1121,6 +1121,30 @@ export type Database = {
           },
         ]
       }
+      intl_qa_fixture_records: {
+        Row: {
+          created_at: string
+          fixture_set_id: string
+          id: string
+          record_id: string
+          table_name: string
+        }
+        Insert: {
+          created_at?: string
+          fixture_set_id: string
+          id?: string
+          record_id: string
+          table_name: string
+        }
+        Update: {
+          created_at?: string
+          fixture_set_id?: string
+          id?: string
+          record_id?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       intl_zoho_outbox: {
         Row: {
           attempts: number

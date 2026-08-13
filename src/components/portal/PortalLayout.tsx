@@ -15,10 +15,12 @@ import { cn } from "@/lib/utils";
 
 export function PortalLayout({ children }: { children: ReactNode }) {
   const { portalUser, signOut } = usePortalAuth();
-  const { workspaces, active, setActive, isDistributor, isSurgeonAdmin } = usePortalWorkspace();
+  const { workspaces, active, setActive, isDistributor, isSurgeonAdmin, isDistributorAdmin } =
+    usePortalWorkspace();
   const { pathname } = useLocation();
 
-  const orgLabel = isDistributor ? "Distributor portal" : "Surgeon portal";
+  const orgLabel = active?.name ?? (isDistributor ? "Distributor portal" : "Surgeon portal");
+  const orgKind = isDistributor ? "Distributor portal" : "Surgeon portal";
 
   const nav = [
     ...(isDistributor ? [{ to: "/portal/distributor", label: "Overview", icon: BarChart3 }] : []),
@@ -29,6 +31,9 @@ export function PortalLayout({ children }: { children: ReactNode }) {
           { to: "/portal/team", label: "Team", icon: Users },
           { to: "/portal/payment-account", label: "Payment account", icon: CreditCard },
         ]
+      : []),
+    ...(isDistributorAdmin && isDistributor
+      ? [{ to: "/portal/team", label: "Team", icon: Users }]
       : []),
   ];
 
@@ -43,7 +48,7 @@ export function PortalLayout({ children }: { children: ReactNode }) {
             <div>
               <p className="text-sm font-semibold leading-tight">{orgLabel}</p>
               <p className="text-xs text-muted-foreground">
-                {portalUser?.full_name || portalUser?.email}
+                {orgKind} · {portalUser?.full_name || portalUser?.email}
               </p>
             </div>
           </div>
@@ -51,14 +56,13 @@ export function PortalLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             {workspaces.length > 1 && active && (
               <Select value={active.key} onValueChange={setActive}>
-                <SelectTrigger className="h-9 w-[190px]">
+                <SelectTrigger className="h-9 w-[240px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {workspaces.map((w) => (
                     <SelectItem key={w.key} value={w.key}>
-                      {w.orgType === "distributor" ? "Distributor" : "Surgeon"} ·{" "}
-                      {w.role.replace(/_/g, " ")}
+                      {w.name} · {w.role.replace(/_/g, " ")}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -1,9 +1,10 @@
-// Surgeon-admin team management for the external portal.
+// Team management for the external portal (surgeon practices AND distributors).
 //
-// A surgeon_admin may invite, re-role and deactivate office staff for their
-// OWN practice only. Every surgeon id in the request is re-derived from the
-// caller's memberships server-side; nothing in the request body can widen
-// scope. Himplant admin users are never touched by this endpoint.
+// A surgeon_admin manages office staff for their OWN practice; a
+// distributor_admin manages staff for their OWN distributor. Every
+// organisation id in the request is re-derived from the caller's memberships
+// server-side, scoped to the ACTIVE workspace, so nothing in the request body
+// can widen scope. Himplant admin users are never touched by this endpoint.
 import { applyWorkspace, requirePortalUser } from "../_shared/portal-auth.ts";
 import { requireIntlEnabled } from "../_shared/flags.ts";
 
@@ -18,8 +19,12 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-const ASSIGNABLE_ROLES = ["surgeon_admin", "surgeon_staff", "surgeon_analyst"] as const;
-type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+export const SURGEON_ROLES = ["surgeon_admin", "surgeon_staff", "surgeon_analyst"] as const;
+export const DISTRIBUTOR_ROLES = [
+  "distributor_admin",
+  "distributor_staff",
+  "distributor_analyst",
+] as const;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -30,39 +35,66 @@ Deno.serve(async (req) => {
     const flagBlock = await requireIntlEnabled();
     if (flagBlock) return flagBlock;
 
-    const baseAuth = await requirePortalUser(req, { anyRole: ["surgeon_admin"] });
+    const baseAuth = await requirePortalUser(req, {
+      anyRole: ["surgeon_admin", "distributor_admin"],
+    });
     if (!baseAuth.ok) return baseAuth.response;
 
-    // Practices this caller actually administers.
-    const ownedSurgeonIds = auth.memberships
-      .filter((m) => m.org_type === "surgeon" && m.role === "surgeon_admin" && m.surgeon_id)
-      .map((m) => m.surgeon_id as string);
-
-    if (ownedSurgeonIds.length === 0) return json({ error: "No practice on this account" }, 403);
-
-    const admin = auth.supabaseAdmin;
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    // Narrow to the organisation the caller is currently acting as.
+
+    // Narrow to the organisation the caller is currently acting as. Scope is
+    // always recomputed from memberships, so this can only shrink access.
     const auth = await applyWorkspace(baseAuth, body);
     if (!auth.ok) return auth.response;
-    // The role must hold inside the ACTIVE workspace, not just somewhere.
-    const allowedRoles: string[] = ["surgeon_admin"];
-    if (!auth.memberships.some((m) => allowedRoles.includes(m.role))) {
-      return json({ error: "Insufficient portal role" }, 403);
+
+    const admin = auth.supabaseAdmin;
+
+    // Which organisation type is this request about? Derived from the active
+    // workspace when one was supplied, otherwise from the caller's own
+    // admin memberships (single-workspace back-compat).
+    const orgType: "surgeon" | "distributor" =
+      body.workspace_org_type === "distributor"
+        ? "distributor"
+        : body.workspace_org_type === "surgeon"
+        ? "surgeon"
+        : auth.memberships.some((m) => m.role === "surgeon_admin")
+        ? "surgeon"
+        : "distributor";
+
+    const adminRole = orgType === "surgeon" ? "surgeon_admin" : "distributor_admin";
+    const assignableRoles: readonly string[] =
+      orgType === "surgeon" ? SURGEON_ROLES : DISTRIBUTOR_ROLES;
+
+    // The admin role must hold inside the ACTIVE workspace, not just somewhere.
+    const ownedOrgIds = auth.memberships
+      .filter((m) => m.org_type === orgType && m.role === adminRole)
+      .map((m) => (orgType === "surgeon" ? m.surgeon_id : m.distributor_id))
+      .filter((id): id is string => !!id);
+
+    if (ownedOrgIds.length === 0) {
+      return json({ error: "Insufficient portal role for this workspace" }, 403);
     }
+
+    const orgColumn = orgType === "surgeon" ? "surgeon_id" : "distributor_id";
     const action = String(body.action ?? "list");
 
-    const resolveSurgeonId = (): string | null => {
-      const requested = body.surgeon_id ? String(body.surgeon_id) : ownedSurgeonIds[0];
-      return ownedSurgeonIds.includes(requested) ? requested : null;
+    const resolveOrgId = (): string | null => {
+      const requested = body.org_id
+        ? String(body.org_id)
+        : body.surgeon_id
+        ? String(body.surgeon_id)
+        : ownedOrgIds[0];
+      return ownedOrgIds.includes(requested) ? requested : null;
     };
 
     const listTeam = async () => {
       const { data: memberships } = await admin
         .from("portal_memberships")
-        .select("id, role, is_active, surgeon_id, granted_at, revoked_at, portal_user_id")
-        .eq("org_type", "surgeon")
-        .in("surgeon_id", ownedSurgeonIds)
+        .select(
+          "id, role, is_active, surgeon_id, distributor_id, granted_at, revoked_at, portal_user_id",
+        )
+        .eq("org_type", orgType)
+        .in(orgColumn, ownedOrgIds)
         .order("granted_at", { ascending: true });
 
       const rows = memberships ?? [];
@@ -77,16 +109,21 @@ Deno.serve(async (req) => {
 
       const userMap = Object.fromEntries((users ?? []).map((u) => [u.id as string, u]));
 
-      const { data: surgeons } = await admin
-        .from("surgeons")
-        .select("id, name")
-        .in("id", ownedSurgeonIds);
+      const { data: orgs } = orgType === "surgeon"
+        ? await admin.from("surgeons").select("id, name").in("id", ownedOrgIds)
+        : await admin.from("distributors").select("id, name").in("id", ownedOrgIds);
 
       return json({
-        surgeons: surgeons ?? [],
+        org_type: orgType,
+        assignable_roles: assignableRoles,
+        organizations: orgs ?? [],
+        // Legacy key kept so existing surgeon UI keeps working unchanged.
+        surgeons: orgType === "surgeon" ? orgs ?? [] : [],
         members: rows.map((m) => ({
           membership_id: m.id,
+          org_id: orgType === "surgeon" ? m.surgeon_id : m.distributor_id,
           surgeon_id: m.surgeon_id,
+          distributor_id: m.distributor_id,
           role: m.role,
           is_active: m.is_active && !m.revoked_at,
           granted_at: m.granted_at,
@@ -105,17 +142,19 @@ Deno.serve(async (req) => {
     if (action === "list") return await listTeam();
 
     if (action === "invite") {
-      const surgeonId = resolveSurgeonId();
-      if (!surgeonId) return json({ error: "Practice is outside your scope" }, 403);
+      const orgId = resolveOrgId();
+      if (!orgId) return json({ error: "Organization is outside your scope" }, 403);
 
       const email = String(body.email ?? "").trim().toLowerCase();
-      const role = String(body.role ?? "surgeon_staff") as AssignableRole;
+      const role = String(
+        body.role ?? (orgType === "surgeon" ? "surgeon_staff" : "distributor_staff"),
+      );
       const fullName = body.full_name ? String(body.full_name).trim().slice(0, 200) : null;
 
       if (!EMAIL_RE.test(email)) return json({ error: "A valid email is required" }, 400);
-      if (!ASSIGNABLE_ROLES.includes(role)) return json({ error: "Invalid role" }, 400);
+      if (!assignableRoles.includes(role)) return json({ error: "Invalid role" }, 400);
 
-      // Never let a practice grant portal access to a Himplant staff account.
+      // Never let a portal organisation grant access to a Himplant staff account.
       const { data: isAdminUser } = await admin
         .from("admin_users")
         .select("id")
@@ -136,7 +175,7 @@ Deno.serve(async (req) => {
             email,
             full_name: fullName,
             is_active: true,
-            mfa_required: role === "surgeon_admin",
+            mfa_required: role === adminRole,
             invited_by: auth.userId,
           })
           .select("id, accepted_at")
@@ -158,13 +197,12 @@ Deno.serve(async (req) => {
         }
       }
 
-
       const { data: existing } = await admin
         .from("portal_memberships")
         .select("id")
         .eq("portal_user_id", portalUser!.id as string)
-        .eq("org_type", "surgeon")
-        .eq("surgeon_id", surgeonId)
+        .eq("org_type", orgType)
+        .eq(orgColumn, orgId)
         .maybeSingle();
 
       if (existing) {
@@ -176,8 +214,8 @@ Deno.serve(async (req) => {
       } else {
         const { error } = await admin.from("portal_memberships").insert({
           portal_user_id: portalUser!.id,
-          org_type: "surgeon",
-          surgeon_id: surgeonId,
+          org_type: orgType,
+          [orgColumn]: orgId,
           role,
           is_active: true,
           granted_by: auth.userId,
@@ -194,23 +232,45 @@ Deno.serve(async (req) => {
 
       const { data: membership } = await admin
         .from("portal_memberships")
-        .select("id, surgeon_id, org_type, portal_user_id, role")
+        .select("id, surgeon_id, distributor_id, org_type, portal_user_id, role")
         .eq("id", membershipId)
         .maybeSingle();
 
+      const membershipOrgId = membership
+        ? (orgType === "surgeon" ? membership.surgeon_id : membership.distributor_id) as string
+        : null;
+
       if (
-        !membership || membership.org_type !== "surgeon" ||
-        !ownedSurgeonIds.includes(membership.surgeon_id as string)
+        !membership || membership.org_type !== orgType ||
+        !membershipOrgId || !ownedOrgIds.includes(membershipOrgId)
       ) {
         return json({ error: "Team member not found" }, 404);
       }
 
-      // A surgeon admin cannot lock themselves out of their own practice.
+      // An org admin cannot lock themselves out of their own organisation.
       if (
         membership.portal_user_id === auth.portalUserId &&
-        (action === "deactivate" || (action === "set_role" && body.role !== "surgeon_admin"))
+        (action === "deactivate" || (action === "set_role" && body.role !== adminRole))
       ) {
         return json({ error: "You cannot change your own access" }, 409);
+      }
+
+      // Never leave an organisation without an active admin.
+      if (
+        membership.role === adminRole &&
+        (action === "deactivate" || (action === "set_role" && body.role !== adminRole))
+      ) {
+        const { data: admins } = await admin
+          .from("portal_memberships")
+          .select("id")
+          .eq("org_type", orgType)
+          .eq(orgColumn, membershipOrgId)
+          .eq("role", adminRole)
+          .eq("is_active", true)
+          .is("revoked_at", null);
+        if ((admins ?? []).length <= 1) {
+          return json({ error: "This is the last administrator for this organization" }, 409);
+        }
       }
 
       const patch: Record<string, unknown> = {};
@@ -221,8 +281,8 @@ Deno.serve(async (req) => {
         patch.is_active = true;
         patch.revoked_at = null;
       } else {
-        const role = String(body.role ?? "") as AssignableRole;
-        if (!ASSIGNABLE_ROLES.includes(role)) return json({ error: "Invalid role" }, 400);
+        const role = String(body.role ?? "");
+        if (!assignableRoles.includes(role)) return json({ error: "Invalid role" }, 400);
         patch.role = role;
       }
 

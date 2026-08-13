@@ -43,10 +43,11 @@ export default function PortalSelectWorkspace() {
                     <Stethoscope className="h-5 w-5 text-primary" />
                   )}
                 </div>
-                <CardTitle className="text-base capitalize">
-                  {w.orgType === "distributor" ? "Distributor portal" : "Surgeon portal"}
-                </CardTitle>
-                <CardDescription className="capitalize">{ROLE_LABEL(w.role)}</CardDescription>
+                <CardTitle className="text-base">{w.name}</CardTitle>
+                <CardDescription className="capitalize">
+                  {w.orgType === "distributor" ? "Distributor portal" : "Surgeon portal"} ·{" "}
+                  {ROLE_LABEL(w.role)}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button className="w-full" onClick={() => setActive(w.key)}>

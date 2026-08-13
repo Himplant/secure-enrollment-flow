@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { usePortalAuth, type PortalMembership } from "./usePortalAuth";
 
 
@@ -9,9 +11,11 @@ export interface PortalWorkspace {
   orgType: "surgeon" | "distributor";
   orgId: string;
   role: PortalMembership["role"];
+  /** Real organisation name, resolved from the in-scope surgeon/distributor rows. */
+  name: string;
 }
 
-const toWorkspace = (m: PortalMembership): PortalWorkspace | null => {
+const toWorkspace = (m: PortalMembership): Omit<PortalWorkspace, "name"> | null => {
   const orgId = m.org_type === "surgeon" ? m.surgeon_id : m.distributor_id;
   if (!orgId) return null;
   return { key: `${m.org_type}:${orgId}`, orgType: m.org_type, orgId, role: m.role };
@@ -23,11 +27,42 @@ const toWorkspace = (m: PortalMembership): PortalWorkspace | null => {
  * caller's memberships, so switching workspaces can never widen access.
  */
 export function usePortalWorkspace() {
-  const { memberships, isLoading } = usePortalAuth();
+  const { memberships, isLoading, isAuthenticated } = usePortalAuth();
 
-  const workspaces = useMemo(
-    () => memberships.map(toWorkspace).filter((w): w is PortalWorkspace => w !== null),
+  const base = useMemo(
+    () => memberships.map(toWorkspace).filter((w): w is Omit<PortalWorkspace, "name"> => w !== null),
     [memberships],
+  );
+
+  // Organisation names. RLS already limits both tables to the caller's own
+  // organisations, so this read can never reveal another network's names.
+  const { data: names } = useQuery({
+    queryKey: ["portal-workspace-names", base.map((w) => w.key).join(",")],
+    enabled: isAuthenticated && base.length > 0,
+    staleTime: 300_000,
+    queryFn: async () => {
+      const surgeonIds = base.filter((w) => w.orgType === "surgeon").map((w) => w.orgId);
+      const distributorIds = base.filter((w) => w.orgType === "distributor").map((w) => w.orgId);
+      const map: Record<string, string> = {};
+      if (surgeonIds.length) {
+        const { data } = await supabase.from("surgeons").select("id, name").in("id", surgeonIds);
+        for (const r of data ?? []) map[`surgeon:${r.id}`] = r.name as string;
+      }
+      if (distributorIds.length) {
+        const { data } = await supabase.from("distributors").select("id, name").in("id", distributorIds);
+        for (const r of data ?? []) map[`distributor:${r.id}`] = r.name as string;
+      }
+      return map;
+    },
+  });
+
+  const workspaces = useMemo<PortalWorkspace[]>(
+    () =>
+      base.map((w) => ({
+        ...w,
+        name: names?.[w.key] ?? (w.orgType === "distributor" ? "Distributor" : "Practice"),
+      })),
+    [base, names],
   );
 
   const rawStored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
@@ -75,4 +110,3 @@ export function usePortalWorkspace() {
       active?.orgType === "distributor",
   };
 }
-

@@ -145,6 +145,23 @@ export function providerReturnUrl(): string {
   return `${appBase()}/admin?tab=international&section=providers`;
 }
 
+export function providerPortalReturnUrl(): string {
+  return `${appBase()}/portal/payment-account`;
+}
+
+/**
+ * Where the merchant onboarding flow returns to. Derived from the actor and an
+ * `origin` hint only — never from a caller-supplied URL, so this can never be
+ * turned into an open redirect.
+ */
+export function resolveConnectReturnUrl(
+  actorKind: "admin" | "surgeon",
+  origin: unknown,
+): string {
+  if (actorKind === "surgeon" || origin === "portal") return providerPortalReturnUrl();
+  return providerReturnUrl();
+}
+
 // ---------------------------------------------------------------------------
 // Platform configuration
 // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ import {
   logProviderAudit,
   normalizeEnvironment,
   providerCallbackUrl,
-  providerReturnUrl,
+  resolveConnectReturnUrl,
   resolveProviderActor,
 } from "../_shared/provider-config.ts";
 import {
@@ -46,6 +46,8 @@ Deno.serve(async (req) => {
     if (provider !== "mercado_pago" && provider !== "paypal" && provider !== "stripe_connect") {
       return json({ error: "Unsupported provider" }, 400);
     }
+
+    const connectReturnUrl = resolveConnectReturnUrl(actor.kind, body.origin);
 
     const surgeonId = String(body.surgeonId ?? "");
     if (!surgeonId) return json({ error: "surgeonId is required" }, 400);
@@ -126,7 +128,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const returnUrl = String(body.redirectAfter ?? providerReturnUrl());
+      const returnUrl = connectReturnUrl;
       const url = await stripeCreateAccountLink({
         environment,
         accountId: stripeAccountId,
@@ -218,7 +220,7 @@ Deno.serve(async (req) => {
       const referral = await paypalCreatePartnerReferral({
         environment,
         trackingId: accountId!,
-        returnUrl: String(body.redirectAfter ?? providerReturnUrl()),
+        returnUrl: connectReturnUrl,
         email: (surgeon?.email as string | null) ?? null,
         country,
       });
@@ -257,7 +259,7 @@ Deno.serve(async (req) => {
       _surgeon_id: surgeonId,
       _platform_config_id: config.id,
       _code_verifier: verifier,
-      _redirect_after: String(body.redirectAfter ?? providerReturnUrl()),
+      _redirect_after: connectReturnUrl,
       _created_by: actor.userId,
       _created_by_email: actor.email,
       _ttl_seconds: 600,

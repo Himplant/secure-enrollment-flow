@@ -9,8 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 
 /** Guards every /portal route: portal identity + the relevant portal flag. */
 export function PortalProtectedRoute({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, isPortalUser, memberships, portalUser, mfaVerified, signOut } =
+  const { isLoading, isAuthenticated, isPortalUser, portalUser, mfaVerified, signOut } =
     usePortalAuth();
+
   const { needsChoice, active } = usePortalWorkspace();
   const { pathname } = useLocation();
   const { flags, isLoading: flagsLoading } = useFeatureFlags();
@@ -42,11 +43,14 @@ export function PortalProtectedRoute({ children }: { children: ReactNode }) {
   }
 
 
-  const hasSurgeon = memberships.some((m) => m.org_type === "surgeon");
-  const hasDistributor = memberships.some((m) => m.org_type === "distributor");
-  const allowed =
-    (hasSurgeon && isSurgeonPortalEnabled(flags)) ||
-    (hasDistributor && isDistributorPortalEnabled(flags));
+  // Feature enablement is evaluated for the ACTIVE workspace only: a surgeon
+  // membership must not keep the distributor portal open, or vice versa.
+  const allowed = active
+    ? active.orgType === "surgeon"
+      ? isSurgeonPortalEnabled(flags)
+      : isDistributorPortalEnabled(flags)
+    : false;
+
 
   if (!isPortalUser || !allowed) {
     return (
