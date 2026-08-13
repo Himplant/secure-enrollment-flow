@@ -223,7 +223,7 @@ export function LaunchReadinessSection() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(data?.checks ?? []).map((c) => {
+              {checks.map((c) => {
                 const meta = STATUS_META[c.status];
                 const Icon = meta.icon;
                 return (
