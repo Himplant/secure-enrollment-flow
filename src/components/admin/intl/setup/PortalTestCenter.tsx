@@ -158,6 +158,11 @@ export function PortalTestCenter() {
 
   const busy = run.isPending || isFetching;
 
+  const copyEmail = async (email: string) => {
+    await navigator.clipboard.writeText(email);
+    toast({ title: "Email copied", description: email });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -167,11 +172,33 @@ export function PortalTestCenter() {
             Deterministic demo accounts and consultation fixtures for international QA.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={busy}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`${window.location.origin}/portal/login`, "_blank", "noopener")}
+          >
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Open portal login
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={busy}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      <Alert>
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Use a private / incognito window</AlertTitle>
+        <AlertDescription>
+          The portal shares this origin's session storage, so signing in as a demo user in this
+          browser profile will replace your admin session. Open the portal login in a private window
+          for testing.
+        </AlertDescription>
+      </Alert>
+
+
 
       {!data?.qa_enabled && (
         <Alert variant="destructive">
