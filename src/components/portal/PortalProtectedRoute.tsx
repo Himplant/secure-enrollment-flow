@@ -5,6 +5,7 @@ import { usePortalAuth } from "@/hooks/usePortalAuth";
 import { usePortalWorkspace } from "@/hooks/usePortalWorkspace";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { isSurgeonPortalEnabled, isDistributorPortalEnabled } from "@/lib/featureFlags";
+import { resolvePortalRoute } from "@/lib/portalAccess";
 import { Card, CardContent } from "@/components/ui/card";
 
 /** Guards every /portal route: portal identity + the relevant portal flag. */
