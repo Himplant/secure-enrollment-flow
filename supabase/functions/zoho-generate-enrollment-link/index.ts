@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // --- Resolve the Zoho surgeon id (never route on surgeon_name) ---
+    // --- Resolve the Zoho surgeon id (never route on the surgeon display name) ---
     let zohoSurgeonId = body.zoho_surgeon_id
       ? String(body.zoho_surgeon_id)
       : body.surgeon_zoho_id
