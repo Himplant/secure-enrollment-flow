@@ -2,8 +2,9 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale, Globe, Flag, Building2
+  LogOut, Settings, RefreshCw, Users, Receipt, FileText, UserCog, Shield, DollarSign, Scale, Globe, Flag
 } from "lucide-react";
+
 
 import { Button } from "@/components/ui/button";
 import {
