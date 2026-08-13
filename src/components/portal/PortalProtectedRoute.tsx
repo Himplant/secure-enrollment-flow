@@ -26,21 +26,31 @@ export function PortalProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!isAuthenticated) return <Navigate to="/portal/login" replace />;
 
-  if (needsChoice && pathname !== "/portal/select-workspace") {
-    return <Navigate to="/portal/select-workspace" replace />;
+  // Workspace choice ALWAYS comes first. Until a workspace is chosen there is no
+  // active role to base policy on — falling back to the first membership could
+  // force MFA for an organisation the user never intended to open.
+  if (needsChoice) {
+    return pathname === "/portal/select-workspace" ? (
+      <>{children}</>
+    ) : (
+      <Navigate to="/portal/select-workspace" replace />
+    );
   }
 
   // AAL2 is mandatory for administrator roles in the ACTIVE workspace, and for
-  // any account explicitly flagged as mfa_required.
+  // any account explicitly flagged as mfa_required — both evaluated only after
+  // a workspace has been resolved.
   const activeRoleNeedsMfa = active?.role === "surgeon_admin" || active?.role === "distributor_admin";
   if (
     isPortalUser &&
+    active &&
     (activeRoleNeedsMfa || portalUser?.mfa_required) &&
     !mfaVerified &&
     pathname !== "/portal/mfa"
   ) {
     return <Navigate to="/portal/mfa" replace />;
   }
+
 
 
   // Feature enablement is evaluated for the ACTIVE workspace only: a surgeon
