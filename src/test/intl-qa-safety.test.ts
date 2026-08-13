@@ -47,7 +47,6 @@ describe("Portal Test Center safety rails", () => {
     expect(SOURCE).toContain("The temporary password is never echoed back.");
     expect(SOURCE).not.toMatch(/password,?\s*\}\)/);
   });
-  });
 
   it("uses the internal test payment provider for fixtures", () => {
     expect(SOURCE).toContain('provider: "test"');
