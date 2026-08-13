@@ -82,6 +82,7 @@ export function NetworkSection({ onSync, syncing, canManage, onInvite }: Props) 
         const payment = paymentState(
           data.provider_accounts.filter((a) => a.surgeon_id === s.id),
           setting?.allowed_providers ?? [],
+          s.country,
         );
         const hasPolicy = data.policies.some(
           (p) => p.country === s.country && (p.surgeon_id === null || p.surgeon_id === s.id),
