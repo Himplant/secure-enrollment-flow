@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import Stripe from "npm:stripe@18.5.0";
 import { generateConsentPdf } from "../_shared/consent-pdf.ts";
 import { sendConfirmationEmail } from "../_shared/send-confirmation-email.ts";
+import { isStaleFailure } from "../_shared/enrollment-guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -416,6 +417,7 @@ serve(async (req) => {
           })
           .eq("id", enrollmentId)
           .eq("status", "processing") // Only update if currently processing
+          .eq("stripe_session_id", session.id) // Only the current session may expire it
           .select()
           .single();
 
@@ -481,7 +483,7 @@ serve(async (req) => {
         // Cross-project guard: verify enrollment exists in this project's database
         const { data: existingFailed } = await supabase
           .from("enrollments")
-          .select("id")
+          .select("id, status, stripe_payment_intent_id")
           .eq("id", enrollmentId)
           .single();
 
@@ -493,6 +495,29 @@ serve(async (req) => {
           });
         }
 
+        // Stale-failure guard: an abandoned earlier attempt can report "failed"
+        // after the patient already paid on a newer attempt. Never downgrade.
+        if (
+          isStaleFailure(
+            existingFailed.status,
+            existingFailed.stripe_payment_intent_id,
+            paymentIntent.id,
+          )
+        ) {
+          await supabase.from("enrollment_events").insert({
+            enrollment_id: enrollmentId,
+            event_type: "payment_failed_ignored",
+            event_data: {
+              payment_intent_id: paymentIntent.id,
+              current_status: existingFailed.status,
+              current_payment_intent_id: existingFailed.stripe_payment_intent_id,
+              reason: "stale_failure_after_paid_or_superseded",
+            },
+          });
+          console.log(`Ignoring stale payment failure for enrollment ${enrollmentId}`);
+          break;
+        }
+
         const { data: enrollment, error: updateError } = await supabase
           .from("enrollments")
           .update({
@@ -500,9 +525,14 @@ serve(async (req) => {
             failed_at: new Date().toISOString(),
           })
           .eq("id", enrollmentId)
+          .not("status", "in", "(paid,refunded)")
           .select()
           .single();
 
+        if (updateError && updateError.code === "PGRST116") {
+          console.log(`Enrollment ${enrollmentId} already paid/refunded; failure ignored`);
+          break;
+        }
         if (updateError) {
           console.error("Failed to update enrollment:", updateError);
           break;
@@ -569,6 +599,7 @@ serve(async (req) => {
           })
           .eq("id", enrollmentId)
           .eq("status", "processing") // Only update if currently processing
+          .eq("stripe_session_id", session.id) // Only the current session may expire it
           .select()
           .single();
 
