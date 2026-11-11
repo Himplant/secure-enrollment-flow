@@ -417,7 +417,6 @@ serve(async (req) => {
           })
           .eq("id", enrollmentId)
           .eq("status", "processing") // Only update if currently processing
-          .eq("stripe_session_id", session.id) // Only the current session may expire it
           .select()
           .single();
 
