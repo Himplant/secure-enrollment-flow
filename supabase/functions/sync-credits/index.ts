@@ -1,3 +1,4 @@
+import { fetchAllZohoRecords } from "../_shared/zoho-pagination.ts";
 import { jwtHasAal2 } from "../_shared/admin-auth.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -120,30 +121,11 @@ function calculateCredit(
 }
 
 async function fetchDealsFromZoho(accessToken: string): Promise<ZohoDeal[]> {
-  const deals: ZohoDeal[] = [];
-  let page = 1;
-  let hasMore = true;
   const fields = "Deal_Name,Stage,Active_Surgery_Date,Credit_Applies_Until,Credit_Applies_From,Enrollment_Status,Enrollment_Date,Owner,Surgeon_Name_Lookup,Surgeon,Email,Contact_Name";
-
-  while (hasMore) {
-    const url = `https://www.zohoapis.com/crm/v6/Deals?fields=${fields}&criteria=(Enrollment_Status:equals:Paid)&page=${page}&per_page=200`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
-    });
-    if (res.status === 204) break;
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`Zoho API error (page ${page}):`, errText);
-      throw new Error(`Zoho API error: ${errText}`);
-    }
-    const data = await res.json();
-    if (data.data && Array.isArray(data.data)) {
-      deals.push(...data.data);
-    }
-    hasMore = data.info?.more_records ?? false;
-    page++;
-  }
-  return deals;
+  const url = `https://www.zohoapis.com/crm/v6/Deals?fields=${fields}&per_page=200`;
+  const all = await fetchAllZohoRecords<ZohoDeal>(url, accessToken);
+  // deno-lint-ignore no-explicit-any
+  return all.filter((d: any) => d.Enrollment_Status === "Paid");
 }
 
 Deno.serve(async (req) => {
