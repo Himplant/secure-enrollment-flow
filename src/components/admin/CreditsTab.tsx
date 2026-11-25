@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { summarizeForfeitedDeposits } from "@/lib/creditEconomics";
 import { format, subDays, subMonths, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 
 // ── Types ──
@@ -246,27 +247,32 @@ export function CreditsTab({ adminRole }: CreditsTabProps) {
           records: [],
         });
       }
-      const s = map.get(c.surgeon_name)!;
+      const s = map.get(c.surgeon_name);
+      if (!s) continue;
       s.records.push(c);
       if (c.credit_status === "earned") { s.earned += c.credit_amount; s.earnedCount++; }
       else if (c.credit_status === "issued") { s.issued += c.issued_amount || c.credit_amount; s.issuedCount++; }
       else if (c.credit_status === "pending") { s.pending += c.credit_amount; s.pendingCount++; }
-      else if (c.credit_status === "forfeited") { s.forfeited += c.credit_amount; s.forfeitedCount++; }
       else if (c.credit_status === "disputed") { s.disputed += c.credit_amount; s.disputedCount++; }
+    }
+    for (const s of map.values()) {
+      const deposits = summarizeForfeitedDeposits(s.records);
+      s.forfeited = deposits.amountDollars;
+      s.forfeitedCount = deposits.count;
     }
     return Array.from(map.values()).sort((a, b) => a.surgeon_name.localeCompare(b.surgeon_name));
   }, [filtered]);
 
   const kpis = useMemo(() => {
-    let earned = 0, issued = 0, pending = 0, forfeited = 0, disputed = 0;
+    let earned = 0, issued = 0, pending = 0, disputed = 0;
     for (const c of filtered) {
       if (c.credit_status === "earned") earned += c.credit_amount;
       else if (c.credit_status === "issued") issued += c.issued_amount || c.credit_amount;
       else if (c.credit_status === "pending") pending += c.credit_amount;
-      else if (c.credit_status === "forfeited") forfeited += c.credit_amount;
       else if (c.credit_status === "disputed") disputed += c.credit_amount;
     }
-    return { earned, issued, pending, forfeited, disputed };
+    const deposits = summarizeForfeitedDeposits(filtered);
+    return { earned, issued, pending, forfeited: deposits.amountDollars, forfeitedCount: deposits.count, disputed };
   }, [filtered]);
 
   // ── Chart data ──
@@ -488,13 +494,14 @@ export function CreditsTab({ adminRole }: CreditsTabProps) {
 
   const handleExportCSV = (surgeonName?: string) => {
     const data = surgeonName ? filtered.filter(c => c.surgeon_name === surgeonName) : filtered;
-    const headers = ["Surgeon", "Patient", "Email", "Enrollment Date", "Surgery Date", "Stage", "$750 Expires", "$500 Expires", "Credit Amount", "Status", "Issued Amount", "Issued At", "Issued By", "Source"];
+    const headers = ["Surgeon", "Patient", "Email", "Enrollment Date", "Surgery Date", "Stage", "$750 Expires", "$500 Expires", "Credit Amount", "Status", "Issued Amount", "Issued At", "Issued By", "Source", "Forfeited Deposit Amount"];
     const rows = data.map(c => [
       c.surgeon_name, c.patient_name, c.patient_email || "",
       formatDateUS(c.enrollment_date), formatDateUS(c.surgery_date), c.stage || "",
       formatDateUS(c.credit_750_expires), formatDateUS(c.credit_500_expires),
       c.credit_amount, c.credit_status, c.issued_amount || "",
       c.issued_at ? formatDateTimeUS(c.issued_at) : "", c.issued_by || "", c.source,
+      summarizeForfeitedDeposits([c]).amountDollars,
     ]);
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -651,7 +658,7 @@ export function CreditsTab({ adminRole }: CreditsTabProps) {
         <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Issued (Paid Out)</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-blue-600">${kpis.issued.toLocaleString()}</div></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-amber-600">${kpis.pending.toLocaleString()}</div></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Disputed</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-orange-600">${kpis.disputed.toLocaleString()}</div></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Forfeited</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">${kpis.forfeited.toLocaleString()}</div></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Forfeited Deposits</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-destructive">${kpis.forfeited.toLocaleString()}</div><div className="text-xs text-muted-foreground">{kpis.forfeitedCount.toLocaleString()} forfeited {kpis.forfeitedCount === 1 ? "deposit" : "deposits"}</div></CardContent></Card>
       </div>
 
       {/* Visual Charts */}
@@ -710,18 +717,18 @@ export function CreditsTab({ adminRole }: CreditsTabProps) {
               <Card>
                 <CollapsibleTrigger asChild>
                   <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         {expandedSurgeons.has(surgeon.surgeon_name) ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                         <CardTitle className="text-base">{surgeon.surgeon_name}</CardTitle>
                         <span className="text-xs text-muted-foreground">({surgeon.records.length} patients)</span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs">
+                      <div className="flex flex-wrap items-center gap-4 text-xs">
                         <span className="text-emerald-600 font-medium">${surgeon.earned.toLocaleString()} earned</span>
                         <span className="text-blue-600 font-medium">${surgeon.issued.toLocaleString()} issued</span>
                         <span className="text-amber-600 font-medium">${surgeon.pending.toLocaleString()} pending</span>
                         {surgeon.disputed > 0 && <span className="text-orange-600 font-medium">${surgeon.disputed.toLocaleString()} disputed</span>}
-                        <span className="text-red-600 font-medium">${surgeon.forfeited.toLocaleString()} forfeited</span>
+                        <span className="text-destructive font-medium">{surgeon.forfeitedCount.toLocaleString()} forfeited {surgeon.forfeitedCount === 1 ? "deposit" : "deposits"} · ${surgeon.forfeited.toLocaleString()}</span>
                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleExportCSV(surgeon.surgeon_name); }}>
                           <Download className="h-3 w-3 mr-1" />CSV
                         </Button>

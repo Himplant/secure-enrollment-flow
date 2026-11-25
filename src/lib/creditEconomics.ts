@@ -5,6 +5,12 @@
 export const DEPOSIT_CENTS = 50000; // $500
 export const OVERPAY_CENTS = 25000; // $250 gap on 3-month credits
 
+// Retained deposits are not the expired surgeon credit (which can be zero).
+export function summarizeForfeitedDeposits(records: readonly { credit_status: string }[]) {
+  const count = records.filter(record => record.credit_status === "forfeited").length;
+  return { count, amountDollars: count * DEPOSIT_CENTS / 100 };
+}
+
 export interface EnrollmentRow {
   status: string;
   amount_cents: number;
