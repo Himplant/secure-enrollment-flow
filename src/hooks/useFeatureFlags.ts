@@ -8,10 +8,10 @@ import {
 } from "@/lib/featureFlags";
 
 /**
- * Reads runtime feature flags. Flags are readable by anon and authenticated
- * users on purpose — the public consultation payment page needs them, and a
- * flag is not a secret. Enforcement also happens server-side inside every
- * `intl-*` edge function, so hiding UI is never the only control.
+ * Reads runtime feature flags. Only admins and active portal users may read
+ * them (enforced by database access rules); everyone else gets the all-off
+ * defaults. Enforcement also happens server-side inside every `intl-*` edge
+ * function, so hiding UI is never the only control.
  */
 export function useFeatureFlags() {
   const query = useQuery({
